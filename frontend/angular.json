@@ -94,7 +94,6 @@
             "include": ["**/*.spec.ts"],
             "setupFiles": ["src/jsdom-svg-polyfill.ts"],
             "exclude": [
-              "**/app/common/service/user/config/user-config.service.spec.ts",
               "**/app/workspace/component/workflow-editor/workflow-editor.component.spec.ts"
             ]
           }

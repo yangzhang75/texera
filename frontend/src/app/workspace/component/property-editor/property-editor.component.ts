@@ -79,6 +79,7 @@ import { FormlyRepeatDndComponent } from "../../../common/formly/repeat-dnd/repe
 })
 export class PropertyEditorComponent implements OnInit, OnDestroy {
   @ViewChild("contentWrapper") contentWrapperRef!: ElementRef;
+  @Input() dragBoundary: string = "texera-workspace";
   @Input() mode?: "workflow" | "template" = "workflow";
   protected readonly window = window;
   id = -1;

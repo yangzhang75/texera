@@ -279,11 +279,12 @@ describe("DashboardComponent", () => {
       compute_enabled: true,
       quota_enabled: true,
       forum_enabled: true,
+      template_enabled: true,
       about_enabled: true,
     };
     fixture.detectChanges();
 
-    // 7 "Your Work" links (incl. Python Venvs) + 4 admin links + 1 about link + 1 feedback link = 13
-    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).length).toBe(13);
+    // 7 "Your Work" links (incl. Python Venvs) + 1 templates link + 4 admin links + 1 about link + 1 feedback link = 14
+    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).length).toBe(14);
   });
 });

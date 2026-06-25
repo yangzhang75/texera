@@ -24,12 +24,13 @@ import { FileSaverService } from "../file/file-saver.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { DatasetService } from "../dataset/dataset.service";
 import { WorkflowPersistService } from "src/app/common/service/workflow-persist/workflow-persist.service";
-import * as JSZip from "jszip";
+import JSZip from "jszip";
 import { Workflow } from "../../../../common/type/workflow";
 import { HttpClient, HttpResponse } from "@angular/common/http";
 import { WORKFLOW_EXECUTIONS_API_BASE_URL } from "../workflow-executions/workflow-executions.service";
 import { DashboardWorkflowComputingUnit } from "../../../../common/type/workflow-computing-unit";
 import { TOKEN_KEY } from "../../../../common/service/user/auth.service";
+import {TemplateService} from "../template/template.service";
 
 export const EXPORT_BASE_URL = "result/export";
 const IFRAME_TIMEOUT_MS = 10000;
@@ -57,6 +58,7 @@ export class DownloadService {
     private fileSaverService: FileSaverService,
     private notificationService: NotificationService,
     private datasetService: DatasetService,
+    private templateService: TemplateService,
     private workflowPersistService: WorkflowPersistService,
     private http: HttpClient
   ) {}
@@ -80,6 +82,18 @@ export class DownloadService {
       "Starting to download the latest version of the dataset as ZIP",
       "The latest version of the dataset has been downloaded as ZIP",
       "Error downloading the latest version of the dataset as ZIP"
+    );
+  }
+
+  downloadTemplate(id: number, name: string): Observable<DownloadableItem> {
+    return this.templateService.retrieveTemplate(id).pipe(
+      map(({ content }) => {
+        const templateJson = JSON.stringify(content, null, 2);
+        const fileName = `${name}.json`;
+        const blob = new Blob([templateJson], { type: "text/plain;charset=utf-8" });
+        return { blob, fileName };
+      }),
+      tap(this.saveFile.bind(this))
     );
   }
 
@@ -118,6 +132,16 @@ export class DownloadService {
       "Workflows have been downloaded as ZIP",
       "Error downloading workflows as ZIP"
     );
+  }
+
+  downloadTemplatesAsZip(templateEntries: Array<{ id: number; name: string }>): Observable<Blob> {
+    return this.downloadWithNotification(
+      () => this.createTemplatesZip(templateEntries),
+      `templateExports-${new Date().toISOString()}.zip`,
+      "Starting to download templates as ZIP",
+      "Templates have been downloaded as ZIP",
+      "Error downloading templates as ZIP"
+    )
   }
 
   /**
@@ -282,6 +306,19 @@ export class DownloadService {
     const zip = new JSZip();
     const downloadObservables = workflowEntries.map(entry =>
       this.downloadWorkflow(entry.id, entry.name).pipe(
+        tap(({ blob, fileName }) => {
+          zip.file(this.nameWorkflow(fileName, zip), blob);
+        })
+      )
+    );
+
+    return forkJoin(downloadObservables).pipe(switchMap(() => zip.generateAsync({ type: "blob" })));
+  }
+
+  private createTemplatesZip(templateEntries: Array<{ id: number; name: string }>): Observable<Blob> {
+    const zip = new JSZip();
+    const downloadObservables = templateEntries.map(entry =>
+      this.downloadTemplate(entry.id, entry.name).pipe(
         tap(({ blob, fileName }) => {
           zip.file(this.nameWorkflow(fileName, zip), blob);
         })

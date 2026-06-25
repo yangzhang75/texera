@@ -51,8 +51,12 @@ import {
   USER_DATASET,
   USER_PROJECT,
   USER_WORKSPACE,
+  USER_TEMPLATE,
+  USER_TEMPLATED_WORKFLOW,
 } from "../../../../app-routing.constant";
 import { isDefined } from "../../../../common/util/predicate";
+import {Router} from "@angular/router";
+import {TemplateService} from "../../../service/user/template/template.service";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { RouterLink } from "@angular/router";
@@ -132,11 +136,13 @@ export class ListItemComponent implements OnChanges {
     private modalService: NzModalService,
     private workflowPersistService: WorkflowPersistService,
     private datasetService: DatasetService,
+    private templateService: TemplateService,
     private modal: NzModalService,
     private hubService: HubService,
     private downloadService: DownloadService,
     private cdr: ChangeDetectorRef,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private router: Router,
   ) {}
 
   initializeEntry() {
@@ -165,6 +171,14 @@ export class ListItemComponent implements OnChanges {
           this.entryLink = [HUB_DATASET_RESULT_DETAIL, String(this.entry.id)];
         }
         this.iconType = "database";
+        this.size = this.entry.size;
+      }
+    } else if (this.entry.type === "template") {
+      if (typeof this.entry.id === "number") {
+        this.disableDelete = !this.entry.template.isOwner;
+        this.owners = this.entry.accessibleUserIds;
+        this.entryLink = [USER_TEMPLATED_WORKFLOW, String(this.entry.id)];
+        this.iconType = "experiment";
         this.size = this.entry.size;
       }
     } else if (this.entry.type === "file") {
@@ -254,6 +268,8 @@ export class ListItemComponent implements OnChanges {
         .subscribe();
     } else if (this.entry.type === "dataset") {
       this.downloadService.downloadDataset(this.entry.id, this.entry.name).pipe(untilDestroyed(this)).subscribe();
+    } else if (this.entry.type === "template") {
+      this.downloadService.downloadTemplate(this.entry.id, this.entry.name).pipe(untilDestroyed(this)).subscribe();
     }
   };
 
@@ -374,6 +390,14 @@ export class ListItemComponent implements OnChanges {
   }
 
   formatRelativeTime = formatRelativeTime;
+
+  openCreateWorkflowFromTemplatePage(tid: number | undefined): void {
+    this.router.navigate([`${USER_TEMPLATED_WORKFLOW}/${tid}`]);
+  }
+
+  openTemplateWorkspace(tid: number | undefined): void {
+    this.router.navigate([`${USER_TEMPLATE}/${tid}`]);
+  }
 
   openDetailModal(wid: number | undefined): void {
     const modalRef = this.modal.create({

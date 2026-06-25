@@ -41,6 +41,7 @@ import {
   USER_PYTHON_VENV,
   USER_QUOTA,
   USER_WORKFLOW,
+  USER_TEMPLATE,
   USER_FEEDBACK,
 } from "../../app-routing.constant";
 import { Version } from "../../../environments/version";
@@ -104,6 +105,7 @@ export class DashboardComponent implements OnInit {
     compute_enabled: false,
     quota_enabled: false,
     forum_enabled: false,
+    template_enabled: false,
     about_enabled: false,
   };
 
@@ -114,6 +116,7 @@ export class DashboardComponent implements OnInit {
   protected readonly USER_PYTHON_VENV = USER_PYTHON_VENV;
   protected readonly USER_QUOTA = USER_QUOTA;
   protected readonly USER_DISCUSSION = USER_DISCUSSION;
+  protected readonly USER_TEMPLATE = USER_TEMPLATE;
   protected readonly USER_FEEDBACK = USER_FEEDBACK;
   protected readonly ADMIN_USER = ADMIN_USER;
   protected readonly ADMIN_GMAIL = ADMIN_GMAIL;
@@ -244,10 +247,9 @@ export class DashboardComponent implements OnInit {
 
   isNavbarEnabled(currentRoute: string) {
     // Hide navbar for workflow workspace pages (with numeric ID)
-    if (currentRoute.match(/\/user\/workflow\/\d+/)) {
-      return false;
-    }
-    return true;
+    const workspaceRouteRegex = /\/user\/(workflow|template|template-from-workflow)\/\d+/;
+
+    return !workspaceRouteRegex.test(currentRoute);
   }
 
   handleCollapseChange(collapsed: boolean) {

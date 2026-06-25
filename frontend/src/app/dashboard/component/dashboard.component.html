@@ -98,6 +98,18 @@
             <span>Datasets</span>
           </li>
           <li
+            *ngIf="sidebarTabs.template_enabled"
+            nz-menu-item
+            nz-tooltip="Search templates"
+            nzMatchRouter="true"
+            nzTooltipPlacement="right"
+            [routerLink]="USER_TEMPLATE">
+            <span
+              nz-icon
+              nzType="experiment"></span>
+            <span>Templates</span>
+          </li>
+          <li
             *ngIf="sidebarTabs.compute_enabled"
             nz-menu-item
             nz-tooltip="Manage computing units"

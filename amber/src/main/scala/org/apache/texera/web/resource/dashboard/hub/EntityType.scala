@@ -35,8 +35,9 @@ sealed trait EntityType {
 object EntityType {
   case object Workflow extends EntityType { val value = "workflow" }
   case object Dataset extends EntityType { val value = "dataset" }
+  case object Template extends EntityType { val value = "template" }
 
-  private val values = Seq(Workflow, Dataset)
+  private val values = Seq(Workflow, Dataset, Template)
 
   @JsonCreator
   def fromString(s: String): EntityType =

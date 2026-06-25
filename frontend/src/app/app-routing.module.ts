@@ -18,7 +18,7 @@
  */
 
 import { NgModule } from "@angular/core";
-import { RouterModule, Routes } from "@angular/router";
+import { RouterModule, Routes, UrlSegment, UrlMatchResult } from "@angular/router";
 import { DashboardComponent } from "./dashboard/component/dashboard.component";
 import { UserWorkflowComponent } from "./dashboard/component/user/user-workflow/user-workflow.component";
 import { UserQuotaComponent } from "./dashboard/component/user/user-quota/user-quota.component";
@@ -113,10 +113,6 @@ routes.push({
           component: UserWorkflowComponent,
         },
         {
-          path: "workflow/:id",
-          component: WorkspaceComponent,
-        },
-        {
           path: "dataset",
           component: UserDatasetComponent,
         },
@@ -151,6 +147,10 @@ routes.push({
         {
           path: "template/create-workflow/:tid",
           component: TemplatedWorkflowCreationComponent,
+        },
+        {
+          matcher: workspaceMatcher,
+          component: WorkspaceComponent,
         },
         {
           path: "feedback",
@@ -198,3 +198,28 @@ routes.push({
   exports: [RouterModule],
 })
 export class AppRoutingModule {}
+
+/**
+ * Matches the workspace URLs `/<mode>/:id` where mode is "workflow" or "template"
+ * and id is numeric, exposing `mode` and `id` as route params so the workspace
+ * can load either a workflow or a template into the same component.
+ */
+export function workspaceMatcher(segments: UrlSegment[]): UrlMatchResult | null {
+  if (segments.length !== 2) {
+    return null;
+  }
+
+  const [mode, id] = segments;
+  const validModes = new Set(["workflow", "template"]);
+  if (!validModes.has(mode.path) || !/^\d+$/.test(id.path)) {
+    return null;
+  }
+
+  return {
+    consumed: segments,
+    posParams: {
+      mode,
+      id,
+    },
+  };
+}

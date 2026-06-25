@@ -16,19 +16,22 @@
  * limitations under the License.
  */
 
-import { Workflow } from "../../common/type/workflow";
+import { WorkflowContent } from "../../common/type/workflow";
 
 /**
- * Checks if the given workflow is "broken".
- * A workflow is considered broken if any of its links reference an operator ID
- * that does not exist in the list of operators within the workflow.
+ * Checks if the given graph content is "broken".
+ * Graph content is considered broken if any of its links reference an operator ID
+ * that does not exist in the list of operators.
  *
- * @param workflow - The workflow to validate, containing operators and links.
- * @returns 'true' if the workflow is broken, 'false' otherwise.
+ * Operates on raw {@link WorkflowContent} so it can validate both workflows and
+ * workflow templates (which share the same graph content shape).
+ *
+ * @param content - The graph content to validate, containing operators and links.
+ * @returns 'true' if the graph is broken, 'false' otherwise.
  */
-export function checkIfWorkflowBroken(workflow: Workflow): boolean {
-  const validOperatorIDs = new Set(workflow.content.operators.map(o => o.operatorID));
-  return workflow.content.links.some(
+export function checkIfGraphBroken(content: WorkflowContent): boolean {
+  const validOperatorIDs = new Set(content.operators.map(o => o.operatorID));
+  return content.links.some(
     link => !validOperatorIDs.has(link.source.operatorID) || !validOperatorIDs.has(link.target.operatorID)
   );
 }

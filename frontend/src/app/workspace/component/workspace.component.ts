@@ -54,7 +54,7 @@ import { GuiConfigService } from "../../common/service/gui-config.service";
 import { ComputingUnitStatusService } from "../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ExecuteWorkflowService } from "../service/execute-workflow/execute-workflow.service";
 import { WorkflowResultService } from "../service/workflow-result/workflow-result.service";
-import { checkIfWorkflowBroken } from "../../common/util/workflow-check";
+import { checkIfGraphBroken } from "../../common/util/graph-check";
 import { NzSpinComponent } from "ng-zorro-antd/spin";
 import { ResultPanelComponent } from "./result-panel/result-panel.component";
 import { WorkflowEditorComponent } from "./workflow-editor/workflow-editor.component";
@@ -250,7 +250,7 @@ export class WorkspaceComponent implements AfterViewInit, OnInit, OnDestroy {
       .pipe(untilDestroyed(this))
       .subscribe(
         ({ workflow }) => {
-          if (checkIfWorkflowBroken(workflow)) {
+          if (checkIfGraphBroken(workflow.content)) {
             this.notificationService.error(
               "Sorry! The workflow is broken and cannot be persisted. Please contact the system admin."
             );

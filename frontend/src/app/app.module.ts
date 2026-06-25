@@ -149,6 +149,7 @@ import { FilesUploaderComponent } from "./dashboard/component/user/files-uploade
 import { ConflictingFileModalContentComponent } from "./dashboard/component/user/files-uploader/conflicting-file-modal-content/conflicting-file-modal-content.component";
 import { UserDatasetComponent } from "./dashboard/component/user/user-dataset/user-dataset.component";
 import { UserTemplateComponent } from "./dashboard/component/user/user-template/user-template.component";
+import { TemplatedWorkflowCreationComponent } from "./dashboard/component/user/user-template/templated-workflow-creation/templated-workflow-creation.component";
 import { UserDatasetVersionCreatorComponent } from "./dashboard/component/user/user-dataset/user-dataset-explorer/user-dataset-version-creator/user-dataset-version-creator.component";
 import { DatasetDetailComponent } from "./dashboard/component/user/user-dataset/user-dataset-explorer/dataset-detail.component";
 import { UserDatasetVersionFiletreeComponent } from "./dashboard/component/user/user-dataset/user-dataset-explorer/user-dataset-version-filetree/user-dataset-version-filetree.component";
@@ -321,6 +322,7 @@ registerLocaleData(en);
     ConflictingFileModalContentComponent,
     UserDatasetComponent,
     UserTemplateComponent,
+    TemplatedWorkflowCreationComponent,
     UserDatasetVersionCreatorComponent,
     DatasetDetailComponent,
     UserDatasetVersionFiletreeComponent,

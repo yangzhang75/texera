@@ -44,6 +44,7 @@ import { LandingPageComponent } from "./hub/component/landing-page/landing-page.
 import { USER_WORKFLOW } from "./app-routing.constant";
 import { HubSearchResultComponent } from "./hub/component/hub-search-result/hub-search-result.component";
 import { AdminSettingsComponent } from "./dashboard/component/admin/settings/admin-settings.component";
+import { TemplatedWorkflowCreationComponent } from "./dashboard/component/user/user-template/templated-workflow-creation/templated-workflow-creation.component";
 
 const routes: Routes = [];
 
@@ -146,6 +147,10 @@ routes.push({
         {
           path: "template",
           component: UserTemplateComponent,
+        },
+        {
+          path: "template/create-workflow/:tid",
+          component: TemplatedWorkflowCreationComponent,
         },
         {
           path: "feedback",

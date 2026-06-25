@@ -74,6 +74,7 @@ import { WorkflowPveService } from "../../../service/virtual-environment/virtual
 import { ComputingUnitStatusService } from "../../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { of } from "rxjs";
 import { map, switchMap, take } from "rxjs/operators";
+import { ConfigurablePropertyWrapperComponent } from "./configurable-property-wrapper/configurable-property-wrapper.component";
 
 Quill.register("modules/cursors", QuillCursors);
 
@@ -116,6 +117,7 @@ Quill.register("modules/cursors", QuillCursors);
 })
 export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, OnDestroy {
   @Input() currentOperatorId?: string;
+  @Input() mode?: "workflow" | "template" = "workflow";
 
   currentOperatorSchema?: OperatorSchema;
 
@@ -581,6 +583,27 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         );
       }
 
+      if (
+        this.currentOperatorId !== undefined &&
+        typeof mappedField.key === "string" &&
+        schema.properties?.[mappedField.key] !== undefined
+      ) {
+        const operator = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId);
+
+        const configurableSet = new Set(operator.configurableProperties ?? []);
+
+        ConfigurablePropertyWrapperComponent.setupFieldConfig(
+          mappedField,
+          this.isTemplateMode(),
+          configurableSet.has(mappedField.key),
+          (event: Event) => {
+            const checked = (event.target as HTMLInputElement).checked;
+            this.handleToggleConfigurable(mappedField.key as string, checked);
+          },
+          mappedField.wrappers?.includes("preset-wrapper")
+        );
+      }
+
       // TODO: we temporarily disable this due to Yjs update causing issues in Formly.
 
       // if (
@@ -897,5 +920,28 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       placeholder: "Start collaborating...",
       theme: "snow",
     });
+  }
+
+  handleToggleConfigurable(property: string, checked: boolean): void {
+    if (!this.currentOperatorId) return;
+
+    const operator = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId);
+
+    const currentConfigurableProperties = new Set(operator.configurableProperties ?? []);
+
+    if (checked) {
+      currentConfigurableProperties.add(property);
+    } else {
+      currentConfigurableProperties.delete(property);
+    }
+
+    this.workflowActionService.setOperatorConfigurableProperties(
+      this.currentOperatorId,
+      Array.from(currentConfigurableProperties)
+    );
+  }
+
+  isTemplateMode(): boolean {
+    return this.mode === "template";
   }
 }

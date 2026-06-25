@@ -30,6 +30,7 @@ import { FormlyRepeatDndComponent } from "./repeat-dnd/repeat-dnd.component";
 import { UiUdfParametersComponent } from "../../workspace/component/ui-udf-parameters/ui-udf-parameters.component";
 import { DatasetVersionSelectorComponent } from "../../workspace/component/dataset-version-selector/dataset-version-selector.component";
 import { HuggingFaceImageUploadComponent } from "../../workspace/component/hugging-face-image-upload/hugging-face-image-upload.component";
+import { ConfigurablePropertyWrapperComponent } from "../../workspace/component/property-editor/operator-property-edit-frame/configurable-property-wrapper/configurable-property-wrapper.component";
 
 /**
  * Configuration for using Json Schema with Formly.
@@ -88,6 +89,7 @@ export const TEXERA_FORMLY_CONFIG = {
   wrappers: [
     { name: "preset-wrapper", component: PresetWrapperComponent },
     { name: "collab-wrapper", component: CollabWrapperComponent },
+    { name: "configurable-property-wrapper", component: ConfigurablePropertyWrapperComponent },
   ],
 };
 

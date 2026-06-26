@@ -26,6 +26,7 @@ import {NotificationService} from "../../../../../common/service/notification/no
 import {UserService} from "../../../../../common/service/user/user.service";
 import {WorkflowActionService} from "../../../../../workspace/service/workflow-graph/model/workflow-action.service";
 import {WorkflowContent} from "../../../../../common/type/workflow";
+import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
@@ -108,6 +109,7 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     private templateService: TemplateService,
     private templatedWorkflowDraftService: TemplatedWorkflowDraftService,
     private templatedWorkflowService: TemplatedWorkflowService,
+    private workflowPersistService: WorkflowPersistService,
     private executeWorkflowService: ExecuteWorkflowService,
     private operatorMetadataService: OperatorMetadataService,
     private dynamicSchemaService: DynamicSchemaService,
@@ -318,23 +320,39 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     this.tid = this.route.snapshot.params.tid;
     if (!this.tid) return;
 
+    // Get-or-create the workflow instantiated from this template up front, then build the form
+    // from the WORKFLOW's CURRENT content -- not the raw template. This is essential: the form
+    // must show the values that are actually saved (e.g. a Limit the user set earlier), otherwise
+    // submitting would send template defaults for the un-edited fields and silently reset them.
     forkJoin({
-      template: this.templateService.retrieveTemplate(this.tid),
+      wid: this.templatedWorkflowService.createTemplatedWorkflow(this.tid),
       metadata: this.operatorMetadataService.getOperatorMetadata(),
     })
-      .pipe(untilDestroyed(this))
-      .subscribe(({ template }) => {
-        this.template = template.content;
-        this.showEmbeddedWorkspace = false;
-        this.templatedWorkflowDraftService.initialize(template.content);
+      .pipe(
+        switchMap(({ wid }) => {
+          this.wid = wid;
+          return this.workflowPersistService.retrieveWorkflow(wid);
+        }),
+        untilDestroyed(this)
+      )
+      .subscribe(workflow => {
+        // The instantiated workflow's content is the source of truth for the form.
+        this.template = workflow.content;
+        this.templatedWorkflowDraftService.initialize(workflow.content);
 
-        // NOTE: we deliberately do NOT load the template into the shared WorkflowActionService.
-        // That singleton is the same one the embedded read-only preview uses; loading the raw
-        // template into it made the preview render the template (with its placeholder/invalid
-        // values) instead of the user's actual saved workflow. The embedded preview is now the
-        // sole driver of the shared graph (it loads the real workflow by wid), and attribute
-        // dropdowns are enriched purely through the draft compile path below.
+        // We deliberately do NOT load anything into the shared WorkflowActionService here: that
+        // singleton is what the embedded preview renders. The embedded preview loads the real
+        // workflow by wid on its own; attribute-dropdown enrichment comes from the draft compile
+        // path below, so the shared graph (and thus the preview) is never polluted.
         this.rebuildSectionsFromDynamicSchemas();
+
+        // Baseline: the values currently in the workflow. Submitting without edits is then a
+        // genuine "no change", and editing one field sends the real current values for the rest
+        // (so nothing gets reset to template defaults).
+        this.appliedValues = cloneDeep(this.getConfigurablePropertyUpdatePayload().operatorProperties);
+
+        // Show the preview of the actual workflow.
+        this.showEmbeddedWorkspace = true;
 
         // Initial enrichment so attribute selectors show their dropdown options before any edit,
         // without touching the shared graph.

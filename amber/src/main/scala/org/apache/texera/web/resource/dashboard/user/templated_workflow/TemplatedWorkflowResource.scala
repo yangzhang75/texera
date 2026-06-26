@@ -27,12 +27,36 @@ import org.apache.texera.dao.jooq.generated.tables.daos.{WorkflowDao, WorkflowOf
 
 import javax.annotation.security.RolesAllowed
 import javax.ws.rs.core.MediaType
-import javax.ws.rs.{POST, Path, Produces, QueryParam}
+import javax.ws.rs.{
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  POST,
+  Path,
+  PathParam,
+  Produces,
+  QueryParam
+}
 import org.apache.texera.web.service.{TemplateService, WorkflowPersistService}
 import org.apache.texera.dao.jooq.generated.Tables.WORKFLOW_OF_TEMPLATE
 import org.apache.texera.dao.jooq.generated.tables.pojos._
 import org.apache.texera.web.resource.dashboard.user.templated_workflow.TemplatedWorkflowResource._
+import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowVersionResource
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.databind.node.{ArrayNode, ObjectNode}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
+
+import scala.jdk.CollectionConverters._
+
+/**
+  * Request body for POST /templated-workflow/{wid}/update: maps an operatorID to the subset of its
+  * properties the user wants to change. Values are kept as raw JsonNode so any property type
+  * (including file references) round-trips without lossy conversion.
+  */
+class TemplatedWorkflowConfigurablePropertiesUpdateRequest {
+  var operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty
+}
 
 object TemplatedWorkflowResource {
   final private lazy val context = SqlServer
@@ -60,6 +84,54 @@ object TemplatedWorkflowResource {
         .fetchOneInto(classOf[Integer])
     )
   }
+
+  /**
+    * The set of property names an operator allows to be configured, read from the operator's
+    * `configurableProperties` array in the workflow content. The /update endpoint refuses to write
+    * any property outside this whitelist.
+    */
+  private def getAllowedConfigurableProperties(operatorObject: ObjectNode): Set[String] = {
+    val configurablePropertiesNode = operatorObject.get("configurableProperties")
+
+    if (configurablePropertiesNode == null || configurablePropertiesNode.isNull) {
+      return Set.empty
+    }
+
+    if (!configurablePropertiesNode.isArray) {
+      throw new BadRequestException("Operator configurableProperties must be an array.")
+    }
+
+    configurablePropertiesNode
+      .asInstanceOf[ArrayNode]
+      .elements()
+      .asScala
+      .map { propertyNode =>
+        if (!propertyNode.isTextual) {
+          throw new BadRequestException("Each configurableProperties entry must be a string.")
+        }
+        propertyNode.asText()
+      }
+      .toSet
+  }
+
+  private def getOrCreateOperatorPropertiesObject(
+      operatorObject: ObjectNode,
+      objectMapper: ObjectMapper
+  ): ObjectNode = {
+    val operatorPropertiesNode = operatorObject.get("operatorProperties")
+
+    if (operatorPropertiesNode == null || operatorPropertiesNode.isNull) {
+      val newOperatorProperties = objectMapper.createObjectNode()
+      operatorObject.set[JsonNode]("operatorProperties", newOperatorProperties)
+      return newOperatorProperties
+    }
+
+    if (!operatorPropertiesNode.isObject) {
+      throw new BadRequestException("operatorProperties must be an object.")
+    }
+
+    operatorPropertiesNode.asInstanceOf[ObjectNode]
+  }
 }
 
 @Produces(Array(MediaType.APPLICATION_JSON))
@@ -72,6 +144,11 @@ class TemplatedWorkflowResource extends LazyLogging {
   private val templateService = new TemplateService(context)
   private val workflowPersistService = new WorkflowPersistService(context)
 
+  /**
+    * Returns the workflow instantiated from template `tid`, creating it (once) from the template's
+    * content on first call. Does NOT re-apply template content on subsequent calls, so a user's
+    * configured property values are never clobbered -- property changes go through /{wid}/update.
+    */
   @POST
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/build")
@@ -84,8 +161,9 @@ class TemplatedWorkflowResource extends LazyLogging {
     wid match {
       case Some(wid) =>
         val workflow = workflowDao.fetchOneByWid(wid)
-        workflow.setContent(template.content)
-        workflowPersistService.persistWorkflow(workflow, user)
+        if (workflow == null) {
+          throw new NotFoundException(s"Templated workflow $wid does not exist.")
+        }
         wid
 
       case None =>
@@ -108,5 +186,115 @@ class TemplatedWorkflowResource extends LazyLogging {
         buildTemplatedWorkflowRelation(tid, newWid, "")
         newWid
     }
+  }
+
+  /**
+    * Applies the submitted configurable-property values to the instantiated workflow's content,
+    * server-side. Only properties listed in each operator's `configurableProperties` whitelist may
+    * be written; values are stored as-is (JsonNode) so file references and other typed values
+    * survive. A new workflow version is recorded.
+    */
+  @POST
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/update")
+  def updateTemplatedWorkflowConfigurableProperties(
+      @PathParam("wid") wid: Integer,
+      request: TemplatedWorkflowConfigurablePropertiesUpdateRequest,
+      @Auth sessionUser: SessionUser
+  ): Workflow = {
+    val user = sessionUser.getUser
+    if (user == org.apache.texera.web.auth.GuestAuthFilter.GUEST) {
+      throw new ForbiddenException("Guest user does not have access to db.")
+    }
+
+    if (wid == null) {
+      throw new BadRequestException("Workflow id cannot be null.")
+    }
+
+    if (
+      request == null || request.operatorProperties == null || request.operatorProperties.isEmpty
+    ) {
+      throw new BadRequestException("No configurable properties were provided.")
+    }
+
+    val workflow = workflowDao.fetchOneByWid(wid)
+    if (workflow == null) {
+      throw new NotFoundException(s"Workflow $wid does not exist.")
+    }
+
+    val objectMapper = new ObjectMapper()
+    objectMapper.registerModule(DefaultScalaModule)
+
+    val content = objectMapper.readTree(workflow.getContent)
+    if (content == null || !content.isObject) {
+      throw new BadRequestException("Workflow content is invalid.")
+    }
+
+    val contentObject = content.asInstanceOf[ObjectNode]
+    val operatorsNode = contentObject.get("operators")
+
+    if (operatorsNode == null || !operatorsNode.isArray) {
+      throw new BadRequestException("Workflow content does not contain operators.")
+    }
+
+    val operatorsById: Map[String, ObjectNode] = operatorsNode
+      .asInstanceOf[ArrayNode]
+      .elements()
+      .asScala
+      .map { operatorNode =>
+        if (!operatorNode.isObject) {
+          throw new BadRequestException("Workflow contains an invalid operator.")
+        }
+
+        val operatorObject = operatorNode.asInstanceOf[ObjectNode]
+        val operatorIdNode = operatorObject.get("operatorID")
+
+        if (operatorIdNode == null || !operatorIdNode.isTextual) {
+          throw new BadRequestException("Workflow contains an operator without operatorID.")
+        }
+
+        operatorIdNode.asText() -> operatorObject
+      }
+      .toMap
+
+    request.operatorProperties.foreach {
+      case (operatorId, submittedProperties) =>
+        val operatorObject = operatorsById.getOrElse(
+          operatorId,
+          throw new BadRequestException(s"Operator $operatorId does not exist in workflow $wid.")
+        )
+
+        val allowedProperties = getAllowedConfigurableProperties(operatorObject)
+
+        if (allowedProperties.isEmpty) {
+          throw new BadRequestException(s"Operator $operatorId has no configurable properties.")
+        }
+
+        if (submittedProperties == null) {
+          throw new BadRequestException(
+            s"Submitted properties for operator $operatorId cannot be null."
+          )
+        }
+
+        val operatorPropertiesObject =
+          getOrCreateOperatorPropertiesObject(operatorObject, objectMapper)
+
+        submittedProperties.foreach {
+          case (propertyName, propertyValue) =>
+            if (!allowedProperties.contains(propertyName)) {
+              throw new BadRequestException(
+                s"Property $propertyName is not configurable for operator $operatorId."
+              )
+            }
+            operatorPropertiesObject.set[JsonNode](propertyName, propertyValue)
+        }
+    }
+
+    workflow.setContent(objectMapper.writeValueAsString(contentObject))
+
+    WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
+    workflowDao.update(workflow)
+
+    workflowDao.fetchOneByWid(wid)
   }
 }

@@ -256,6 +256,17 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @HostListener("window:beforeunload")
   ngOnDestroy() {
+    // An embedded workspace is a transient, read-only preview that shares the app's
+    // singleton services (computing unit, execution state, workflow graph). Running the
+    // full teardown here would persist the preview's in-memory content (clobbering a
+    // change just saved by another path), and tear down the shared computing-unit
+    // connection / execution state of the surrounding page. So embedded instances only
+    // release their own code-editor view and leave shared state intact.
+    if (this.isEmbedded) {
+      this.codeEditorViewRef.clear();
+      return;
+    }
+
     if (this.userService.isLogin() && this.persistEnabled()) {
       this.persistEntity().pipe(untilDestroyed(this)).subscribe();
     }
@@ -493,6 +504,11 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private persistEnabled(): boolean {
+    // A read-only embedded preview must never persist: its in-memory content can lag the
+    // authoritative copy and would otherwise clobber it on auto-save or teardown.
+    if (this.isEmbedded) {
+      return false;
+    }
     if (this.isWorkflowMode()) {
       return this.workflowPersistService.isWorkflowPersistEnabled();
     } else if (this.isTemplateMode()) {

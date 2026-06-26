@@ -47,3 +47,111 @@ texera-workspace {
   position: relative;
 }
 
+/* ---- Template configuration page ---- */
+.tw-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 24px 40px;
+}
+
+.tw-header {
+  margin-bottom: 16px;
+}
+
+.tw-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.tw-subtitle {
+  margin: 4px 0 0;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.tw-empty {
+  padding: 24px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  background: #fafafa;
+  border: 1px dashed #e0e0e0;
+  border-radius: 8px;
+}
+
+.tw-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tw-card {
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 16px 18px;
+}
+
+.tw-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* tidy up the raw formly inputs inside each card */
+.tw-form {
+  ::ng-deep formly-field {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  ::ng-deep input.ant-input,
+  ::ng-deep .ant-select,
+  ::ng-deep nz-select {
+    width: 100%;
+  }
+
+  /* highlight required-but-empty fields once the user has interacted / tried to submit */
+  ::ng-deep .ng-invalid.ng-touched input.ant-input,
+  ::ng-deep .ng-invalid.ng-touched .ant-select-selector,
+  ::ng-deep input.ant-input.ng-invalid.ng-touched,
+  ::ng-deep .ant-select.ng-invalid.ng-touched .ant-select-selector {
+    border-color: #ff4d4f !important;
+    box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.12);
+  }
+}
+
+.tw-actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  position: sticky;
+  bottom: 0;
+  margin-top: 20px;
+  padding: 14px 4px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), #fff 30%);
+  z-index: 2;
+}
+
+.tw-action-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  margin-right: auto;
+}
+
+.tw-submit {
+  min-width: 140px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.readonly-embedded-workspace-container {
+  margin-top: 20px;
+}
+

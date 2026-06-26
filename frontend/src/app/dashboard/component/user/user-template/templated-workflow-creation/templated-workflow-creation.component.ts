@@ -20,18 +20,18 @@
 import {FormlyFieldConfig, FormlyModule} from "@ngx-formly/core";
 import {FormlyJsonschema} from "@ngx-formly/core/json-schema";
 import {FormGroup, ReactiveFormsModule} from "@angular/forms";
-import {AfterViewInit, Component} from "@angular/core";
+import {AfterViewInit, ChangeDetectorRef, Component} from "@angular/core";
 import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
 import {WorkflowActionService} from "../../../../../workspace/service/workflow-graph/model/workflow-action.service";
-import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
-import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
+import {WorkflowContent} from "../../../../../common/type/workflow";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
+import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
-import {cloneDeep} from "lodash";
+import {TemplatedWorkflowService} from "../../../../service/user/templated-workflow/templated-workflow.service";
+import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
@@ -90,10 +90,16 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   // Recreated whenever sections are rebuilt because each rebuild creates new FormGroup instances.
   private formChangesSub: Subscription | undefined;
 
-  // The first submit creates the workflow. Then the embedded workspace loads the newly created
-  // workflow and emits workspaceReady. This flag makes sure workspaceReady applies staged values
-  // only as part of that explicit submit/create flow.
-  private pendingApplyAfterCreate = false;
+  // Controls the embedded read-only preview. Kept hidden until a submit succeeds, and briefly
+  // toggled off/on after each successful update so the preview re-fetches the updated workflow.
+  public showEmbeddedWorkspace = false;
+
+  // The configurable-property values last successfully applied to the workflow, keyed by
+  // operatorID. Compared against the current form values on submit to report "No changes".
+  private appliedValues: Record<string, Record<string, unknown>> = {};
+
+  // True while a build/update request is in flight, to disable the button and avoid double submits.
+  public isSubmitting = false;
 
   constructor(
     private notificationService: NotificationService,
@@ -101,15 +107,16 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     private workflowActionService: WorkflowActionService,
     private templateService: TemplateService,
     private templatedWorkflowDraftService: TemplatedWorkflowDraftService,
+    private templatedWorkflowService: TemplatedWorkflowService,
     private executeWorkflowService: ExecuteWorkflowService,
-    private workflowPersistService: WorkflowPersistService,
     private operatorMetadataService: OperatorMetadataService,
     private dynamicSchemaService: DynamicSchemaService,
     // injected to ensure the singleton WorkflowCompilingService is instantiated
     private workflowCompilingService: WorkflowCompilingService,
     private formlyJsonschema: FormlyJsonschema,
     private route: ActivatedRoute,
-    private http: HttpClient
+    private http: HttpClient,
+    private changeDetectorRef: ChangeDetectorRef
   ) {
     this.userService
       .userChanged()
@@ -143,126 +150,110 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     ].includes(this.executionState);
   }
 
-  public get submitDisabled(): boolean {
-    return !this.formValid || this.isWorkflowExecutionActive;
+  // "Submit" before the workflow exists (the first submit creates it), "Update" afterwards.
+  public get submitButtonText(): string {
+    return this.wid === undefined ? "Submit" : "Update";
   }
 
+  // The button stays enabled (except while a request is in flight). Validation happens on click so
+  // the user always gets clear feedback -- about missing required fields, or that nothing changed --
+  // instead of a button that is mysteriously greyed out.
   public onJobFormSubmitted(): void {
+    if (this.isSubmitting) {
+      return;
+    }
+
     if (this.isWorkflowExecutionActive) {
       this.notificationService.warning(
-        "Cannot submit template properties while the workflow is running. Stop or wait for the workflow to finish before submitting changes."
+        "Cannot submit while the workflow is running. Stop or wait for it to finish, then try again."
       );
       return;
     }
 
+    if (!this.tid) {
+      this.notificationService.error("Missing template ID.");
+      return;
+    }
+
+    // Required-but-empty fields: surface them (they turn red) and tell the user what to do.
     if (!this.formValid) {
-      this.notificationService.error("Invalid form.");
+      this.sections.forEach(section => section.form.markAllAsTouched());
+      this.notificationService.error("Please fill in all required fields before submitting.");
       return;
     }
 
-    if (!this.wid) {
-      this.pendingApplyAfterCreate = true;
+    const payload = this.getConfigurablePropertyUpdatePayload();
 
-      this.createTemplatedWorkflow()
-        .pipe(untilDestroyed(this))
-        .subscribe({
-          next: wid => {
-            this.wid = wid;
-          },
-          error: (err: unknown) => {
-            this.pendingApplyAfterCreate = false;
-            console.warn("Failed to create templated workflow", err);
-            this.notificationService.error("Failed to create workflow from template.");
-          },
-        });
-    } else {
-      this.applyJobFormToOperators()
-        .pipe(untilDestroyed(this))
-        .subscribe({
-          error: (err: unknown) => {
-            console.warn("Failed to update templated workflow", err);
-            this.notificationService.error("Failed to update workflow.");
-          },
-        });
-    }
-  }
-
-  public onWorkspaceReady(loadedWid?: number): void {
-    if (!this.pendingApplyAfterCreate) {
+    // Nothing changed since the last successful submit: say so instead of a silent no-op.
+    if (this.wid !== undefined && isEqual(payload.operatorProperties, this.appliedValues)) {
+      this.notificationService.info("No changes to apply.");
       return;
     }
 
-    if (Number(loadedWid) !== Number(this.wid)) {
-      return;
-    }
+    const isFirstSubmit = this.wid === undefined;
+    this.isSubmitting = true;
 
-    this.applyJobFormToOperators()
+    // Get-or-create the workflow instantiated from this template (idempotent: the backend returns
+    // the existing wid without clobbering already-configured values), then apply the configurable
+    // property values server-side via /{wid}/update. Doing the apply on the backend (with the raw
+    // submitted values) is what makes typed values such as file references update correctly, and it
+    // supports unlimited re-submits.
+    this.templatedWorkflowService
+      .createTemplatedWorkflow(this.tid)
       .pipe(
+        switchMap(wid => {
+          this.wid = wid;
+          return this.templatedWorkflowService.updateTemplatedWorkflowProperties(wid, payload);
+        }),
         finalize(() => {
-          this.pendingApplyAfterCreate = false;
+          this.isSubmitting = false;
         }),
         untilDestroyed(this)
       )
       .subscribe({
+        next: () => {
+          this.appliedValues = cloneDeep(payload.operatorProperties);
+          this.notificationService.success(
+            isFirstSubmit ? "Workflow created and properties applied." : "Workflow updated."
+          );
+          this.reloadEmbeddedPreview();
+        },
         error: (err: unknown) => {
-          console.warn("Failed to apply templated workflow properties", err);
-          this.notificationService.error("Failed to apply workflow properties.");
+          console.warn("Failed to build/update templated workflow", err);
+          this.notificationService.error("Failed to update workflow from template.");
         },
       });
   }
 
-  private createTemplatedWorkflow(): Observable<number> {
-    return this.http.post<number>(`${AppSettings.getApiEndpoint()}/templated-workflow/build?tid=${this.tid}`, {});
-  }
-
-  private applyJobFormToOperators(): Observable<Workflow> {
-    this.mergeFormValuesIntoOperatorProperties();
-
-    if (this.workflowChanged()) {
-      this.writeOperatorPropertiesToGraph();
-
-      const workflow = this.workflowActionService.getWorkflow();
-      return this.workflowPersistService.persistWorkflow(workflow).pipe(
-        tap(() => {
-          this.notificationService.success("Workflow updated.");
-        })
-      );
-    }
-
-    if (!this.pendingApplyAfterCreate) {
-      this.notificationService.info("No changes made to the workflow.");
-    }
-    return of(this.workflowActionService.getWorkflow());
-  }
-
-  private mergeFormValuesIntoOperatorProperties(): void {
+  /**
+   * Collect the configurable-property values from each section's form, keyed by operatorID, as the
+   * request body for /{wid}/update. The backend rejects any property not in the operator's
+   * configurableProperties whitelist, so it is safe to send the section model as-is.
+   */
+  private getConfigurablePropertyUpdatePayload(): {
+    operatorProperties: Record<string, Record<string, unknown>>;
+  } {
+    const operatorProperties: Record<string, Record<string, unknown>> = {};
     for (const section of this.sections) {
-      this.mergeSectionFormValuesIntoOperatorProperties(section);
+      operatorProperties[section.operatorID] = { ...section.model };
     }
+    return { operatorProperties };
   }
 
-  private mergeSectionFormValuesIntoOperatorProperties(section: ConfigurableSection): void {
-    this.templatedWorkflowDraftService.mergeSectionModel(section.operatorID, section.model);
-  }
-
-  private writeOperatorPropertiesToGraph(): void {
-    for (const section of this.sections) {
-      this.workflowActionService.setOperatorProperty(
-        section.operatorID,
-        this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
-      );
-    }
-  }
-
-  private workflowChanged(): boolean {
-    return this.sections.some(section => {
-      const liveOperator = this.workflowActionService.getTexeraGraph().getOperator(section.operatorID);
-
-      return this.templatedWorkflowDraftService.operatorPropertiesChanged(
-        section.operatorID,
-        liveOperator.operatorProperties
-      );
-    });
+  /**
+   * Force the embedded read-only workspace to re-fetch the workflow so the just-applied property
+   * values (and any resulting downstream schema changes) show up in the preview.
+   *
+   * Destroy and recreate the component deterministically via detectChanges() rather than a
+   * setTimeout toggle: toggling a boolean in an async callback could be collapsed into a single
+   * change-detection pass, leaving the old (stale) preview in place. The synchronous tear-down is
+   * safe because an embedded workspace skips its destructive teardown (see WorkspaceComponent).
+   */
+  private reloadEmbeddedPreview(): void {
+    this.showEmbeddedWorkspace = false;
+    this.changeDetectorRef.detectChanges();
+    this.showEmbeddedWorkspace = true;
+    this.changeDetectorRef.detectChanges();
   }
 
   /**
@@ -334,33 +325,26 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .pipe(untilDestroyed(this))
       .subscribe(({ template }) => {
         this.template = template.content;
-        this.pendingApplyAfterCreate = false;
+        this.showEmbeddedWorkspace = false;
         this.templatedWorkflowDraftService.initialize(template.content);
 
-        // Load the template into WorkflowActionService for initial preview/schema setup.
-        // User form edits after this point should use compileDraftWorkflowForDynamicSchemas()
-        // and should not call setOperatorProperty() until SUBMIT.
-        this.workflowActionService.destroySharedModel();
-        this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
-        this.workflowActionService.reloadWorkflow({
-          wid: undefined,
-          name: "template-preview",
-          description: undefined,
-          creationTime: undefined,
-          lastModifiedTime: undefined,
-          isPublished: 0,
-          readonly: true,
-          content: template.content,
-        });
-
+        // NOTE: we deliberately do NOT load the template into the shared WorkflowActionService.
+        // That singleton is the same one the embedded read-only preview uses; loading the raw
+        // template into it made the preview render the template (with its placeholder/invalid
+        // values) instead of the user's actual saved workflow. The embedded preview is now the
+        // sole driver of the shared graph (it loads the real workflow by wid), and attribute
+        // dropdowns are enriched purely through the draft compile path below.
         this.rebuildSectionsFromDynamicSchemas();
 
-        // Do not suppress this stream. Texera's existing schema propagation may still
-        // populate/enrich DynamicSchemaService, especially during initial template loading.
-        this.dynamicSchemaService
-          .getOperatorDynamicSchemaChangedStream()
-          .pipe(debounceTime(50), untilDestroyed(this))
-          .subscribe(() => this.rebuildSectionsFromDynamicSchemas());
+        // Initial enrichment so attribute selectors show their dropdown options before any edit,
+        // without touching the shared graph.
+        this.compileDraftWorkflowForDynamicSchemas()
+          .pipe(untilDestroyed(this))
+          .subscribe(response => {
+            if (response.operatorOutputSchemas) {
+              this.applyDraftSchemaPropagationResult(response.operatorOutputSchemas);
+            }
+          });
       });
   }
 

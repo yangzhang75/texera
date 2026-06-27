@@ -16,54 +16,46 @@
  specific language governing permissions and limitations
  under the License.
 -->
-<div class="tw-page">
-  <header class="tw-header">
-    <h2 class="tw-title">Configure Template</h2>
-    <p class="tw-subtitle">Fill in the parameters below, then apply them to your workflow.</p>
-  </header>
+<h2 class="job-title">Build Workflow from Template:</h2>
 
-  <div *ngIf="sections.length === 0" class="tw-empty">
-    This template has no configurable parameters.
-  </div>
+<div *ngIf="sections.length === 0" class="empty-state">
+  No configurable parameters in this template.
+</div>
 
-  <div class="tw-sections">
-    <section *ngFor="let section of sections" class="tw-card">
-      <div class="tw-card-title">{{ section.label }}</div>
-      <form [formGroup]="section.form" class="tw-form">
-        <formly-form
-          [model]="section.model"
-          [fields]="section.fields"
-          [form]="section.form">
-        </formly-form>
-      </form>
-    </section>
-  </div>
+<div *ngFor="let section of sections" class="template-section">
+  <h3 class="template-section-title">{{ section.label }}</h3>
+  <form [formGroup]="section.form">
+    <formly-form
+      [model]="section.model"
+      [fields]="section.fields"
+      [form]="section.form">
+    </formly-form>
+  </form>
+</div>
 
-  <div class="tw-actionbar" *ngIf="sections.length > 0">
-    <span class="tw-action-hint">
-      <ng-container *ngIf="wid !== undefined">Applied changes are reflected in the preview below.</ng-container>
-      <ng-container *ngIf="wid === undefined">Submitting creates your workflow from this template.</ng-container>
-    </span>
-    <button
-      nz-button
-      nzType="primary"
-      nzSize="large"
-      class="tw-submit"
-      [nzLoading]="isSubmitting"
-      [disabled]="isSubmitting"
-      (click)="onJobFormSubmitted()">
-      {{ submitButtonText }}
-    </button>
-  </div>
+<span
+  nz-tooltip
+  [nzTooltipTitle]="isWorkflowExecutionActive ? 'Cannot submit properties while the workflow is running.' : null">
+  <button
+    nz-button
+    nzType="primary"
+    [disabled]="submitDisabled"
+    (click)="onJobFormSubmitted()">
+    SUBMIT
+  </button>
+</span>
 
-  <div class="readonly-embedded-workspace-container" *ngIf="wid && showEmbeddedWorkspace">
-    <div class="inner-scale">
-      <texera-workspace
-        [wid]="wid"
-        [isEmbedded]="true"
-        [mode]="'workflow'">
-      </texera-workspace>
-    </div>
+<div
+  class="readonly-embedded-workspace-container"
+  *ngIf="wid && showEmbeddedWorkspace"
+>
+  <div class="inner-scale">
+    <texera-workspace
+      [wid]="wid"
+      [isEmbedded]="true"
+      [mode]="'workflow'"
+    >
+    </texera-workspace>
   </div>
 </div>
 

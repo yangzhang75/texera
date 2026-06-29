@@ -369,6 +369,17 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
       );
     }
 
+    // An embedded instance is a read-only preview: the user configures via the template form
+    // above, not by hand-editing the preview. Mark the workflow readonly so the lock is sticky --
+    // a plain disableWorkflowModification() gets re-enabled by ExecuteWorkflowService after a run
+    // (it only re-enables when the workflow is NOT readonly), which would make the preview editable
+    // again. readonly does NOT block execution (runWorkflow checks validity + computing unit only),
+    // and the template form's submit writes via setOperatorProperty / the /update endpoint, neither
+    // of which is gated by the modification lock -- so configuring and running both still work.
+    if (this.isEmbedded) {
+      workflow = { ...workflow, readonly: true };
+    }
+
     if (this.isWorkflowMode()) {
       this.workflowActionService.setNewSharedModel(this.wid, this.userService.getCurrentUser());
     } else if (this.isTemplateMode()) {

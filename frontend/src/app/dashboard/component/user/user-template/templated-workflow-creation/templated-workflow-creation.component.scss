@@ -17,16 +17,102 @@
  * under the License.
  */
 
-// The configurable-property form should read like a normal form instead of stretching
-// edge-to-edge (the inputs become uncomfortably wide on large screens). Cap the form area's
-// width for readability. NOTE: this is scoped to the form elements only -- the embedded
-// preview below keeps its own (wide) width and is intentionally NOT constrained here.
-.job-title,
-.empty-state,
-.template-section {
-  max-width: 900px;
+// ---- Configurable-property form (the part above the embedded preview) ----
+// Capped width so the inputs don't stretch edge-to-edge; the preview below keeps its own width.
+.tw-form {
+  max-width: 920px;
+  padding: 4px 4px 8px;
 }
 
+.tw-header {
+  margin-bottom: 20px;
+}
+
+.job-title {
+  margin: 0 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.tw-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  background: #fafafa;
+  border: 1px dashed #e0e0e0;
+  border-radius: 8px;
+}
+
+// Each operator's configurable properties live in a card for clear visual grouping.
+.template-section {
+  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.template-section-title {
+  margin: 0;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.template-section-body {
+  display: block;
+  padding: 16px 20px 4px;
+}
+
+// ---- Action bar ----
+.tw-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 920px;
+  margin-top: 4px;
+}
+
+.tw-running-hint {
+  font-size: 13px;
+  color: #fa8c16;
+}
+
+.tw-submit {
+  min-width: 120px;
+  letter-spacing: 0.3px;
+}
+
+// Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
+// can see exactly what's missing. ::ng-deep is needed to reach the Formly-rendered controls.
+:host ::ng-deep .template-section {
+  input.ng-invalid.ng-touched,
+  textarea.ng-invalid.ng-touched,
+  .ant-input-number.ng-invalid.ng-touched {
+    border-color: #ff4d4f;
+    &:focus,
+    &:hover {
+      border-color: #ff7875;
+    }
+  }
+
+  nz-select.ng-invalid.ng-touched .ant-select-selector {
+    border-color: #ff4d4f !important;
+  }
+}
+
+// ---- Embedded read-only preview (intentionally NOT width-capped; stays wide) ----
 .readonly-embedded-workspace-container {
   width: 80vw;
   height: calc(80vw * 0.4);

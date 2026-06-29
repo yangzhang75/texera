@@ -164,7 +164,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     }
 
     if (!this.formValid) {
-      this.notificationService.error("Invalid form.");
+      // Don't grey out the button -- surface what's missing instead: mark every control touched
+      // so required-but-empty fields turn red, and tell the user to fill them in.
+      this.sections.forEach(section => section.form.markAllAsTouched());
+      this.notificationService.warning("Please fill in the required fields highlighted in red before submitting.");
       return;
     }
 

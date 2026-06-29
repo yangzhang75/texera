@@ -407,6 +407,16 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       .subscribe(operatorChanged => {
         this.formData = cloneDeep(operatorChanged.operator.operatorProperties);
         this.changeDetectorRef.detectChanges();
+        // The new model can grow the form (e.g. an attribute row added through another editing
+        // path, such as a templated-workflow form submit updating this operator). Angular adds
+        // controls to an already-disabled FormArray in the ENABLED state, so the new rows would
+        // become editable in an otherwise read-only editor. Re-assert the current interactivity
+        // after the form has rendered the new controls (deferred, like the initial binding, due
+        // to Formly only (dis)abling controls post-render).
+        setTimeout(() => {
+          this.setInteractivity(this.interactive);
+          this.changeDetectorRef.detectChanges();
+        }, 0);
       });
   }
 

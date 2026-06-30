@@ -94,18 +94,18 @@
 }
 
 .tw-submit {
-  min-width: 140px;
-  height: 40px;
+  min-width: 100px;
+  height: 36px;
+  padding: 0 22px;
   font-weight: 500;
-  letter-spacing: 0.3px;
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.28);
+  box-shadow: 0 2px 5px rgba(24, 144, 255, 0.24);
   transition:
     box-shadow 0.15s ease,
     transform 0.05s ease;
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.32);
+    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.3);
   }
 
   &:active {
@@ -116,6 +116,41 @@
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
 // can see exactly what's missing. ::ng-deep is needed to reach the Formly-rendered controls.
 :host ::ng-deep .template-section {
+  // --- Unify the field layout so the whole form reads as one grid ---
+  // Standalone operator fields ship as horizontal rows (label on the left); the array fields
+  // (Attribute/Alias/…) render with the label on top. Force every field to label-on-top so the
+  // form is consistent instead of a mix of two layouts.
+  .ant-form-item.ant-row {
+    flex-flow: column nowrap;
+    align-items: stretch;
+
+    > .ant-form-item-label {
+      width: 100%;
+      flex: 0 0 auto;
+      text-align: left;
+      padding: 0 0 4px;
+      line-height: 1.4;
+      white-space: normal;
+    }
+
+    > .ant-form-item-control {
+      flex: 1 1 auto;
+      max-width: 100%;
+    }
+  }
+
+  // Every input/select/number sits in the same comfortable column width, so fields stop looking
+  // randomly big or tiny (the file path was full-width, the Limit number was ~90px).
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select,
+  textarea.ant-input,
+  nz-input-number,
+  .ant-input-number {
+    width: 100%;
+    max-width: 520px;
+  }
+
   input.ng-invalid.ng-touched,
   textarea.ng-invalid.ng-touched,
   .ant-input-number.ng-invalid.ng-touched {

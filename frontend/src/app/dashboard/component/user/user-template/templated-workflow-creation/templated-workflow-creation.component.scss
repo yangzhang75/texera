@@ -228,6 +228,13 @@ texera-workspace {
   position: relative;
 }
 
+// The read-only preview is just a picture of the workflow graph, so hide the workspace's
+// left panel (operators / versions / settings) -- it would otherwise open over the canvas
+// (e.g. the "Versions" tab) and cover the graph the user is trying to see.
+:host ::ng-deep .readonly-embedded-workspace-container texera-left-panel {
+  display: none !important;
+}
+
 .hidden-before-submit {
   visibility: hidden;
   height: 0;

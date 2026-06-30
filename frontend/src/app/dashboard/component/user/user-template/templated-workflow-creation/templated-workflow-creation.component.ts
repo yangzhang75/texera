@@ -31,7 +31,7 @@ import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
-import {cloneDeep} from "lodash";
+import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
@@ -147,7 +147,33 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   }
 
   public get submitDisabled(): boolean {
-    return !this.workflowReady || !this.formValid || this.isWorkflowExecutionActive;
+    if (!this.workflowReady || this.isWorkflowExecutionActive) {
+      return true;
+    }
+    // Grey out ONLY when there is nothing to apply (the form matches the live graph). We do NOT
+    // grey out on an invalid form: an invalid form necessarily differs from the (valid) loaded
+    // state, so it stays enabled and the click surfaces the red required-field prompt instead.
+    return !this.hasPendingChanges();
+  }
+
+  /**
+   * True when the current form values differ from what is already applied to the live graph, i.e.
+   * there is something for SUBMIT to apply. Pure (no side effects) so it is safe to call from the
+   * `submitDisabled` getter on every change-detection pass. Reads each section's live `model`
+   * (which Formly mutates on every edit, including add/remove on array fields) so any edit
+   * re-enables the button immediately.
+   */
+  private hasPendingChanges(): boolean {
+    const graph = this.workflowActionService.getTexeraGraph();
+    return this.sections.some(section => {
+      if (!graph.hasOperator(section.operatorID)) {
+        return false;
+      }
+      const live = graph.getOperator(section.operatorID).operatorProperties;
+      const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
+      const merged = { ...draft, ...section.model };
+      return !isEqual(merged, live);
+    });
   }
 
   public onJobFormSubmitted(): void {
@@ -198,7 +224,8 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     this.mergeFormValuesIntoOperatorProperties();
 
     if (!forceUpdate && !this.workflowChanged()) {
-      this.notificationService.info("No changes made to the workflow.");
+      // No-op: the SUBMIT button is already disabled when there is nothing to apply, so this is
+      // just a defensive guard -- no notification needed.
       return of(this.workflowActionService.getWorkflow());
     }
 

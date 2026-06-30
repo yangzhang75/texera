@@ -94,9 +94,23 @@
 }
 
 .tw-submit {
-  min-width: 132px;
+  min-width: 140px;
+  height: 40px;
+  font-weight: 500;
   letter-spacing: 0.3px;
   border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.28);
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.32);
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
 }
 
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
@@ -136,7 +150,9 @@
   }
 }
 
-// ---- Embedded read-only preview (intentionally NOT width-capped; stays wide) ----
+// ---- Embedded read-only preview ----
+// Same width as the form above (80vw) AND the same light card frame, so the page reads as one
+// coherent design rather than a heavy grey box bolted under a set of light cards.
 .readonly-embedded-workspace-container {
   width: 80vw;
   height: calc(80vw * 0.4);
@@ -146,8 +162,9 @@
   max-height: 85vh;
   resize: both;
   overflow: hidden;
-  border: 1px solid #aaa;
-  border-radius: 6px;
+  border: 1px solid #eef0f2;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   background: white;
   position: relative;
 }

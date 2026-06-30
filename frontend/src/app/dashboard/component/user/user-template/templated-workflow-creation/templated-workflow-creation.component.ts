@@ -146,22 +146,26 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     ].includes(this.executionState);
   }
 
+  // Hard-disabled ONLY while the workflow can't accept a submit (still loading, or running). We do
+  // NOT hard-disable on "no changes": a disabled button can't be clicked, and an unclicked button
+  // can't blur/commit a half-typed nz-input-number value -> the user gets stuck (types a number,
+  // button looks stale, clicking does nothing). See submitIdle for the "nothing to apply" state.
   public get submitDisabled(): boolean {
-    if (!this.workflowReady || this.isWorkflowExecutionActive) {
-      return true;
-    }
-    // Grey out ONLY when there is nothing to apply (the form matches the live graph). We do NOT
-    // grey out on an invalid form: an invalid form necessarily differs from the (valid) loaded
-    // state, so it stays enabled and the click surfaces the red required-field prompt instead.
-    return !this.hasPendingChanges();
+    return !this.workflowReady || this.isWorkflowExecutionActive;
+  }
+
+  // Cosmetic "nothing to apply yet" state: the button is greyed but STILL CLICKABLE. Clicking it
+  // blurs/commits any in-progress field (e.g. a number being typed) and then applies if that
+  // turns out to be a real change; if there's genuinely nothing to apply it is a silent no-op.
+  public get submitIdle(): boolean {
+    return !this.submitDisabled && !this.hasPendingChanges();
   }
 
   /**
    * True when the current form values differ from what is already applied to the live graph, i.e.
-   * there is something for SUBMIT to apply. Pure (no side effects) so it is safe to call from the
-   * `submitDisabled` getter on every change-detection pass. Reads each section's live `model`
-   * (which Formly mutates on every edit, including add/remove on array fields) so any edit
-   * re-enables the button immediately.
+   * there is something for SUBMIT to apply. Pure (no side effects) so it is safe to call from a
+   * getter on every change-detection pass. Reads each section's live `model` (which Formly mutates
+   * on every edit, including add/remove on array fields) so any committed edit reflects immediately.
    */
   private hasPendingChanges(): boolean {
     const graph = this.workflowActionService.getTexeraGraph();

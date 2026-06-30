@@ -42,9 +42,10 @@
       nz-button
       nzType="primary"
       class="tw-submit"
+      [class.tw-submit-idle]="submitIdle"
       [disabled]="submitDisabled"
       nz-tooltip
-      [nzTooltipTitle]="submitDisabled && !isWorkflowExecutionActive ? 'No changes to apply' : ''"
+      [nzTooltipTitle]="submitIdle ? 'No changes to apply yet' : ''"
       (click)="onJobFormSubmitted()">
       Submit
     </button>

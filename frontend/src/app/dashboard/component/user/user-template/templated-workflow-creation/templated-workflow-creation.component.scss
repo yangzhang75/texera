@@ -104,6 +104,23 @@
   border-radius: 2px;
 }
 
+// "Nothing to apply yet" — looks greyed/inactive but stays clickable (so a click can still
+// blur+commit a half-typed field and apply a real change). :host ::ng-deep to beat the
+// ng-zorro primary-button styles.
+:host ::ng-deep .tw-submit.tw-submit-idle:not([disabled]) {
+  background: #f5f5f5 !important;
+  border-color: #d9d9d9 !important;
+  color: rgba(0, 0, 0, 0.3) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+
+  &:hover {
+    background: #eee !important;
+    border-color: #d9d9d9 !important;
+    color: rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
 // can see exactly what's missing. ::ng-deep is needed to reach the Formly-rendered controls.
 :host ::ng-deep .template-section {

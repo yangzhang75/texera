@@ -18,20 +18,24 @@
  */
 
 // ---- Configurable-property form (the part above the embedded preview) ----
-// Capped width so the inputs don't stretch edge-to-edge; the preview below keeps its own width.
+// Width tracks the embedded preview below (same 80vw) so their left/right edges line up;
+// otherwise the narrower form leaves a dead band of empty space above the wider preview.
 .tw-form {
-  max-width: 920px;
-  padding: 4px 4px 8px;
+  width: 80vw;
+  min-width: 400px;
+  max-width: 95vw;
+  padding: 4px 0 12px;
 }
 
 .tw-header {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .job-title {
-  margin: 0 0 2px;
-  font-size: 20px;
+  margin: 0 0 4px;
+  font-size: 22px;
   font-weight: 600;
+  letter-spacing: -0.2px;
   color: rgba(0, 0, 0, 0.88);
 }
 
@@ -42,37 +46,40 @@
 }
 
 .empty-state {
-  padding: 24px;
+  padding: 28px;
   text-align: center;
   color: rgba(0, 0, 0, 0.45);
   background: #fafafa;
-  border: 1px dashed #e0e0e0;
-  border-radius: 8px;
+  border: 1px dashed #e6e8eb;
+  border-radius: 12px;
 }
 
-// Each operator's configurable properties live in a card for clear visual grouping.
+// Each operator's configurable properties live in a light, airy card.
 .template-section {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   background: #fff;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eef0f2;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   overflow: hidden;
 }
 
+// Refined small-caps section header on a clean white ground (no heavy grey bar).
 .template-section-title {
   margin: 0;
-  padding: 12px 20px;
-  font-size: 14px;
+  padding: 16px 28px;
+  font-size: 12px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
-  background: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.5);
+  background: transparent;
+  border-bottom: 1px solid #f2f3f5;
 }
 
 .template-section-body {
   display: block;
-  padding: 16px 20px 4px;
+  padding: 20px 28px 4px;
 }
 
 // ---- Action bar ----
@@ -80,18 +87,16 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  max-width: 920px;
-  margin-top: 4px;
-}
-
-.tw-running-hint {
-  font-size: 13px;
-  color: #fa8c16;
+  width: 80vw;
+  min-width: 400px;
+  max-width: 95vw;
+  margin-top: 8px;
 }
 
 .tw-submit {
-  min-width: 120px;
+  min-width: 132px;
   letter-spacing: 0.3px;
+  border-radius: 8px;
 }
 
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
@@ -109,6 +114,25 @@
 
   nz-select.ng-invalid.ng-touched .ant-select-selector {
     border-color: #ff4d4f !important;
+  }
+
+  // De-emphasise the per-row delete control: it shipped as a loud red-outlined circle, which
+  // fights the light look. Keep it a quiet grey icon that only reddens on hover.
+  button.ant-btn-dangerous.ant-btn-circle.ant-btn-icon-only {
+    border-color: transparent;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.25);
+    box-shadow: none;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover,
+    &:focus {
+      color: #ff4d4f;
+      border-color: transparent;
+      background: rgba(255, 77, 79, 0.08);
+    }
   }
 }
 

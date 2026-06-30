@@ -24,11 +24,12 @@
   width: 80vw;
   min-width: 400px;
   max-width: 95vw;
-  padding: 4px 0 12px;
+  margin: 0 auto;
+  padding: 28px 0 12px;
 }
 
 .tw-header {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .job-title {
@@ -90,27 +91,17 @@
   width: 80vw;
   min-width: 400px;
   max-width: 95vw;
-  margin-top: 8px;
+  margin: 8px auto 0;
 }
 
+// Match the app's flat 2px-radius buttons (Run, Select File, …) rather than a rounded, shadowed
+// pill that looks foreign to the rest of the product.
 .tw-submit {
-  min-width: 100px;
-  height: 36px;
-  padding: 0 22px;
+  min-width: 96px;
+  height: 34px;
+  padding: 0 20px;
   font-weight: 500;
-  border-radius: 8px;
-  box-shadow: 0 2px 5px rgba(24, 144, 255, 0.24);
-  transition:
-    box-shadow 0.15s ease,
-    transform 0.05s ease;
-
-  &:hover {
-    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.3);
-  }
-
-  &:active {
-    transform: translateY(1px);
-  }
+  border-radius: 2px;
 }
 
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
@@ -149,6 +140,23 @@
   .ant-input-number {
     width: 100%;
     max-width: 520px;
+  }
+
+  // File picker (the "inputautocomplete" type) ships as [path input][Select File] side by side,
+  // which leaves the button floating mid-row. Stack it: path on top, Select File underneath.
+  ng-component:has(> input):has(> button) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+
+    > input {
+      width: 100%;
+    }
+
+    > button {
+      flex: 0 0 auto;
+    }
   }
 
   input.ng-invalid.ng-touched,
@@ -195,6 +203,7 @@
   min-height: 250px;
   max-width: 95vw;
   max-height: 85vh;
+  margin: 0 auto;
   resize: both;
   overflow: hidden;
   border: 1px solid #eef0f2;

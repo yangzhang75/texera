@@ -250,7 +250,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     const operatorProperties: Record<string, Record<string, unknown>> = {};
 
     for (const section of this.sections) {
-      operatorProperties[section.operatorID] = { ...section.model };
+      // Use the live form-control values, NOT section.model: after a submit/rebuild the Formly
+      // `model` object can go stale, so submitting off it would apply the previously-applied value
+      // instead of what the user just typed (e.g. Limit looked like it wouldn't update).
+      operatorProperties[section.operatorID] = { ...section.form.getRawValue() };
     }
 
     return { operatorProperties };
@@ -263,7 +266,8 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   }
 
   private mergeSectionFormValuesIntoOperatorProperties(section: ConfigurableSection): void {
-    this.templatedWorkflowDraftService.mergeSectionModel(section.operatorID, section.model);
+    // Live form-control values, not section.model (which can go stale after a submit/rebuild).
+    this.templatedWorkflowDraftService.mergeSectionModel(section.operatorID, section.form.getRawValue());
   }
 
   private writeOperatorPropertiesToGraph(): void {

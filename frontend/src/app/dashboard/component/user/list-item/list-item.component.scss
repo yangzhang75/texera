@@ -199,9 +199,19 @@
   cursor: pointer;
 }
 
-// "Template" badge next to a workflow built from a template. Minimal small-caps label — reads as
-// premium, and (pointer + hover + tooltip) as a clickable shortcut to the template editor. The
-// row click itself still opens the normal workspace.
+// A workflow built from a template is inherently different (it's meant to be run / re-parameterised,
+// not freely edited), so its whole row gets a subtle tint to set it apart.
+.list-item-card.template-workflow-row {
+  background-color: #f6f8ff;
+
+  &:hover {
+    background-color: #eaefff;
+  }
+}
+
+// "Template" badge next to such a workflow. A minimal small-caps label that, on hover, visibly
+// turns into a solid button (fills, lifts, shadow) so it obviously reads as a clickable shortcut
+// to the template editor — not just a label. The row click still opens the normal workspace.
 .template-badge {
   display: inline-flex;
   align-items: center;
@@ -218,14 +228,13 @@
   border-radius: 4px;
   cursor: pointer;
   vertical-align: middle;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
+  transition: all 0.15s ease;
 
   &:hover {
-    color: #3b5bdb;
-    background: rgba(76, 110, 245, 0.16);
-    border-color: rgba(76, 110, 245, 0.45);
+    color: #fff;
+    background: #4c6ef5;
+    border-color: #4c6ef5;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(76, 110, 245, 0.45);
   }
 }

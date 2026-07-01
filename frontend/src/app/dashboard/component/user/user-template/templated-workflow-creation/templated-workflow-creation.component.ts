@@ -92,6 +92,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   private formChangesSub: Subscription | undefined;
   private workflowReady: boolean = false;
   public showEmbeddedWorkspace = false;
+  // True right after a successful submit (until the next edit): dims the SUBMIT button as an
+  // "applied" cue. Cleared on any form change so an edit re-highlights it. Kept as a simple flag
+  // (not a value diff) so it can't get stuck out of sync with the field values.
+  public submitApplied = false;
 
   // Signature of the schemas the configurable sections were last built from. Used to skip
   // redundant rebuilds (which would otherwise destroy the field being edited and drop focus).
@@ -190,6 +194,8 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .subscribe({
         next: () => {
           this.showEmbeddedWorkspace = true;
+          // Dim SUBMIT to signal the update was applied; any subsequent edit re-highlights it.
+          this.submitApplied = true;
         },
         error: err => {
           console.warn("Failed to update templated workflow", err);
@@ -444,6 +450,9 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
 
     const valueChangeStreams = this.sections.map(section =>
       section.form.valueChanges.pipe(
+        // Any edit re-highlights SUBMIT (clears the "applied" cue), even if it doesn't change the
+        // draft enough to re-compile.
+        tap(() => (this.submitApplied = false)),
         map(nextModel =>
           this.templatedWorkflowDraftService.mergeSectionModelIfChanged(
             section.operatorID,

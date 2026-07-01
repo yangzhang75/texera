@@ -104,6 +104,20 @@
   border-radius: 2px;
 }
 
+// After a successful submit the button dims to an "applied" state (still clickable, so a later
+// edit + click always works). Any edit clears it and restores the primary look.
+:host ::ng-deep .tw-submit.tw-submit-applied:not([disabled]) {
+  background: #3b4252 !important;
+  border-color: #3b4252 !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  box-shadow: none !important;
+
+  &:hover {
+    background: #2e3440 !important;
+    border-color: #2e3440 !important;
+  }
+}
+
 // Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
 // can see exactly what's missing. ::ng-deep is needed to reach the Formly-rendered controls.
 :host ::ng-deep .template-section {

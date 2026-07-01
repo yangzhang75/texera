@@ -42,6 +42,7 @@
       nz-button
       nzType="primary"
       class="tw-submit"
+      [class.tw-submit-applied]="submitApplied"
       [disabled]="submitDisabled"
       (click)="onJobFormSubmitted()">
       Submit

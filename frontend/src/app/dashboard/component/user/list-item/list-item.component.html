@@ -22,7 +22,8 @@
   class="list-item-card"
   [class.selected]="entry.checked"
   [class.has-button-group]="isPrivateSearch"
-  [class.editing-description]="editingDescription">
+  [class.editing-description]="editingDescription"
+  [class.template-workflow-row]="templateTid != null">
   <div
     (mouseenter)="hovering = true"
     (mouseleave)="hovering = false"

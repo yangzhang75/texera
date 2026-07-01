@@ -95,13 +95,17 @@
         class="resource-name truncate-single-line"
         *ngIf="!editingName">
         {{ entry.name }}
-        <nz-tag
+        <span
           *ngIf="entry.type === 'workflow' && templateTid != null"
-          nzColor="blue"
           class="template-badge"
-          title="Built from a template — opens the template parameter editor">
+          nz-tooltip="Built from a template — click to edit its parameters"
+          nzTooltipPlacement="top">
+          <i
+            nz-icon
+            nzType="experiment"
+            nzTheme="outline"></i>
           Template
-        </nz-tag>
+        </span>
       </div>
       <input
         *ngIf="editingName"

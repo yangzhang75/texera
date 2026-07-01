@@ -199,10 +199,37 @@
   cursor: pointer;
 }
 
-// "Template" badge shown next to a workflow that was built from a template.
+// "Template" badge shown next to a workflow built from a template. A soft, refined blue pill that
+// reads as clickable (hover state + pointer) and hints — via its tooltip — that it opens the
+// template parameter editor.
 .template-badge {
-  margin-left: 6px;
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 0 8px;
+  height: 18px;
   font-size: 11px;
-  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: #2f54eb;
+  background: #f0f5ff;
+  border: 1px solid #adc6ff;
+  border-radius: 9px;
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+
+  .anticon {
+    font-size: 11px;
+  }
+
+  &:hover {
+    color: #1d39c4;
+    background: #d6e4ff;
+    border-color: #85a5ff;
+  }
 }

@@ -59,7 +59,7 @@ import { isDefined } from "../../../../common/util/predicate";
 import {Router} from "@angular/router";
 import {TemplateService} from "../../../service/user/template/template.service";
 import { TemplatedWorkflowService } from "../../../service/user/templated-workflow/templated-workflow.service";
-import { NzTagModule } from "ng-zorro-antd/tag";
+import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { RouterLink } from "@angular/router";
@@ -93,7 +93,7 @@ import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
     UserAvatarComponent,
     NzWaveDirective,
     NzPopconfirmDirective,
-    NzTagModule,
+    NzTooltipDirective,
   ],
 })
 export class ListItemComponent implements OnChanges {

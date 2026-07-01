@@ -387,6 +387,19 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
               // (disableWorkflowModification); we must NOT mark the workflow readonly here,
               // because a readonly workflow cannot be executed and the preview must stay runnable.
               this.workflowActionService.reloadWorkflow(workflow);
+
+              // Reopening an existing templated workflow: /build is idempotent (returns the same
+              // wid) and its content already holds the values last applied via /update. Seed the
+              // form from THAT content (not the template defaults) so the user sees their last
+              // edits. seedValuesFromContent keeps the enriched dynamic schemas intact (dropdowns
+              // stay dropdowns); resetting the signature forces the sections to rebuild off the
+              // freshly-seeded values (the signature only tracks schemas, not values).
+              if (workflow.content) {
+                this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
+                this.lastEnrichedSignature = "";
+                this.rebuildSectionsFromDynamicSchemas();
+              }
+
               this.workflowReady = true;
               // Reveal the preview as soon as the workflow is loaded. While the container is
               // hidden it has height:0, so the embedded JointJS paper would initialize at zero

@@ -18,7 +18,8 @@
  */
 import { Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
-import { Observable } from "rxjs";
+import { Observable, of } from "rxjs";
+import { catchError, map, shareReplay } from "rxjs/operators";
 import { AppSettings } from "../../../../common/app-setting";
 import { Workflow } from "../../../../common/type/workflow";
 
@@ -36,7 +37,38 @@ export const TEMPLATED_WORKFLOW_BASE_URL = "templated-workflow";
   providedIn: "root",
 })
 export class TemplatedWorkflowService {
+  // Cached wid->tid map, fetched at most once per service lifetime (shareReplay). Populated lazily
+  // on first access by the workflow-list items.
+  private tidMap$?: Observable<ReadonlyMap<number, number>>;
+
   constructor(private http: HttpClient) {}
+
+  /**
+   * Lists every workflow<->template link (wid + tid) visible to the user. The dashboard intersects
+   * this with the workflows it already shows, to badge the template-built ones and route a click to
+   * the template-editing page.
+   */
+  public listTemplatedWorkflows(): Observable<{ wid: number; tid: number }[]> {
+    return this.http.get<{ wid: number; tid: number }[]>(
+      `${AppSettings.getApiEndpoint()}/${TEMPLATED_WORKFLOW_BASE_URL}/list`
+    );
+  }
+
+  /**
+   * A cached wid->tid map so the workflow list can tell which workflows were built from a template.
+   * Shared across all list items (fetched once via shareReplay). Degrades gracefully to an empty
+   * map if the endpoint is unavailable (e.g. an older backend), so the workflow list never breaks.
+   */
+  public getTemplatedWorkflowTidMap(): Observable<ReadonlyMap<number, number>> {
+    if (!this.tidMap$) {
+      this.tidMap$ = this.listTemplatedWorkflows().pipe(
+        map(links => new Map(links.map(link => [link.wid, link.tid])) as ReadonlyMap<number, number>),
+        catchError(() => of(new Map<number, number>() as ReadonlyMap<number, number>)),
+        shareReplay(1)
+      );
+    }
+    return this.tidMap$;
+  }
 
   public createTemplatedWorkflow(tid: number): Observable<number> {
     return this.http.post<number>(

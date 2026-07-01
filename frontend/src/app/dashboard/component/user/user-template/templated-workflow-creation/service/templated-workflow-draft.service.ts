@@ -27,6 +27,18 @@ export class TemplatedWorkflowDraftService {
     });
   }
 
+  /**
+   * Overwrite the draft's operator property VALUES from a workflow's content, WITHOUT touching the
+   * enriched dynamic schemas (so attribute dropdowns keep their options). Used when reopening an
+   * existing templated workflow: the form must show the values last applied (persisted in the
+   * workflow's content), not the template's original defaults.
+   */
+  public seedValuesFromContent(content: WorkflowContent): void {
+    content.operators.forEach(op => {
+      this.operatorIdToProperties[op.operatorID] = cloneDeep(op.operatorProperties);
+    });
+  }
+
   public getOperatorProperties(operatorID: string): Record<string, Record<string, any>> {
     return this.operatorIdToProperties[operatorID];
   }

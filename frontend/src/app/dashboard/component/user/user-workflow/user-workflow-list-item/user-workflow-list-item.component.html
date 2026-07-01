@@ -39,9 +39,17 @@
       <div class="workflow-item-meta-title">
         <div
           *ngIf="!editingName; else customWorkflowTitle "
-          [routerLink]="USER_WORKSPACE + '/' + workflow.wid"
+          [routerLink]="templateTid != null ? (USER_TEMPLATED_WORKFLOW + '/' + templateTid) : (USER_WORKSPACE + '/' + workflow.wid)"
           [innerHTML]="workflow.name | highlightSearchTerms : keywords"
           class="workflow-name"></div>
+        <nz-tag
+          *ngIf="templateTid != null"
+          nzColor="blue"
+          class="template-badge"
+          nz-tooltip="Built from a template — click the name to edit its parameters"
+          [routerLink]="USER_TEMPLATED_WORKFLOW + '/' + templateTid">
+          Template
+        </nz-tag>
         <ng-template #customWorkflowTitle>
           <input
             #customName

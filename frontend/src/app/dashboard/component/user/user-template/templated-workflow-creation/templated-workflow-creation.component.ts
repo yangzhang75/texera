@@ -164,8 +164,13 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   /**
    * True when the current form values differ from what is already applied to the live graph, i.e.
    * there is something for SUBMIT to apply. Pure (no side effects) so it is safe to call from a
-   * getter on every change-detection pass. Reads each section's live `model` (which Formly mutates
-   * on every edit, including add/remove on array fields) so any committed edit reflects immediately.
+   * getter on every change-detection pass.
+   *
+   * We read each section's live form value via `form.getRawValue()` -- NOT the Formly `model`
+   * object. After a submit/rebuild the `model` object can go stale (it keeps the last-applied
+   * value while the actual form control already holds the new edit), and spreading it last used
+   * to clobber the up-to-date draft, so a real edit read as "no change" and SUBMIT stayed greyed.
+   * The form control values are always current.
    */
   private hasPendingChanges(): boolean {
     const graph = this.workflowActionService.getTexeraGraph();
@@ -175,7 +180,7 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       }
       const live = graph.getOperator(section.operatorID).operatorProperties;
       const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
-      const merged = { ...draft, ...section.model };
+      const merged = { ...draft, ...section.form.getRawValue() };
       return !isEqual(merged, live);
     });
   }

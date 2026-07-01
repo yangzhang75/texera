@@ -31,7 +31,7 @@ import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
-import {cloneDeep} from "lodash";
+import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
@@ -92,10 +92,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   private formChangesSub: Subscription | undefined;
   private workflowReady: boolean = false;
   public showEmbeddedWorkspace = false;
-  // True right after a successful submit (until the next edit): dims the SUBMIT button as an
-  // "applied" cue. Cleared on any form change so an edit re-highlights it. Kept as a simple flag
-  // (not a value diff) so it can't get stuck out of sync with the field values.
-  public submitApplied = false;
 
   // Signature of the schemas the configurable sections were last built from. Used to skip
   // redundant rebuilds (which would otherwise destroy the field being edited and drop focus).
@@ -150,12 +146,34 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     ].includes(this.executionState);
   }
 
-  // SUBMIT is only disabled while the workflow genuinely can't accept one (still loading, or
-  // running). It is intentionally NOT greyed on "no changes": gating it on change detection kept
-  // fighting nz-input-number's commit-on-blur behaviour and made Limit look unchangeable, so we
-  // keep the button plainly clickable. A click with nothing to apply is a harmless no-op.
+  // Hard-disabled only while the workflow genuinely can't accept a submit (loading or running).
   public get submitDisabled(): boolean {
     return !this.workflowReady || this.isWorkflowExecutionActive;
+  }
+
+  // Cosmetic "nothing to apply" state: the button looks grey but stays CLICKABLE, so it can never
+  // block an edit (a click still commits + applies). Grey when the form matches what is already
+  // applied to the live graph; the moment the form differs (the top form vs the bottom preview),
+  // it goes bright. Read via form.getRawValue() (always the current control value) so it never gets
+  // stuck grey after an edit.
+  public get submitIdle(): boolean {
+    if (this.submitDisabled) {
+      return false;
+    }
+    return !this.hasPendingChanges();
+  }
+
+  private hasPendingChanges(): boolean {
+    const graph = this.workflowActionService.getTexeraGraph();
+    return this.sections.some(section => {
+      if (!graph.hasOperator(section.operatorID)) {
+        return false;
+      }
+      const live = graph.getOperator(section.operatorID).operatorProperties;
+      const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
+      const merged = { ...draft, ...section.form.getRawValue() };
+      return !isEqual(merged, live);
+    });
   }
 
   public onJobFormSubmitted(): void {
@@ -194,8 +212,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .subscribe({
         next: () => {
           this.showEmbeddedWorkspace = true;
-          // Dim SUBMIT to signal the update was applied; any subsequent edit re-highlights it.
-          this.submitApplied = true;
         },
         error: err => {
           console.warn("Failed to update templated workflow", err);
@@ -450,9 +466,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
 
     const valueChangeStreams = this.sections.map(section =>
       section.form.valueChanges.pipe(
-        // Any edit re-highlights SUBMIT (clears the "applied" cue), even if it doesn't change the
-        // draft enough to re-compile.
-        tap(() => (this.submitApplied = false)),
         map(nextModel =>
           this.templatedWorkflowDraftService.mergeSectionModelIfChanged(
             section.operatorID,

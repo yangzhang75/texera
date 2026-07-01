@@ -111,9 +111,11 @@ export class ListItemComponent implements OnChanges {
   likeCount: number = 0;
   viewCount = 0;
   entryLink: string[] = [];
-  // Set for a workflow that was built from a template: its template id. Drives the "Template" badge
-  // and (for an editable workflow) routes clicks to the template-parameter editor.
+  // Set for a workflow that was built from a template: its template id + the router link to the
+  // template-parameter editor. Drives the "Template" badge (the row click still opens the normal
+  // workspace; only the badge navigates to the editor).
   public templateTid?: number;
+  public templateLink: string[] = [];
   size: number | undefined = 0;
   public iconType: string = "";
   isLiked: boolean = false;
@@ -166,8 +168,9 @@ export class ListItemComponent implements OnChanges {
         }
         this.size = this.entry.size;
 
-        // If this workflow was built from a template, badge it. When the user can edit it (owns
-        // it), route clicks to the template-parameter editor instead of the plain workspace.
+        // If this workflow was built from a template, just remember its template id so we can show
+        // the badge. The row click still opens the normal workspace (entryLink unchanged) -- only
+        // an explicit click on the "Template" badge routes to the template-parameter editor.
         const wid = this.entry.id;
         this.templatedWorkflowService
           .getTemplatedWorkflowTidMap()
@@ -176,9 +179,7 @@ export class ListItemComponent implements OnChanges {
             const tid = tidMap.get(wid);
             if (tid !== undefined) {
               this.templateTid = tid;
-              if (owned) {
-                this.entryLink = [USER_TEMPLATED_WORKFLOW, String(tid)];
-              }
+              this.templateLink = [USER_TEMPLATED_WORKFLOW, String(tid)];
               this.cdr.markForCheck();
             }
           });

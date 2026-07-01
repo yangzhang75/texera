@@ -98,12 +98,10 @@
         <span
           *ngIf="entry.type === 'workflow' && templateTid != null"
           class="template-badge"
-          nz-tooltip="Built from a template — click to edit its parameters"
-          nzTooltipPlacement="top">
-          <i
-            nz-icon
-            nzType="experiment"
-            nzTheme="outline"></i>
+          nz-tooltip="Edit this workflow's template parameters"
+          nzTooltipPlacement="top"
+          [routerLink]="templateLink"
+          (click)="$event.stopPropagation()">
           Template
         </span>
       </div>

@@ -31,7 +31,7 @@ import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
-import {cloneDeep, isEqual} from "lodash";
+import {cloneDeep} from "lodash";
 import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
@@ -146,43 +146,12 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     ].includes(this.executionState);
   }
 
-  // Hard-disabled ONLY while the workflow can't accept a submit (still loading, or running). We do
-  // NOT hard-disable on "no changes": a disabled button can't be clicked, and an unclicked button
-  // can't blur/commit a half-typed nz-input-number value -> the user gets stuck (types a number,
-  // button looks stale, clicking does nothing). See submitIdle for the "nothing to apply" state.
+  // SUBMIT is only disabled while the workflow genuinely can't accept one (still loading, or
+  // running). It is intentionally NOT greyed on "no changes": gating it on change detection kept
+  // fighting nz-input-number's commit-on-blur behaviour and made Limit look unchangeable, so we
+  // keep the button plainly clickable. A click with nothing to apply is a harmless no-op.
   public get submitDisabled(): boolean {
     return !this.workflowReady || this.isWorkflowExecutionActive;
-  }
-
-  // Cosmetic "nothing to apply yet" state: the button is greyed but STILL CLICKABLE. Clicking it
-  // blurs/commits any in-progress field (e.g. a number being typed) and then applies if that
-  // turns out to be a real change; if there's genuinely nothing to apply it is a silent no-op.
-  public get submitIdle(): boolean {
-    return !this.submitDisabled && !this.hasPendingChanges();
-  }
-
-  /**
-   * True when the current form values differ from what is already applied to the live graph, i.e.
-   * there is something for SUBMIT to apply. Pure (no side effects) so it is safe to call from a
-   * getter on every change-detection pass.
-   *
-   * We read each section's live form value via `form.getRawValue()` -- NOT the Formly `model`
-   * object. After a submit/rebuild the `model` object can go stale (it keeps the last-applied
-   * value while the actual form control already holds the new edit), and spreading it last used
-   * to clobber the up-to-date draft, so a real edit read as "no change" and SUBMIT stayed greyed.
-   * The form control values are always current.
-   */
-  private hasPendingChanges(): boolean {
-    const graph = this.workflowActionService.getTexeraGraph();
-    return this.sections.some(section => {
-      if (!graph.hasOperator(section.operatorID)) {
-        return false;
-      }
-      const live = graph.getOperator(section.operatorID).operatorProperties;
-      const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
-      const merged = { ...draft, ...section.form.getRawValue() };
-      return !isEqual(merged, live);
-    });
   }
 
   public onJobFormSubmitted(): void {

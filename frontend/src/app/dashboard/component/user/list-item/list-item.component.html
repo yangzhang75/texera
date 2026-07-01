@@ -95,6 +95,13 @@
         class="resource-name truncate-single-line"
         *ngIf="!editingName">
         {{ entry.name }}
+        <nz-tag
+          *ngIf="entry.type === 'workflow' && templateTid != null"
+          nzColor="blue"
+          class="template-badge"
+          title="Built from a template — opens the template parameter editor">
+          Template
+        </nz-tag>
       </div>
       <input
         *ngIf="editingName"

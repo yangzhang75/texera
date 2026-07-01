@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Component, EventEmitter, Input, OnInit, Output } from "@angular/core";
+import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { NzModalService } from "ng-zorro-antd/modal";
 import { WorkflowExecutionHistoryComponent } from "../ngbd-modal-workflow-executions/workflow-execution-history.component";
 import {
@@ -32,10 +32,8 @@ import { UserProjectService } from "../../../../service/user/project/user-projec
 import { DashboardEntry } from "../../../../type/dashboard-entry";
 import { firstValueFrom } from "rxjs";
 import { DownloadService } from "src/app/dashboard/service/user/download/download.service";
-import { USER_PROJECT, USER_TEMPLATED_WORKFLOW, USER_WORKSPACE } from "../../../../../app-routing.constant";
+import { USER_PROJECT, USER_WORKSPACE } from "../../../../../app-routing.constant";
 import { GuiConfigService } from "../../../../../common/service/gui-config.service";
-import { TemplatedWorkflowService } from "../../../../service/user/templated-workflow/templated-workflow.service";
-import { NzTagModule } from "ng-zorro-antd/tag";
 import {
   NzListItemComponent,
   NzListItemMetaComponent,
@@ -87,16 +85,11 @@ import { HighlightSearchTermsPipe } from "./highlight-search-terms.pipe";
     NzPopconfirmDirective,
     DatePipe,
     HighlightSearchTermsPipe,
-    NzTagModule,
   ],
 })
-export class UserWorkflowListItemComponent implements OnInit {
+export class UserWorkflowListItemComponent {
   protected readonly USER_WORKSPACE = USER_WORKSPACE;
   protected readonly USER_PROJECT = USER_PROJECT;
-  protected readonly USER_TEMPLATED_WORKFLOW = USER_TEMPLATED_WORKFLOW;
-  // Set when this workflow was built from a template: its template id. Drives the "Template" badge
-  // and routes a click to the template-editing page instead of the plain workspace editor.
-  protected templateTid?: number;
   private _entry?: DashboardEntry;
   @Input() public keywords: string[] = [];
 
@@ -135,29 +128,13 @@ export class UserWorkflowListItemComponent implements OnInit {
     private modalService: NzModalService,
     protected config: GuiConfigService,
     private userProjectService: UserProjectService,
-    private downloadService: DownloadService,
-    private templatedWorkflowService: TemplatedWorkflowService
+    private downloadService: DownloadService
   ) {
     this.userProjectService
       .getProjectList()
       .pipe(untilDestroyed(this))
       .subscribe(userProjectsList => {
         this.userProjectsMap = new Map(userProjectsList.map(userProject => [userProject.pid, userProject]));
-      });
-  }
-
-  ngOnInit(): void {
-    const wid = this.workflow.wid;
-    if (wid == null) {
-      return;
-    }
-    // Look this workflow's wid up in the shared (cached) templated-workflow map. If present, it was
-    // built from a template -> show the badge and route to the template-editing page.
-    this.templatedWorkflowService
-      .getTemplatedWorkflowTidMap()
-      .pipe(untilDestroyed(this))
-      .subscribe(tidMap => {
-        this.templateTid = tidMap.get(wid);
       });
   }
 

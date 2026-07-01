@@ -38,6 +38,7 @@ import {
   WorkflowPersistService,
 } from "src/app/common/service/workflow-persist/workflow-persist.service";
 import { firstValueFrom } from "rxjs";
+import { take } from "rxjs/operators";
 import { HubWorkflowDetailComponent } from "../../../../hub/component/workflow/detail/hub-workflow-detail.component";
 import { ActionType, HubService } from "../../../../hub/service/hub.service";
 import { DownloadService } from "src/app/dashboard/service/user/download/download.service";
@@ -57,6 +58,8 @@ import {
 import { isDefined } from "../../../../common/util/predicate";
 import {Router} from "@angular/router";
 import {TemplateService} from "../../../service/user/template/template.service";
+import { TemplatedWorkflowService } from "../../../service/user/templated-workflow/templated-workflow.service";
+import { NzTagModule } from "ng-zorro-antd/tag";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { RouterLink } from "@angular/router";
@@ -90,6 +93,7 @@ import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
     UserAvatarComponent,
     NzWaveDirective,
     NzPopconfirmDirective,
+    NzTagModule,
   ],
 })
 export class ListItemComponent implements OnChanges {
@@ -107,6 +111,9 @@ export class ListItemComponent implements OnChanges {
   likeCount: number = 0;
   viewCount = 0;
   entryLink: string[] = [];
+  // Set for a workflow that was built from a template: its template id. Drives the "Template" badge
+  // and (for an editable workflow) routes clicks to the template-parameter editor.
+  public templateTid?: number;
   size: number | undefined = 0;
   public iconType: string = "";
   isLiked: boolean = false;
@@ -143,6 +150,7 @@ export class ListItemComponent implements OnChanges {
     private cdr: ChangeDetectorRef,
     private notificationService: NotificationService,
     private router: Router,
+    private templatedWorkflowService: TemplatedWorkflowService,
   ) {}
 
   initializeEntry() {
@@ -150,12 +158,30 @@ export class ListItemComponent implements OnChanges {
       if (typeof this.entry.id === "number") {
         this.disableDelete = !this.entry.workflow.isOwner;
         this.owners = this.entry.accessibleUserIds;
-        if (this.currentUid !== undefined && this.owners.includes(this.currentUid)) {
+        const owned = this.currentUid !== undefined && this.owners.includes(this.currentUid);
+        if (owned) {
           this.entryLink = [USER_WORKSPACE, String(this.entry.id)];
         } else {
           this.entryLink = [HUB_WORKFLOW_RESULT_DETAIL, String(this.entry.id)];
         }
         this.size = this.entry.size;
+
+        // If this workflow was built from a template, badge it. When the user can edit it (owns
+        // it), route clicks to the template-parameter editor instead of the plain workspace.
+        const wid = this.entry.id;
+        this.templatedWorkflowService
+          .getTemplatedWorkflowTidMap()
+          .pipe(take(1), untilDestroyed(this))
+          .subscribe(tidMap => {
+            const tid = tidMap.get(wid);
+            if (tid !== undefined) {
+              this.templateTid = tid;
+              if (owned) {
+                this.entryLink = [USER_TEMPLATED_WORKFLOW, String(tid)];
+              }
+              this.cdr.markForCheck();
+            }
+          });
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {

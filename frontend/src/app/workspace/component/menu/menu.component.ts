@@ -142,6 +142,9 @@ export class MenuComponent implements OnInit, OnDestroy {
   protected readonly USER_WORKFLOW = USER_WORKFLOW;
 
   @Input() public mode: "workflow" | "template" = "workflow";
+  // True when this toolbar is inside the read-only embedded preview (e.g. the templated-workflow
+  // editor). Disables actions that make no sense there, such as "create new".
+  @Input() public isEmbedded: boolean = false;
   @Input() public writeAccess: boolean = false;
   @Input() public pid?: number = undefined;
   @Input() public autoSaveState: string = "";

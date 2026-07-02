@@ -97,6 +97,7 @@
         <button
           *ngIf="showCreateNewButton"
           (click)="onClickCreateNewWorkflow()"
+          [disabled]="isEmbedded"
           nz-button
           title="create new">
           <i

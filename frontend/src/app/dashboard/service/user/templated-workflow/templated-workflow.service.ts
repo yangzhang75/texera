@@ -37,8 +37,9 @@ export const TEMPLATED_WORKFLOW_BASE_URL = "templated-workflow";
   providedIn: "root",
 })
 export class TemplatedWorkflowService {
-  // Cached wid->tid map, fetched at most once per service lifetime (shareReplay). Populated lazily
-  // on first access by the workflow-list items.
+  // Shared wid->tid stream. Fetched once while there are active subscribers (a single workflow-list
+  // render), then RESET when the last one unsubscribes (refCount) -- so re-opening the list always
+  // re-fetches and newly-created template workflows show up. Not permanently cached.
   private tidMap$?: Observable<ReadonlyMap<number, number>>;
 
   constructor(private http: HttpClient) {}
@@ -55,16 +56,17 @@ export class TemplatedWorkflowService {
   }
 
   /**
-   * A cached wid->tid map so the workflow list can tell which workflows were built from a template.
-   * Shared across all list items (fetched once via shareReplay). Degrades gracefully to an empty
-   * map if the endpoint is unavailable (e.g. an older backend), so the workflow list never breaks.
+   * A wid->tid map so the workflow list can tell which workflows were built from a template. Shared
+   * among the current list items (one HTTP call per list render) but re-fetched every time the list
+   * is re-opened (refCount), so newly-built template workflows appear. Degrades gracefully to an
+   * empty map if the endpoint is unavailable (e.g. an older backend), so the list never breaks.
    */
   public getTemplatedWorkflowTidMap(): Observable<ReadonlyMap<number, number>> {
     if (!this.tidMap$) {
       this.tidMap$ = this.listTemplatedWorkflows().pipe(
         map(links => new Map(links.map(link => [link.wid, link.tid])) as ReadonlyMap<number, number>),
         catchError(() => of(new Map<number, number>() as ReadonlyMap<number, number>)),
-        shareReplay(1)
+        shareReplay({ bufferSize: 1, refCount: true })
       );
     }
     return this.tidMap$;

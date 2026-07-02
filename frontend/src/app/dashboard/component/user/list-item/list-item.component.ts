@@ -38,7 +38,6 @@ import {
   WorkflowPersistService,
 } from "src/app/common/service/workflow-persist/workflow-persist.service";
 import { firstValueFrom } from "rxjs";
-import { take } from "rxjs/operators";
 import { HubWorkflowDetailComponent } from "../../../../hub/component/workflow/detail/hub-workflow-detail.component";
 import { ActionType, HubService } from "../../../../hub/service/hub.service";
 import { DownloadService } from "src/app/dashboard/service/user/download/download.service";
@@ -116,6 +115,7 @@ export class ListItemComponent implements OnChanges {
   // workspace; only the badge navigates to the editor).
   public templateTid?: number;
   public templateLink: string[] = [];
+  private tidMapSubscribed = false;
   size: number | undefined = 0;
   public iconType: string = "";
   isLiked: boolean = false;
@@ -168,21 +168,24 @@ export class ListItemComponent implements OnChanges {
         }
         this.size = this.entry.size;
 
-        // If this workflow was built from a template, just remember its template id so we can show
-        // the badge. The row click still opens the normal workspace (entryLink unchanged) -- only
-        // an explicit click on the "Template" badge routes to the template-parameter editor.
-        const wid = this.entry.id;
-        this.templatedWorkflowService
-          .getTemplatedWorkflowTidMap()
-          .pipe(take(1), untilDestroyed(this))
-          .subscribe(tidMap => {
-            const tid = tidMap.get(wid);
-            if (tid !== undefined) {
+        // If this workflow was built from a template, remember its template id so we can show the
+        // badge. Subscribe once (persistently, so all list items share a single fetch per render)
+        // and re-evaluate on every emission -- re-opening the list re-fetches the map, so newly
+        // built template workflows get badged too. The row click still opens the normal workspace;
+        // only an explicit click on the badge routes to the template-parameter editor.
+        if (!this.tidMapSubscribed) {
+          this.tidMapSubscribed = true;
+          this.templatedWorkflowService
+            .getTemplatedWorkflowTidMap()
+            .pipe(untilDestroyed(this))
+            .subscribe(tidMap => {
+              const currentWid = typeof this.entry?.id === "number" ? this.entry.id : undefined;
+              const tid = currentWid !== undefined ? tidMap.get(currentWid) : undefined;
               this.templateTid = tid;
-              this.templateLink = [USER_TEMPLATED_WORKFLOW, String(tid)];
+              this.templateLink = tid !== undefined ? [USER_TEMPLATED_WORKFLOW, String(tid)] : [];
               this.cdr.markForCheck();
-            }
-          });
+            });
+        }
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {

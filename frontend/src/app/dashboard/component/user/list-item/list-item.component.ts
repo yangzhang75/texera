@@ -57,8 +57,6 @@ import {
 import { isDefined } from "../../../../common/util/predicate";
 import {Router} from "@angular/router";
 import {TemplateService} from "../../../service/user/template/template.service";
-import { TemplatedWorkflowService } from "../../../service/user/templated-workflow/templated-workflow.service";
-import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { RouterLink } from "@angular/router";
@@ -92,7 +90,6 @@ import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
     UserAvatarComponent,
     NzWaveDirective,
     NzPopconfirmDirective,
-    NzTooltipDirective,
   ],
 })
 export class ListItemComponent implements OnChanges {
@@ -110,12 +107,6 @@ export class ListItemComponent implements OnChanges {
   likeCount: number = 0;
   viewCount = 0;
   entryLink: string[] = [];
-  // Set for a workflow that was built from a template: its template id + the router link to the
-  // template-parameter editor. Drives the "Template" badge (the row click still opens the normal
-  // workspace; only the badge navigates to the editor).
-  public templateTid?: number;
-  public templateLink: string[] = [];
-  private tidMapSubscribed = false;
   size: number | undefined = 0;
   public iconType: string = "";
   isLiked: boolean = false;
@@ -152,7 +143,6 @@ export class ListItemComponent implements OnChanges {
     private cdr: ChangeDetectorRef,
     private notificationService: NotificationService,
     private router: Router,
-    private templatedWorkflowService: TemplatedWorkflowService,
   ) {}
 
   initializeEntry() {
@@ -167,28 +157,6 @@ export class ListItemComponent implements OnChanges {
           this.entryLink = [HUB_WORKFLOW_RESULT_DETAIL, String(this.entry.id)];
         }
         this.size = this.entry.size;
-
-        // If this workflow was built from a template, remember its template id so we can show the
-        // badge. Subscribe once (persistently, so all list items share a single fetch per render)
-        // and re-evaluate on every emission -- re-opening the list re-fetches the map, so newly
-        // built template workflows get badged too. The row click still opens the normal workspace;
-        // only an explicit click on the badge routes to the template-parameter editor.
-        if (!this.tidMapSubscribed) {
-          this.tidMapSubscribed = true;
-          this.templatedWorkflowService
-            .getTemplatedWorkflowTidMap()
-            .pipe(untilDestroyed(this))
-            .subscribe(tidMap => {
-              const currentWid = typeof this.entry?.id === "number" ? this.entry.id : undefined;
-              const tid = currentWid !== undefined ? tidMap.get(currentWid) : undefined;
-              this.templateTid = tid;
-              this.templateLink = tid !== undefined ? [USER_TEMPLATED_WORKFLOW, String(tid)] : [];
-              this.cdr.markForCheck();
-            });
-        }
-        // Pull the current server state as this workflow item renders, so a template workflow
-        // created at any point gets badged as soon as it shows up here (de-duped in the service).
-        this.templatedWorkflowService.refreshTemplatedWorkflowTidMap();
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {
@@ -423,10 +391,6 @@ export class ListItemComponent implements OnChanges {
   }
 
   formatRelativeTime = formatRelativeTime;
-
-  openCreateWorkflowFromTemplatePage(tid: number | undefined): void {
-    this.router.navigate([`${USER_TEMPLATED_WORKFLOW}/${tid}`]);
-  }
 
   openTemplateWorkspace(tid: number | undefined): void {
     this.router.navigate([`${USER_TEMPLATE}/${tid}`]);

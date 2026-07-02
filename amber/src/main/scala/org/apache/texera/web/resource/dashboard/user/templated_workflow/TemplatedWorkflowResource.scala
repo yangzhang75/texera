@@ -30,7 +30,6 @@ import javax.ws.rs.core.MediaType
 import javax.ws.rs.{
   BadRequestException,
   ForbiddenException,
-  GET,
   NotFoundException,
   POST,
   Path,
@@ -58,12 +57,6 @@ import scala.jdk.CollectionConverters._
 class TemplatedWorkflowConfigurablePropertiesUpdateRequest {
   var operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty
 }
-
-/**
-  * One workflow<->template link, returned by GET /templated-workflow/list so the dashboard can mark
-  * which workflows were built from a template and route them to the template-editing page.
-  */
-case class TemplatedWorkflowInfo(wid: Integer, tid: Integer)
 
 object TemplatedWorkflowResource {
   final private lazy val context = SqlServer
@@ -150,25 +143,6 @@ class TemplatedWorkflowResource extends LazyLogging {
 
   private val templateService = new TemplateService(context)
   private val workflowPersistService = new WorkflowPersistService(context)
-
-  /**
-    * Lists every workflow<->template link (wid, tid). The dashboard intersects this with the
-    * workflows it already shows, so it can badge the template-built ones and route a click to the
-    * template-editing page. Templated-workflow instances are shared per template (tid is the PK of
-    * WORKFLOW_OF_TEMPLATE), so this set is small; it only exposes the wid<->tid mapping.
-    */
-  @GET
-  @RolesAllowed(Array("REGULAR", "ADMIN"))
-  @Path("/list")
-  def listTemplatedWorkflows(@Auth user: SessionUser): List[TemplatedWorkflowInfo] = {
-    context
-      .select(WORKFLOW_OF_TEMPLATE.WID, WORKFLOW_OF_TEMPLATE.TID)
-      .from(WORKFLOW_OF_TEMPLATE)
-      .fetch()
-      .asScala
-      .map(r => TemplatedWorkflowInfo(r.get(WORKFLOW_OF_TEMPLATE.WID), r.get(WORKFLOW_OF_TEMPLATE.TID)))
-      .toList
-  }
 
   /**
     * Returns the workflow instantiated from template `tid`, creating it (once) from the template's

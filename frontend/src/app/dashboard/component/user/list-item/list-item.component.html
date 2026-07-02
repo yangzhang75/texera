@@ -22,8 +22,7 @@
   class="list-item-card"
   [class.selected]="entry.checked"
   [class.has-button-group]="isPrivateSearch"
-  [class.editing-description]="editingDescription"
-  [class.template-workflow-row]="templateTid != null">
+  [class.editing-description]="editingDescription">
   <div
     (mouseenter)="hovering = true"
     (mouseleave)="hovering = false"
@@ -96,19 +95,6 @@
         class="resource-name truncate-single-line"
         *ngIf="!editingName">
         {{ entry.name }}
-        <span
-          *ngIf="entry.type === 'workflow' && templateTid != null"
-          class="template-badge"
-          nz-tooltip="Edit this workflow's template parameters"
-          nzTooltipPlacement="top"
-          [routerLink]="templateLink"
-          (click)="$event.stopPropagation()">
-          <i
-            nz-icon
-            nzType="experiment"
-            nzTheme="outline"></i>
-          Template
-        </span>
       </div>
       <input
         *ngIf="editingName"

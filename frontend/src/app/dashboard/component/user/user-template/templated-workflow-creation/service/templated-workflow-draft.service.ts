@@ -1,7 +1,7 @@
 import {Injectable} from "@angular/core";
 import {OperatorSchema} from "../../../../../../workspace/types/operator-schema.interface";
 import {WorkflowContent} from "../../../../../../common/type/workflow";
-import {cloneDeep} from "lodash";
+import {cloneDeep, isEqual} from "lodash";
 import {LogicalPlan} from "../../../../../../workspace/types/execute-workflow.interface";
 import {OperatorPortSchemaMap} from "../../../../../../workspace/types/workflow-compiling.interface";
 import {OperatorPredicate} from "../../../../../../workspace/types/workflow-common.interface";
@@ -11,7 +11,6 @@ import {
 import {
   WorkflowSchemaPropagationUtil
 } from "../../../../../../workspace/service/compile-workflow/workflow-schema-propagation.util";
-import {isEqual} from "lodash-es";
 
 @Injectable()
 export class TemplatedWorkflowDraftService {

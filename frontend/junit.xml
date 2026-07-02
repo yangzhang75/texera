@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="50" failures="0" errors="0" time="1.74062475">
+    <testsuite name="src/app/workspace/component/menu/menu.component.spec.ts" timestamp="2026-07-02T21:40:44.887Z" hostname="dhcp-172-31-171-011.mobile.uci.edu" tests="50" failures="0" errors="0" skipped="0" time="1.74062475">
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; should create" time="0.101394542">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Invalid Workflow&apos; when the workflow is invalid" time="0.040970417">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Empty Workflow&apos; when the workflow has no operators" time="0.032528">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Connect&apos; when no computing unit is attached" time="0.033268541">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Run&apos; when connected and execution is uninitialized" time="0.037495541">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Pause&apos; while a workflow is running" time="0.025878542">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Resume&apos; when execution is paused" time="0.030608584">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; getRunButtonBehavior &gt; returns &apos;Connecting&apos; when a unit exists but the websocket is not connected" time="0.033068375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; applyRunButtonBehavior copies the behavior onto the bound fields" time="0.024503959">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; re-applies run button behavior when the validation stream reports an empty workflow" time="0.036039417">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; hasOperators &gt; returns false on an empty graph" time="0.046112583">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; hasOperators &gt; returns true once an operator is added" time="0.0613195">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickAddCommentBox delegates to the workflow action service" time="0.083702667">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickDeleteAllOperators removes every operator from the graph" time="0.067408417">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickAutoLayout is a no-op when there are no operators" time="0.041190209">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickAutoLayout invokes auto layout when operators are present" time="0.041964375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; handleKill delegates to executeWorkflowService.killWorkflow" time="0.022641083">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; handleCheckpoint delegates to executeWorkflowService.takeGlobalCheckpoint" time="0.022819709">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickClosePanels and onClickResetPanels delegate to PanelService" time="0.027208459">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; runWorkflow &gt; does nothing when the workflow is invalid" time="0.02282675">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; runWorkflow &gt; does nothing when the workflow is empty" time="0.023299375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; runWorkflow &gt; opens the add-computing-unit modal when no unit is connected" time="0.029648042">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; runWorkflow &gt; submits the execution when connected" time="0.04582275">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onWorkflowNameChange forwards the new name to the workflow action service" time="0.02931425">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickExportWorkflow (save) &gt; serializes the workflow content as JSON and downloads it under the workflow name" time="0.02703075">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; version history &gt; onClickGetAllVersions delegates to workflowVersionService.displayWorkflowVersions" time="0.027081791">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; version history &gt; closeParticularVersionDisplay delegates to workflowVersionService" time="0.033486709">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; version history &gt; revertToVersion reverts and then persists the workflow" time="0.026490166">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; version history &gt; cloneVersion notifies success and closes the version panel when cloning succeeds" time="0.031099291">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; version history &gt; cloneVersion shows an error notification and does not close the panel when cloning fails" time="0.031471709">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickOpenShareAccess (share) &gt; looks up workflow owners and opens the share-access modal" time="0.022909625">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickOpenShareAccess (share) &gt; navigates to /user/workflow (no /dashboard prefix) when the modal reports the owner revoked their own access" time="0.02129225">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickOpenShareAccess (share) &gt; does not navigate when the share-access modal closes without revoking own access" time="0.025782583">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickCreateNewWorkflow resets the graph and navigates back to root" time="0.022370916">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickRestoreZoomOffsetDefault delegates to the joint graph wrapper" time="0.021385334">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickEditDescription opens the markdown description modal seeded with the current description" time="0.029663292">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; onClickExportExecutionResult opens the result-exportation modal with the current workflow name" time="0.024854708">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; canvas display toggles &gt; toggleRegion &gt; publishes the displayed flag to the joint graph wrapper when enabled" time="0.022386084">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; canvas display toggles &gt; toggleRegion &gt; publishes the displayed flag to the joint graph wrapper when disabled" time="0.028135417">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; canvas display toggles &gt; toggleStatus &gt; removes hide-operator-status when enabled and repositions the status label" time="0.020654791">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; canvas display toggles &gt; toggleStatus &gt; adds hide-operator-status when disabled" time="0.021447791">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; canvas display toggles &gt; toggleStatus &gt; offsets the status label higher when worker counts are shown" time="0.021543834">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; sets executionDuration to the event&apos;s base duration on each event" time="0.042107375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; advances the duration by 1s every second while running" time="0.041353291">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; does not start a timer when the execution is not running" time="0.034222125">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; restarts the 1s timer on each new running event, cancelling the previous one" time="0.040606791">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; stops the timer when a running execution transitions to not running" time="0.037149333">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; execution duration timer &gt; tears down the timer on destroy so the duration stops advancing" time="0.041967833">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; computing unit status subscription &gt; updates computingUnitStatus and re-applies the run button behavior on each status emission" time="0.040602708">
+        </testcase>
+        <testcase classname="src/app/workspace/component/menu/menu.component.spec.ts" name="MenuComponent &gt; computing unit status subscription &gt; stops updating computingUnitStatus once the component is destroyed" time="0.040683292">
+        </testcase>
+    </testsuite>
+</testsuites>

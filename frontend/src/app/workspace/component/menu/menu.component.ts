@@ -75,6 +75,7 @@ import { NzSwitchComponent } from "ng-zorro-antd/switch";
 import { NzBadgeComponent } from "ng-zorro-antd/badge";
 import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
 import { DEFAULT_TEMPLATE_NAME, TemplateService } from "../../../dashboard/service/user/template/template.service";
+import { AdminSettingsService } from "../../../dashboard/service/admin/settings/admin-settings.service";
 
 /**
  * MenuComponent is the top level menu bar that shows
@@ -132,6 +133,8 @@ export class MenuComponent implements OnInit, OnDestroy {
   public ComputingUnitState = ComputingUnitState; // make Angular HTML access enum definition
   public isWorkflowValid: boolean = true; // this will check whether the workflow error or not
   public isWorkflowEmpty: boolean = false;
+  // Whether the Workflow Template feature is enabled (admin "Template" toggle / template_enabled).
+  public templateFeatureEnabled: boolean = false;
   public isSaving: boolean = false;
   public isWorkflowModifiable: boolean = false;
   public isExportDeactivate: boolean = false;
@@ -193,6 +196,7 @@ export class MenuComponent implements OnInit, OnDestroy {
     private panelService: PanelService,
     private computingUnitStatusService: ComputingUnitStatusService,
     protected config: GuiConfigService,
+    private adminSettingsService: AdminSettingsService,
     private router: Router,
     private route: ActivatedRoute
   ) {
@@ -226,6 +230,14 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   public ngOnInit(): void {
+    // The Workflow Template feature is governed by the admin "Template" toggle (the same
+    // template_enabled setting that shows/hides the Templates sidebar tab). When it is off, the
+    // "create template" button is hidden so the one switch turns the whole feature on/off at runtime.
+    this.adminSettingsService
+      .getSetting("template_enabled")
+      .pipe(untilDestroyed(this))
+      .subscribe(value => (this.templateFeatureEnabled = value === "true"));
+
     this.executeWorkflowService
       .getExecutionStateStream()
       .pipe(untilDestroyed(this))
@@ -912,7 +924,7 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   public get showTemplateCreationButton(): boolean {
-    return this.isWorkflowMode;
+    return this.isWorkflowMode && this.templateFeatureEnabled;
   }
 
   protected readonly Privilege = Privilege;

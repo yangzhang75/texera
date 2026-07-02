@@ -18,8 +18,8 @@
  */
 import { Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
-import { Observable, of } from "rxjs";
-import { catchError, map, shareReplay } from "rxjs/operators";
+import { BehaviorSubject, Observable, of } from "rxjs";
+import { catchError, map } from "rxjs/operators";
 import { AppSettings } from "../../../../common/app-setting";
 import { Workflow } from "../../../../common/type/workflow";
 
@@ -37,10 +37,11 @@ export const TEMPLATED_WORKFLOW_BASE_URL = "templated-workflow";
   providedIn: "root",
 })
 export class TemplatedWorkflowService {
-  // Shared wid->tid stream. Fetched once while there are active subscribers (a single workflow-list
-  // render), then RESET when the last one unsubscribes (refCount) -- so re-opening the list always
-  // re-fetches and newly-created template workflows show up. Not permanently cached.
-  private tidMap$?: Observable<ReadonlyMap<number, number>>;
+  // Latest wid->tid map, shared with every workflow-list item. Refreshed (via
+  // refreshTemplatedWorkflowTidMap) whenever list items render, so any newly-built template
+  // workflow gets badged automatically -- no page reload needed.
+  private readonly tidMapSubject = new BehaviorSubject<ReadonlyMap<number, number>>(new Map());
+  private tidMapRefreshInFlight = false;
 
   constructor(private http: HttpClient) {}
 
@@ -56,20 +57,33 @@ export class TemplatedWorkflowService {
   }
 
   /**
-   * A wid->tid map so the workflow list can tell which workflows were built from a template. Shared
-   * among the current list items (one HTTP call per list render) but re-fetched every time the list
-   * is re-opened (refCount), so newly-built template workflows appear. Degrades gracefully to an
-   * empty map if the endpoint is unavailable (e.g. an older backend), so the list never breaks.
+   * The latest wid->tid map (which workflows were built from a template). Subscribe to badge list
+   * items; call refreshTemplatedWorkflowTidMap() to pull the current server state.
    */
   public getTemplatedWorkflowTidMap(): Observable<ReadonlyMap<number, number>> {
-    if (!this.tidMap$) {
-      this.tidMap$ = this.listTemplatedWorkflows().pipe(
-        map(links => new Map(links.map(link => [link.wid, link.tid])) as ReadonlyMap<number, number>),
-        catchError(() => of(new Map<number, number>() as ReadonlyMap<number, number>)),
-        shareReplay({ bufferSize: 1, refCount: true })
-      );
+    return this.tidMapSubject.asObservable();
+  }
+
+  /**
+   * Re-fetch the wid->tid map from the server and push it to all subscribers. De-duplicated so a
+   * burst of list items renders only one request. Called as list items render, so a template
+   * workflow created at any time shows its badge as soon as it appears in the list -- no reload.
+   * Fails silently (keeps the previous map) if the endpoint is unavailable, so the list never breaks.
+   */
+  public refreshTemplatedWorkflowTidMap(): void {
+    if (this.tidMapRefreshInFlight) {
+      return;
     }
-    return this.tidMap$;
+    this.tidMapRefreshInFlight = true;
+    this.listTemplatedWorkflows()
+      .pipe(
+        map(links => new Map(links.map(link => [link.wid, link.tid])) as ReadonlyMap<number, number>),
+        catchError(() => of(this.tidMapSubject.value))
+      )
+      .subscribe(tidMap => {
+        this.tidMapRefreshInFlight = false;
+        this.tidMapSubject.next(tidMap);
+      });
   }
 
   public createTemplatedWorkflow(tid: number): Observable<number> {

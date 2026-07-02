@@ -186,6 +186,9 @@ export class ListItemComponent implements OnChanges {
               this.cdr.markForCheck();
             });
         }
+        // Pull the current server state as this workflow item renders, so a template workflow
+        // created at any point gets badged as soon as it shows up here (de-duped in the service).
+        this.templatedWorkflowService.refreshTemplatedWorkflowTidMap();
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {

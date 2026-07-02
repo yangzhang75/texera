@@ -200,41 +200,46 @@
 }
 
 // A workflow built from a template is inherently different (it's meant to be run / re-parameterised,
-// not freely edited), so its whole row gets a subtle tint to set it apart.
+// not freely edited), so its whole row gets a subtle blue tint to set it apart.
 .list-item-card.template-workflow-row {
-  background-color: #f6f8ff;
+  background-color: #f0f7ff;
 
   &:hover {
-    background-color: #eaefff;
+    background-color: #e3f0ff;
   }
 }
 
-// "Template" badge next to such a workflow. A minimal small-caps label that, on hover, visibly
-// turns into a solid button (fills, lifts, shadow) so it obviously reads as a clickable shortcut
-// to the template editor — not just a label. The row click still opens the normal workspace.
+// "Template" badge next to such a workflow: a flask (potion) icon + small-caps label in the app's
+// blue. On hover it fills into a solid button (lift + shadow) so it clearly reads as a clickable
+// shortcut to the template editor. The row click still opens the normal workspace.
 .template-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   margin-left: 8px;
-  padding: 0 7px;
-  height: 17px;
+  padding: 0 8px;
+  height: 18px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #4c6ef5;
-  background: rgba(76, 110, 245, 0.09);
-  border: 1px solid rgba(76, 110, 245, 0.22);
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
+  border: 1px solid rgba(24, 144, 255, 0.28);
   border-radius: 4px;
   cursor: pointer;
   vertical-align: middle;
   transition: all 0.15s ease;
 
+  .anticon {
+    font-size: 11px;
+  }
+
   &:hover {
     color: #fff;
-    background: #4c6ef5;
-    border-color: #4c6ef5;
+    background: #1890ff;
+    border-color: #1890ff;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(76, 110, 245, 0.45);
+    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.4);
   }
 }

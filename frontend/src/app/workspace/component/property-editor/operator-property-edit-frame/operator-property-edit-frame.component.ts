@@ -74,6 +74,12 @@ import { WorkflowPveService } from "../../../service/virtual-environment/virtual
 import { ComputingUnitStatusService } from "../../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { of } from "rxjs";
 import { map, switchMap, take } from "rxjs/operators";
+import {
+  AttributeOption,
+  AttributeRow,
+  availableAttributeOptions,
+  findAncestorRows,
+} from "./attribute-option-filter.util";
 
 Quill.register("modules/cursors", QuillCursors);
 
@@ -601,6 +607,19 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         mappedField.props = {
           ...mappedField.props,
           reorder: () => this.onFormChanges(cloneDeep(this.formData)),
+        };
+      }
+
+      // Projection: each attribute row's dropdown should exclude source attributes already
+      // chosen in the other rows, so the same attribute can't be selected twice (which
+      // creates duplicate output columns and makes the workflow fail to run). Recompute the
+      // available options reactively from the sibling rows' current values.
+      if (this.currentOperatorSchema?.operatorType === "Projection" && mappedField.key === "originalAttribute") {
+        const allOptions = (mappedField.props?.options ?? []) as AttributeOption[];
+        mappedField.expressions = {
+          ...mappedField.expressions,
+          "props.options": (field: FormlyFieldConfig) =>
+            availableAttributeOptions(allOptions, findAncestorRows(field), field.model as AttributeRow),
         };
       }
 

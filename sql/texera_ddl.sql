@@ -185,6 +185,49 @@ CREATE TABLE IF NOT EXISTS workflow_cover_image
     FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE
     );
 
+-- template
+CREATE TABLE IF NOT EXISTS template
+(
+    tid                     SERIAL PRIMARY KEY,
+    name                    VARCHAR(128) NOT NULL,
+    description             VARCHAR(500),
+    content                 TEXT NOT NULL,
+    creation_time           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_modified_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    configurable_parameters TEXT
+    );
+
+-- workflow_of_template
+CREATE TABLE IF NOT EXISTS workflow_of_template
+(
+    tid         INT PRIMARY KEY,
+    wid         INT NOT NULL UNIQUE,
+    parameters  TEXT,
+    FOREIGN KEY (tid) REFERENCES template(tid) ON DELETE CASCADE,
+    FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE
+    );
+
+-- template_of_user
+CREATE TABLE IF NOT EXISTS template_of_user
+(
+    uid INT NOT NULL,
+    tid INT NOT NULL,
+    PRIMARY KEY (uid, tid),
+    FOREIGN KEY (uid) REFERENCES "user"(uid) ON DELETE CASCADE,
+    FOREIGN KEY (tid) REFERENCES template(tid) ON DELETE CASCADE
+    );
+
+-- template_user_access
+CREATE TABLE IF NOT EXISTS template_user_access
+(
+    uid       INT NOT NULL,
+    tid       INT NOT NULL,
+    privilege privilege_enum NOT NULL DEFAULT 'NONE',
+    PRIMARY KEY (uid, tid),
+    FOREIGN KEY (uid) REFERENCES "user"(uid) ON DELETE CASCADE,
+    FOREIGN KEY (tid) REFERENCES template(tid) ON DELETE CASCADE
+    );
+
 -- project
 CREATE TABLE IF NOT EXISTS project
 (

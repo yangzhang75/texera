@@ -39,7 +39,7 @@
         [checked]="entry.checked"
         (change)="onCheckboxChange(entry)"
         (click)="$event.stopPropagation()"
-        *ngIf="isPrivateSearch && entry.type==='workflow'" />
+        *ngIf="isPrivateSearch && (entry.type==='workflow' || entry.type==='template')" />
     </div>
 
     <div
@@ -185,6 +185,16 @@
     *ngIf="isPrivateSearch"
     class="button-group">
     <button
+      *ngIf="entry.type==='template'"
+      nz-button
+      nzType="text"
+      title="Edit Template"
+      (click)="openTemplateWorkspace(this.entry.id)">
+      <i
+        nz-icon
+        nzType="edit"></i>
+    </button>
+    <button
       *ngIf="entry.type==='workflow'"
       nz-button
       nzType="text"
@@ -206,7 +216,7 @@
     <button
       nz-button
       nzType="text"
-      *ngIf="entry.type==='workflow'"
+      *ngIf="entry.type==='workflow' || entry.type==='template'"
       title="Copy"
       (click)="duplicated.emit()">
       <i
@@ -216,7 +226,7 @@
     <button
       nz-button
       nzType="text"
-      *ngIf="entry.type === 'workflow' || entry.type === 'dataset'"
+      *ngIf="entry.type === 'workflow' || entry.type === 'dataset' || entry.type === 'template'"
       title="Download"
       (click)="onClickDownload()">
       <i

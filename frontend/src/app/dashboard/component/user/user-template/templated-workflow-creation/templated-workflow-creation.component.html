@@ -1,0 +1,65 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+<div class="tw-form">
+  <header class="tw-header">
+    <h2 class="job-title">Build Workflow from Template</h2>
+    <p class="tw-subtitle">Set the parameters below, then apply them to your workflow. The preview updates after you submit.</p>
+  </header>
+
+  <div *ngIf="sections.length === 0" class="empty-state">
+    No configurable parameters in this template.
+  </div>
+
+  <div *ngFor="let section of sections" class="template-section">
+    <h3 class="template-section-title">{{ section.label }}</h3>
+    <form [formGroup]="section.form" class="template-section-body">
+      <formly-form
+        [model]="section.model"
+        [fields]="section.fields"
+        [form]="section.form">
+      </formly-form>
+    </form>
+  </div>
+
+  <div class="tw-actionbar" *ngIf="sections.length > 0">
+    <button
+      nz-button
+      nzType="primary"
+      class="tw-submit"
+      [class.tw-submit-idle]="submitIdle"
+      [disabled]="submitDisabled"
+      (click)="onJobFormSubmitted()">
+      Submit
+    </button>
+  </div>
+</div>
+
+<div
+  class="readonly-embedded-workspace-container"
+  *ngIf="wid && showEmbeddedWorkspace"
+>
+  <div class="inner-scale">
+    <texera-workspace
+      [wid]="wid"
+      [isEmbedded]="true"
+      [mode]="'workflow'"
+    >
+    </texera-workspace>
+  </div>
+</div>

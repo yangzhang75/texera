@@ -1,0 +1,260 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+// ---- Configurable-property form (the part above the embedded preview) ----
+// Width tracks the embedded preview below (same 80vw) so their left/right edges line up;
+// otherwise the narrower form leaves a dead band of empty space above the wider preview.
+.tw-form {
+  width: 80vw;
+  min-width: 400px;
+  max-width: 95vw;
+  margin: 0 auto;
+  padding: 28px 0 12px;
+}
+
+.tw-header {
+  margin-bottom: 28px;
+}
+
+.job-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.tw-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.empty-state {
+  padding: 28px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  background: #fafafa;
+  border: 1px dashed #e6e8eb;
+  border-radius: 12px;
+}
+
+// Each operator's configurable properties live in a light, airy card.
+.template-section {
+  margin-bottom: 18px;
+  background: #fff;
+  border: 1px solid #eef0f2;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+
+// Refined small-caps section header on a clean white ground (no heavy grey bar).
+.template-section-title {
+  margin: 0;
+  padding: 16px 28px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.5);
+  background: transparent;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.template-section-body {
+  display: block;
+  padding: 20px 28px 4px;
+}
+
+// ---- Action bar ----
+.tw-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 80vw;
+  min-width: 400px;
+  max-width: 95vw;
+  margin: 8px auto 0;
+}
+
+// Match the app's flat 2px-radius buttons (Run, Select File, …) rather than a rounded, shadowed
+// pill that looks foreign to the rest of the product.
+.tw-submit {
+  min-width: 96px;
+  height: 34px;
+  padding: 0 20px;
+  font-weight: 500;
+  border-radius: 2px;
+}
+
+// "Nothing to apply" state: the button looks greyed/inactive but stays clickable (so an edit +
+// click always works and it can never block a change). The moment the form differs from the
+// applied graph it drops this class and returns to the bright primary look.
+:host ::ng-deep .tw-submit.tw-submit-idle:not([disabled]) {
+  background: #f5f5f5 !important;
+  border-color: #d9d9d9 !important;
+  color: rgba(0, 0, 0, 0.3) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+
+  &:hover {
+    background: #eee !important;
+    border-color: #d9d9d9 !important;
+    color: rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
+// Required-but-empty fields turn red after a submit attempt (markAllAsTouched), so the user
+// can see exactly what's missing. ::ng-deep is needed to reach the Formly-rendered controls.
+:host ::ng-deep .template-section {
+  // --- Unify the field layout so the whole form reads as one grid ---
+  // Standalone operator fields ship as horizontal rows (label on the left); the array fields
+  // (Attribute/Alias/…) render with the label on top. Force every field to label-on-top so the
+  // form is consistent instead of a mix of two layouts.
+  .ant-form-item.ant-row {
+    flex-flow: column nowrap;
+    align-items: stretch;
+
+    > .ant-form-item-label {
+      width: 100%;
+      flex: 0 0 auto;
+      text-align: left;
+      padding: 0 0 4px;
+      line-height: 1.4;
+      white-space: normal;
+    }
+
+    > .ant-form-item-control {
+      flex: 1 1 auto;
+      max-width: 100%;
+    }
+  }
+
+  // Every input/select/number sits in the same comfortable column width, so fields stop looking
+  // randomly big or tiny (the file path was full-width, the Limit number was ~90px).
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select,
+  textarea.ant-input,
+  nz-input-number,
+  .ant-input-number {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  // File picker (the "inputautocomplete" type) ships as [path input][Select File] side by side,
+  // which leaves the button floating mid-row. Stack it: path on top, Select File underneath.
+  ng-component:has(> input):has(> button) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+
+    > input {
+      width: 100%;
+    }
+
+    > button {
+      flex: 0 0 auto;
+    }
+  }
+
+  input.ng-invalid.ng-touched,
+  textarea.ng-invalid.ng-touched,
+  .ant-input-number.ng-invalid.ng-touched {
+    border-color: #ff4d4f;
+    &:focus,
+    &:hover {
+      border-color: #ff7875;
+    }
+  }
+
+  nz-select.ng-invalid.ng-touched .ant-select-selector {
+    border-color: #ff4d4f !important;
+  }
+
+  // De-emphasise the per-row delete control: it shipped as a loud red-outlined circle, which
+  // fights the light look. Keep it a quiet grey icon that only reddens on hover.
+  button.ant-btn-dangerous.ant-btn-circle.ant-btn-icon-only {
+    border-color: transparent;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.25);
+    box-shadow: none;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover,
+    &:focus {
+      color: #ff4d4f;
+      border-color: transparent;
+      background: rgba(255, 77, 79, 0.08);
+    }
+  }
+}
+
+// ---- Embedded read-only preview ----
+// Same width as the form above (80vw) AND the same light card frame, so the page reads as one
+// coherent design rather than a heavy grey box bolted under a set of light cards.
+.readonly-embedded-workspace-container {
+  width: 80vw;
+  height: calc(80vw * 0.4);
+  min-width: 400px;
+  min-height: 250px;
+  max-width: 95vw;
+  max-height: 85vh;
+  margin: 0 auto;
+  resize: both;
+  overflow: hidden;
+  border: 1px solid #eef0f2;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  background: white;
+  position: relative;
+}
+
+.inner-scale {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-origin: top left;
+  transform: scale(1);
+}
+
+texera-workspace {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  position: relative;
+}
+
+// The read-only preview is just a picture of the workflow graph, so hide the workspace's
+// left panel (operators / versions / settings) -- it would otherwise open over the canvas
+// (e.g. the "Versions" tab) and cover the graph the user is trying to see.
+:host ::ng-deep .readonly-embedded-workspace-container texera-left-panel {
+  display: none !important;
+}
+
+.hidden-before-submit {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}

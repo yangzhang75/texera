@@ -31,6 +31,7 @@ export enum EntityType {
   Dataset = "dataset",
   Project = "project",
   File = "file",
+  Template = "template",
   ComputingUnit = "computing-unit",
 }
 

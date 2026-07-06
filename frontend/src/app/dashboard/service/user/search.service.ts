@@ -17,14 +17,14 @@
  * under the License.
  */
 
-import { HttpClient } from "@angular/common/http";
-import { Injectable } from "@angular/core";
-import { forkJoin, Observable, of } from "rxjs";
-import { SearchResult, SearchResultBatch, SearchResultItem } from "../../type/search-result";
-import { AppSettings } from "../../../common/app-setting";
-import { SearchFilterParameters, toQueryStrings } from "../../type/search-filter-parameters";
-import { SortMethod } from "../../type/sort-method";
-import { DashboardEntry, UserInfo } from "../../type/dashboard-entry";
+import {HttpClient} from "@angular/common/http";
+import {Injectable} from "@angular/core";
+import {forkJoin, Observable, of} from "rxjs";
+import {SearchResult, SearchResultBatch, SearchResultItem} from "../../type/search-result";
+import {AppSettings} from "../../../common/app-setting";
+import {SearchFilterParameters, toQueryStrings} from "../../type/search-filter-parameters";
+import {SortMethod} from "../../type/sort-method";
+import {DashboardEntry, UserInfo} from "../../type/dashboard-entry";
 import {
   AccessResponse,
   ActionType,
@@ -33,8 +33,9 @@ import {
   HubService,
   LikedStatus,
 } from "../../../hub/service/hub.service";
-import { map, switchMap } from "rxjs/operators";
-import { WorkflowPersistService } from "../../../common/service/workflow-persist/workflow-persist.service";
+import {map, switchMap} from "rxjs/operators";
+import {WorkflowPersistService} from "../../../common/service/workflow-persist/workflow-persist.service";
+import {TemplateService} from "./template/template.service";
 
 const DASHBOARD_SEARCH_URL = "dashboard/search";
 const DASHBOARD_PUBLIC_SEARCH_URL = "dashboard/publicSearch";
@@ -48,7 +49,8 @@ export class SearchService {
   constructor(
     private http: HttpClient,
     private hubService: HubService,
-    private workflowPersistService: WorkflowPersistService
+    private workflowPersistService: WorkflowPersistService,
+    private templateService: TemplateService,
   ) {}
 
   /**
@@ -73,7 +75,7 @@ export class SearchService {
     params: SearchFilterParameters,
     start: number,
     count: number,
-    type: "workflow" | "project" | "file" | "dataset" | null,
+    type: "workflow" | "project" | "file" | "dataset" | "template" | null,
     orderBy: SortMethod,
     isLogin: boolean,
     includePublic: boolean = false
@@ -125,7 +127,7 @@ export class SearchService {
     params: SearchFilterParameters,
     start: number,
     count: number,
-    type: "workflow" | "project" | "dataset" | "file" | null,
+    type: "workflow" | "project" | "dataset" | "file" | "template" | null,
     orderBy: SortMethod,
     isLogin: boolean,
     includePublic: boolean
@@ -136,7 +138,8 @@ export class SearchService {
         const filteredResults =
           type === "dataset" ? results.results.filter(i => i !== null && i.dataset != null) : results.results;
 
-        return this.extendSearchResultsWithHubActivityInfo(filteredResults, isLogin).pipe(
+        const activities = type === "template" ? (["access", "size"] as EnrichActivity[]) : [];
+        return this.extendSearchResultsWithHubActivityInfo(filteredResults, isLogin, activities).pipe(
           map(entries => ({
             entries,
             more: results.more,
@@ -173,6 +176,7 @@ export class SearchService {
       if (i.project) userIds.add(i.project.ownerId);
       else if (i.workflow) userIds.add(i.workflow.ownerId);
       else if (i.dataset?.dataset?.ownerUid != null) userIds.add(i.dataset.dataset.ownerUid);
+      else if (i.template?.ownerId != null) userIds.add(i.template.ownerId);
     });
     const userInfo$ = userIds.size ? this.getUserInfo(Array.from(userIds)) : of({} as Record<number, UserInfo>);
 
@@ -188,6 +192,9 @@ export class SearchService {
       } else if (i.dataset?.dataset?.did != null) {
         entityTypes.push(EntityType.Dataset);
         entityIds.push(i.dataset.dataset.did);
+      } else if (i.template?.template?.tid != null) {
+        entityTypes.push(EntityType.Template);
+        entityIds.push(i.template.template.tid);
       }
     });
 
@@ -203,10 +210,13 @@ export class SearchService {
         : of([] as AccessResponse[]);
 
     const workflowIds = items.map(i => i.workflow?.workflow?.wid).filter((wid): wid is number => wid != null);
+    const templateIds = items.map(i => i.template?.template?.tid).filter((tid): tid is number => tid != null);
     const sizes$ =
       doSize && workflowIds.length > 0
         ? this.workflowPersistService.getSizes(workflowIds)
-        : of({} as Record<number, number>);
+        : doSize && templateIds.length > 0
+          ? this.templateService.getSizes(templateIds)
+          : of({} as Record<number, number>);
 
     return forkJoin([userInfo$, counts$, liked$, access$, sizes$]).pipe(
       map(([userMap, counts, liked, access, sizesMap]) => {
@@ -224,14 +234,18 @@ export class SearchService {
             ? new DashboardEntry(i.workflow)
             : i.project
               ? new DashboardEntry(i.project)
-              : new DashboardEntry(i.dataset!);
+              : i.dataset
+                ? new DashboardEntry(i.dataset)
+                : new DashboardEntry(i.template!);
 
           const key = `${entry.type}:${entry.id}`;
           const ownerId = i.workflow
             ? i.workflow.ownerId
             : i.project
               ? i.project.ownerId
-              : i.dataset!.dataset!.ownerUid!;
+              : i.dataset
+                ? i.dataset!.dataset!.ownerUid!
+                : i.template!.ownerId!;
           const ui = (userMap as any)[ownerId];
           if (ui) {
             entry.setOwnerName(ui.userName);
@@ -249,10 +263,9 @@ export class SearchService {
             entry.setAccessUsers(accessMap[key] ?? []);
           }
 
-          if (doSize && entry.type === EntityType.Workflow && entry.id != null) {
+          if (doSize && (entry.type === EntityType.Workflow || entry.type === EntityType.Template) && entry.id != null) {
             entry.setSize(sizesMap[entry.id] ?? 0);
           }
-
           return entry;
         });
       })

@@ -19,7 +19,7 @@
 
 import { DatePipe, Location, NgIf, NgFor, NgTemplateOutlet } from "@angular/common";
 import { Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from "@angular/core";
-import { Router, RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { UserService } from "../../../common/service/user/user.service";
 import {
   DEFAULT_WORKFLOW_NAME,
@@ -50,7 +50,7 @@ import { ResultExportationComponent } from "../result-exportation/result-exporta
 import { ReportGenerationService } from "../../service/report-generation/report-generation.service";
 import { ShareAccessComponent } from "src/app/dashboard/component/user/share-access/share-access.component";
 import { PanelService } from "../../service/panel/panel.service";
-import { USER_WORKFLOW } from "../../../app-routing.constant";
+import { USER_TEMPLATE, USER_WORKFLOW } from "../../../app-routing.constant";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
@@ -74,6 +74,8 @@ import { NzPopoverDirective } from "ng-zorro-antd/popover";
 import { NzSwitchComponent } from "ng-zorro-antd/switch";
 import { NzBadgeComponent } from "ng-zorro-antd/badge";
 import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
+import { DEFAULT_TEMPLATE_NAME, TemplateService } from "../../../dashboard/service/user/template/template.service";
+import { AdminSettingsService } from "../../../dashboard/service/admin/settings/admin-settings.service";
 
 /**
  * MenuComponent is the top level menu bar that shows
@@ -125,14 +127,16 @@ import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
   ],
 })
 export class MenuComponent implements OnInit, OnDestroy {
+  public entityId?: number = undefined;
   public executionState: ExecutionState; // set this to true when the workflow is started
   public ExecutionState = ExecutionState; // make Angular HTML access enum definition
   public ComputingUnitState = ComputingUnitState; // make Angular HTML access enum definition
   public isWorkflowValid: boolean = true; // this will check whether the workflow error or not
   public isWorkflowEmpty: boolean = false;
+  // Whether the Workflow Template feature is enabled (admin "Template" toggle / template_enabled).
+  public templateFeatureEnabled: boolean = false;
   public isSaving: boolean = false;
   public isWorkflowModifiable: boolean = false;
-  public workflowId?: number;
   public isExportDeactivate: boolean = false;
   public showRegion: boolean = false;
   public showGrid: boolean = false;
@@ -140,6 +144,10 @@ export class MenuComponent implements OnInit, OnDestroy {
   public showStatus: boolean = false;
   protected readonly USER_WORKFLOW = USER_WORKFLOW;
 
+  @Input() public mode: "workflow" | "template" = "workflow";
+  // True when this toolbar is inside the read-only embedded preview (e.g. the templated-workflow
+  // editor). Disables actions that make no sense there, such as "create new".
+  @Input() public isEmbedded: boolean = false;
   @Input() public writeAccess: boolean = false;
   @Input() public pid?: number = undefined;
   @Input() public autoSaveState: string = "";
@@ -174,6 +182,7 @@ export class MenuComponent implements OnInit, OnDestroy {
     public validationWorkflowService: ValidationWorkflowService,
     public workflowPersistService: WorkflowPersistService,
     public workflowVersionService: WorkflowVersionService,
+    public templateService: TemplateService,
     public userService: UserService,
     private datePipe: DatePipe,
     public workflowResultExportService: WorkflowResultExportService,
@@ -187,8 +196,12 @@ export class MenuComponent implements OnInit, OnDestroy {
     private panelService: PanelService,
     private computingUnitStatusService: ComputingUnitStatusService,
     protected config: GuiConfigService,
-    private router: Router
+    private adminSettingsService: AdminSettingsService,
+    private router: Router,
+    private route: ActivatedRoute
   ) {
+    this.entityId = Number(this.route.snapshot.params["id"]) || undefined;
+
     workflowWebsocketService
       .subscribeToEvent("ExecutionDurationUpdateEvent")
       .pipe(
@@ -217,6 +230,14 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   public ngOnInit(): void {
+    // The Workflow Template feature is governed by the admin "Template" toggle (the same
+    // template_enabled setting that shows/hides the Templates sidebar tab). When it is off, the
+    // "create template" button is hidden so the one switch turns the whole feature on/off at runtime.
+    this.adminSettingsService
+      .getSetting("template_enabled")
+      .pipe(untilDestroyed(this))
+      .subscribe(value => (this.templateFeatureEnabled = value === "true"));
+
     this.executeWorkflowService
       .getExecutionStateStream()
       .pipe(untilDestroyed(this))
@@ -324,7 +345,7 @@ export class MenuComponent implements OnInit, OnDestroy {
       nzData: {
         writeAccess: this.writeAccess,
         type: "workflow",
-        id: this.workflowId,
+        id: this.entityId,
         allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
         inWorkspace: true,
       },
@@ -605,7 +626,7 @@ export class MenuComponent implements OnInit, OnDestroy {
           workflowName = file.name.substring(0, fileExtensionIndex);
         }
         if (workflowName.trim() === "") {
-          workflowName = DEFAULT_WORKFLOW_NAME;
+          workflowName = this.isWorkflowMode ? DEFAULT_WORKFLOW_NAME : DEFAULT_TEMPLATE_NAME;
         }
 
         const workflow: Workflow = {
@@ -650,7 +671,7 @@ export class MenuComponent implements OnInit, OnDestroy {
     const currentDescription = currentWorkflow.description ?? "";
 
     const modalRef = this.modalService.create<MarkdownDescriptionComponent>({
-      nzTitle: "Edit Workflow Description",
+      nzTitle: this.isWorkflowMode ? "Edit Workflow Description" : "Edit Template Description",
       nzContent: MarkdownDescriptionComponent,
       nzData: {
         description: currentDescription,
@@ -680,6 +701,20 @@ export class MenuComponent implements OnInit, OnDestroy {
     });
   }
 
+  public onClickCreateTemplateFromWorkflow(): void {
+    const workflow = this.workflowActionService.getWorkflow();
+    if (!workflow.wid) {
+      return;
+    }
+
+    this.templateService
+      .createTemplateFromWorkflow(workflow.wid)
+      .pipe(untilDestroyed(this))
+      .subscribe(template => {
+        this.router.navigate([`${USER_TEMPLATE}/${template.template.tid}`]);
+      });
+  }
+
   /**
    * Returns true if there's any operator on the graph; false otherwise
    */
@@ -688,6 +723,10 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   public persistWorkflow(): void {
+    if (!this.isWorkflowMode) {
+      return;
+    }
+
     this.isSaving = true;
     let localPid = this.pid;
     this.workflowPersistService
@@ -808,8 +847,10 @@ export class MenuComponent implements OnInit, OnDestroy {
       .workflowMetaDataChanged()
       .pipe(untilDestroyed(this))
       .subscribe(metadata => {
-        this.workflowId = metadata.wid;
-        // consider adding the oprerator reconnect
+        if (this.isWorkflowMode) {
+          this.entityId = metadata.wid;
+        }
+        // consider adding the operator reconnect
       });
   }
 
@@ -841,6 +882,46 @@ export class MenuComponent implements OnInit, OnDestroy {
       this.currentExecutionName || "Untitled Execution",
       this.config.env.workflowEmailNotificationEnabled
     );
+  }
+
+  public get entityName(): string {
+    return this.mode;
+  }
+
+  public get entityNameCapitalized(): string {
+    return this.entityName.charAt(0).toUpperCase() + this.entityName.slice(1);
+  }
+
+  public get dashboardLink(): string {
+    if (this.isWorkflowMode) {
+      return USER_WORKFLOW;
+    } else {
+      return USER_TEMPLATE;
+    }
+  }
+
+  public get isWorkflowMode(): boolean {
+    return this.mode === "workflow";
+  }
+
+  public get isTemplateMode(): boolean {
+    return this.mode === "template";
+  }
+
+  public get showExecutionButtons(): boolean {
+    return !this.isTemplateMode;
+  }
+
+  public get showEditingButtons(): boolean {
+    return !this.isTemplateMode;
+  }
+
+  public get showCreateNewButton(): boolean {
+    return !this.isTemplateMode;
+  }
+
+  public get showTemplateCreationButton(): boolean {
+    return this.isWorkflowMode && this.templateFeatureEnabled;
   }
 
   protected readonly Privilege = Privilege;

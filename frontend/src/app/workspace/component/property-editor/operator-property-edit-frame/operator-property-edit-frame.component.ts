@@ -74,6 +74,7 @@ import { WorkflowPveService } from "../../../service/virtual-environment/virtual
 import { ComputingUnitStatusService } from "../../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { of } from "rxjs";
 import { map, switchMap, take } from "rxjs/operators";
+import { ConfigurablePropertyWrapperComponent } from "./configurable-property-wrapper/configurable-property-wrapper.component";
 
 Quill.register("modules/cursors", QuillCursors);
 
@@ -116,6 +117,7 @@ Quill.register("modules/cursors", QuillCursors);
 })
 export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, OnDestroy {
   @Input() currentOperatorId?: string;
+  @Input() mode?: "workflow" | "template" = "workflow";
 
   currentOperatorSchema?: OperatorSchema;
 
@@ -405,6 +407,16 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       .subscribe(operatorChanged => {
         this.formData = cloneDeep(operatorChanged.operator.operatorProperties);
         this.changeDetectorRef.detectChanges();
+        // The new model can grow the form (e.g. an attribute row added through another editing
+        // path, such as a templated-workflow form submit updating this operator). Angular adds
+        // controls to an already-disabled FormArray in the ENABLED state, so the new rows would
+        // become editable in an otherwise read-only editor. Re-assert the current interactivity
+        // after the form has rendered the new controls (deferred, like the initial binding, due
+        // to Formly only (dis)abling controls post-render).
+        setTimeout(() => {
+          this.setInteractivity(this.interactive);
+          this.changeDetectorRef.detectChanges();
+        }, 0);
       });
   }
 
@@ -578,6 +590,27 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
           "operator",
           this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId).operatorType,
           this.currentOperatorId
+        );
+      }
+
+      if (
+        this.currentOperatorId !== undefined &&
+        typeof mappedField.key === "string" &&
+        schema.properties?.[mappedField.key] !== undefined
+      ) {
+        const operator = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId);
+
+        const configurableSet = new Set(operator.configurableProperties ?? []);
+
+        ConfigurablePropertyWrapperComponent.setupFieldConfig(
+          mappedField,
+          this.isTemplateMode(),
+          configurableSet.has(mappedField.key),
+          (event: Event) => {
+            const checked = (event.target as HTMLInputElement).checked;
+            this.handleToggleConfigurable(mappedField.key as string, checked);
+          },
+          mappedField.wrappers?.includes("preset-wrapper")
         );
       }
 
@@ -897,5 +930,28 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       placeholder: "Start collaborating...",
       theme: "snow",
     });
+  }
+
+  handleToggleConfigurable(property: string, checked: boolean): void {
+    if (!this.currentOperatorId) return;
+
+    const operator = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId);
+
+    const currentConfigurableProperties = new Set(operator.configurableProperties ?? []);
+
+    if (checked) {
+      currentConfigurableProperties.add(property);
+    } else {
+      currentConfigurableProperties.delete(property);
+    }
+
+    this.workflowActionService.setOperatorConfigurableProperties(
+      this.currentOperatorId,
+      Array.from(currentConfigurableProperties)
+    );
+  }
+
+  isTemplateMode(): boolean {
+    return this.mode === "template";
   }
 }

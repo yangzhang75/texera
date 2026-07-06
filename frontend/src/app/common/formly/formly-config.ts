@@ -32,6 +32,7 @@ import { DatasetVersionSelectorComponent } from "../../workspace/component/datas
 import { HuggingFaceImageUploadComponent } from "../../workspace/component/hugging-face-image-upload/hugging-face-image-upload.component";
 import { HuggingFaceComponent } from "../../workspace/component/hugging-face/hugging-face.component";
 import { HuggingFaceAudioUploadComponent } from "../../workspace/component/hugging-face-audio-upload/hugging-face-audio-upload.component";
+import { ConfigurablePropertyWrapperComponent } from "../../workspace/component/property-editor/operator-property-edit-frame/configurable-property-wrapper/configurable-property-wrapper.component";
 
 /**
  * Configuration for using Json Schema with Formly.
@@ -92,6 +93,7 @@ export const TEXERA_FORMLY_CONFIG = {
   wrappers: [
     { name: "preset-wrapper", component: PresetWrapperComponent },
     { name: "collab-wrapper", component: CollabWrapperComponent },
+    { name: "configurable-property-wrapper", component: ConfigurablePropertyWrapperComponent },
   ],
 };
 

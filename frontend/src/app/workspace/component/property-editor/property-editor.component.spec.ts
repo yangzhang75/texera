@@ -80,6 +80,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      mode: "workflow",
     });
 
     // unhighlight the operator
@@ -129,6 +130,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      mode: "workflow",
     });
 
     // unhighlight the operator
@@ -144,6 +146,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockResultPredicate.operatorID,
+      mode: "workflow",
     });
   });
 });

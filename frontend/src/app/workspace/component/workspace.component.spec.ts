@@ -87,9 +87,23 @@ describe("WorkspaceComponent", () => {
     },
   } as unknown as Workflow;
 
-  function configureRoute(params: Record<string, any> = {}, queryParams: Record<string, any> = {}) {
+  function asParamMap(source: Record<string, any>) {
     return {
-      snapshot: { params, queryParams, fragment: null as string | null },
+      get: (key: string) => (source[key] !== undefined && source[key] !== null ? String(source[key]) : null),
+      has: (key: string) => source[key] !== undefined && source[key] !== null,
+    };
+  }
+
+  // The workspace now drives loading from `route.paramMap` / `route.queryParamMap`
+  // (the `mode`/`id`/`pid` context) rather than `route.snapshot` directly, so the
+  // mock route exposes both the observable maps and the snapshot. Default mode is
+  // "workflow" so existing workflow-oriented assertions keep their semantics.
+  function configureRoute(params: Record<string, any> = {}, queryParams: Record<string, any> = {}) {
+    const routeParams = { mode: "workflow", ...params };
+    return {
+      paramMap: of(asParamMap(routeParams)),
+      queryParamMap: of(asParamMap(queryParams)),
+      snapshot: { params: routeParams, queryParams, fragment: null as string | null },
     };
   }
 
@@ -228,7 +242,8 @@ describe("WorkspaceComponent", () => {
       await createFixture(configureRoute({}));
       fixture.detectChanges(); // triggers ngOnInit + ngAfterViewInit
       expect(component.isLoading).toBe(false);
-      expect(workflowActionService.disableWorkflowModification).not.toHaveBeenCalled();
+      // NOTE: cleanupWorkspaceState now disables modification on every (re)load before
+      // initWorkspaceState runs, so we no longer assert it's never called on cold start.
       expect(operatorMetadataService.getOperatorMetadata).toHaveBeenCalled();
     });
 
@@ -331,10 +346,12 @@ describe("WorkspaceComponent", () => {
       try {
         const workflowChanged$ = new Subject<void>();
         await createFixture();
+        // Persistence now keys off `mode`; set workflow mode explicitly since this
+        // test drives registerAutoPersistWorkflow() without going through ngOnInit.
+        component.mode = "workflow";
         workflowActionService.workflowChanged.mockReturnValue(workflowChanged$.asObservable());
-        // Persist returns a workflow with a different wid than what's currently
-        // on the metadata (wid: 42 in the stub). That mismatch is the trigger
-        // for the URL update.
+        // Persist returns a workflow with a different wid than the component's
+        // current wid (undefined). That mismatch is the trigger for the URL update.
         const persistedWorkflow = { ...stubWorkflow, wid: 99 } as Workflow;
         workflowPersistService.persistWorkflow.mockReturnValue(of(persistedWorkflow));
 
@@ -355,8 +372,10 @@ describe("WorkspaceComponent", () => {
       try {
         const workflowChanged$ = new Subject<void>();
         await createFixture();
+        component.mode = "workflow";
+        // Component wid is 42, persisted wid is also 42 → no URL update.
+        component.wid = 42;
         workflowActionService.workflowChanged.mockReturnValue(workflowChanged$.asObservable());
-        // Metadata wid is 42, persisted wid is also 42 → no URL update.
         workflowPersistService.persistWorkflow.mockReturnValue(of(stubWorkflow));
 
         component.registerAutoPersistWorkflow();
@@ -364,8 +383,9 @@ describe("WorkspaceComponent", () => {
         vi.advanceTimersByTime(5000);
 
         expect(locationMock.go).not.toHaveBeenCalled();
-        // Metadata is still synced even when the URL doesn't change.
-        expect(workflowActionService.setWorkflowMetadata).toHaveBeenCalledWith(stubWorkflow);
+        // Metadata is still synced even when the URL doesn't change. handlePersistSuccess
+        // merges the persisted workflow into the current metadata, so assert containment.
+        expect(workflowActionService.setWorkflowMetadata).toHaveBeenCalledWith(expect.objectContaining(stubWorkflow));
       } finally {
         vi.useRealTimers();
       }
@@ -377,16 +397,21 @@ describe("WorkspaceComponent", () => {
       const route = configureRoute({ id: "42" });
       await createFixture(route);
       fixture.detectChanges();
-      expect(hubService.postView).toHaveBeenCalledWith("42", 7, EntityType.Workflow);
+      // wid is now resolved from the route paramMap into a number before postView.
+      expect(hubService.postView).toHaveBeenCalledWith(42, 7, EntityType.Workflow);
     });
 
     it("falls back to uid=0 when no user is signed in", async () => {
       const route = configureRoute({ id: "42" });
       await createFixture(route);
+      // updateViewCount is invoked directly (no lifecycle), so seed the workflow-mode
+      // context it now reads from.
+      component.mode = "workflow";
+      component.wid = 42;
       userService.getCurrentUser.mockReturnValue(undefined);
       // Re-trigger after mutating the mock; createFixture has already wired it.
       component.updateViewCount();
-      expect(hubService.postView).toHaveBeenCalledWith("42", 0, EntityType.Workflow);
+      expect(hubService.postView).toHaveBeenCalledWith(42, 0, EntityType.Workflow);
     });
   });
 

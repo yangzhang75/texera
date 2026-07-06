@@ -17,7 +17,17 @@
  * under the License.
  */
 
-import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, Type, ViewChild } from "@angular/core";
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  HostListener,
+  Input,
+  OnDestroy,
+  OnInit,
+  Type,
+  ViewChild,
+} from "@angular/core";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { NzResizeEvent, NzResizableDirective, NzResizeHandlesComponent } from "ng-zorro-antd/resizable";
 import { CdkDragDrop, moveItemInArray, CdkDropList, CdkDrag, CdkDragHandle } from "@angular/cdk/drag-drop";
@@ -64,6 +74,7 @@ import { NzButtonComponent } from "ng-zorro-antd/button";
 })
 export class LeftPanelComponent implements OnDestroy, OnInit, AfterViewInit {
   @ViewChild("content") content!: ElementRef<HTMLDivElement>;
+  @Input() dragBoundary: string = "texera-workspace";
   protected readonly window = window;
   private static readonly MIN_PANEL_WIDTH = 230;
   currentComponent: Type<any> | null = null;

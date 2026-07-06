@@ -22,6 +22,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  Input,
   OnDestroy,
   OnInit,
   Type,
@@ -93,8 +94,8 @@ export const DEFAULT_HEIGHT = 500;
   ],
 })
 export class ResultPanelComponent implements OnInit, OnDestroy {
-  @ViewChild("dynamicComponent")
-  componentOutlets!: ElementRef;
+  @ViewChild("dynamicComponent") componentOutlets!: ElementRef;
+  @Input() dragBoundary: string = "texera-workspace";
   frameComponentConfigs: Map<string, { component: Type<any>; componentInputs: {} }> = new Map();
   protected readonly window = window;
   id = -1;

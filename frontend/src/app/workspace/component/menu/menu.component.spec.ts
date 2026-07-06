@@ -453,7 +453,7 @@ describe("MenuComponent", () => {
       vi.spyOn(workflowPersistService, "retrieveOwners").mockReturnValue(of(["alice@example.com"]));
       const fakeModalRef = { afterClose: of(undefined) } as unknown as NzModalRef;
       const createSpy = vi.spyOn(modalService, "create").mockReturnValue(fakeModalRef);
-      component.workflowId = 7;
+      component.entityId = 7;
       component.writeAccess = true;
 
       await component.onClickOpenShareAccess();

@@ -45,28 +45,3 @@ pympler==1.1
 boto3==1.40.53
 requests==2.34.0
 urllib3==2.7.0
-
-# scGPT demo workflow deps (its UDFs do `from utils import *`). Not Texera core; needed only to
-# run that workflow. numpy/pandas/psutil/protobuf are already pinned above and reused as-is.
-scgpt==0.2.4
-scanpy==1.12.1
-anndata==0.12.18
-torch==2.3.0
-torchtext==0.18.0        # must match torch 2.3.0 (scgpt needs torchtext; newer torch has no matching torchtext)
-scikit-learn==1.9.0
-scipy==1.18.0
-h5py==3.16.0
-matplotlib==3.11.0
-seaborn==0.13.2
-numba==0.65.1
-umap-learn==0.5.12
-leidenalg==0.12.0
-igraph==1.0.0
-scib==1.1.7
-tqdm==4.68.3
-click==8.4.2
-wandb==0.28.0
-PyYAML==6.0.3
-ipython<9
-# faiss only used by utils/build_atlas_index_faiss.py (not hit by the current chain);
-# add faiss-cpu (or faiss-gpu) if that path is exercised.

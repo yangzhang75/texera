@@ -106,6 +106,9 @@ export class ResultPanelComponent implements OnInit, OnDestroy {
   operatorTitle = "";
   dragPosition = { x: 0, y: 0 };
   returnPosition = { x: 0, y: 0 };
+  // Maximize toggle: remembers the size we had before maximizing so it can be restored exactly.
+  isMaximized = false;
+  private sizeBeforeMaximize: { width: number; height: number } | null = null;
 
   // the highlighted operator ID for display result table / visualization / breakpoint
   currentOperatorId?: string | undefined;
@@ -386,12 +389,31 @@ export class ResultPanelComponent implements OnInit, OnDestroy {
   openPanel() {
     this.height = DEFAULT_HEIGHT;
     this.width = DEFAULT_WIDTH;
+    this.isMaximized = false;
     this.resizeService.changePanelSize(this.width, this.height);
   }
 
   closePanel() {
     this.height = 32.5;
     this.width = 0;
+    this.isMaximized = false;
+  }
+
+  // Grow the panel to (nearly) fill the window, or restore the previous size. Only touches
+  // width/height (not the drag position), so it can't disturb docking; a second click restores.
+  toggleMaximize() {
+    if (this.isMaximized) {
+      const restored = this.sizeBeforeMaximize ?? { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+      this.width = restored.width;
+      this.height = restored.height;
+      this.isMaximized = false;
+    } else {
+      this.sizeBeforeMaximize = { width: this.width, height: this.height };
+      this.width = window.innerWidth;
+      this.height = window.innerHeight;
+      this.isMaximized = true;
+    }
+    this.resizeService.changePanelSize(this.width, this.height);
   }
 
   resetPanelPosition() {

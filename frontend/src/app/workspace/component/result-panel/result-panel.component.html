@@ -74,6 +74,16 @@
         nz-icon
         nzType="enter"></span>
     </button>
+    <button
+      nz-button
+      nzType="text"
+      (click)="toggleMaximize()"
+      nz-tooltip="{{ isMaximized ? 'Restore panel size' : 'Maximize panel' }}"
+      *ngIf="width">
+      <span
+        nz-icon
+        [nzType]="isMaximized ? 'fullscreen-exit' : 'fullscreen'"></span>
+    </button>
     <li
       nz-menu-item
       (click)="closePanel()"
@@ -117,5 +127,5 @@
   </div>
   <nz-resize-handles
     *ngIf="width"
-    [nzDirections]="isPanelDocked() ? ['right'] : ['right', 'bottom', 'bottomRight']"></nz-resize-handles>
+    [nzDirections]="isPanelDocked() ? ['right'] : ['top', 'right', 'bottom', 'left', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight']"></nz-resize-handles>
 </div>

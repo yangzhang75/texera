@@ -19,6 +19,7 @@
 import { Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
 import { Observable } from "rxjs";
+import { map, shareReplay } from "rxjs/operators";
 import { AppSettings } from "../../../../common/app-setting";
 import { Workflow } from "../../../../common/type/workflow";
 
@@ -43,6 +44,33 @@ export class TemplatedWorkflowService {
       `${AppSettings.getApiEndpoint()}/${TEMPLATED_WORKFLOW_BASE_URL}/build?tid=${tid}`,
       {}
     );
+  }
+
+  /** Every workflow<->template link (wid, tid); used to tag workflows created from a template. */
+  public listTemplatedWorkflows(): Observable<{ wid: number; tid: number }[]> {
+    return this.http.get<{ wid: number; tid: number }[]>(
+      `${AppSettings.getApiEndpoint()}/${TEMPLATED_WORKFLOW_BASE_URL}/list`
+    );
+  }
+
+  private templatedWids$?: Observable<Set<number>>;
+
+  /**
+   * Set of wids created from a template, cached (shareReplay) so many list items share one request.
+   * Refreshed on page reload; call resetTemplatedWorkflowCache() to force a refetch.
+   */
+  public getTemplatedWorkflowWids(): Observable<Set<number>> {
+    if (!this.templatedWids$) {
+      this.templatedWids$ = this.listTemplatedWorkflows().pipe(
+        map(list => new Set(list.map(l => l.wid))),
+        shareReplay(1)
+      );
+    }
+    return this.templatedWids$;
+  }
+
+  public resetTemplatedWorkflowCache(): void {
+    this.templatedWids$ = undefined;
   }
 
   public updateTemplatedWorkflowProperties(

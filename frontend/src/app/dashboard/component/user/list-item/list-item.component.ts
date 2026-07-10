@@ -57,6 +57,7 @@ import {
 import { isDefined } from "../../../../common/util/predicate";
 import {Router} from "@angular/router";
 import {TemplateService} from "../../../service/user/template/template.service";
+import {TemplatedWorkflowService} from "../../../service/user/templated-workflow/templated-workflow.service";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { RouterLink } from "@angular/router";
@@ -109,6 +110,7 @@ export class ListItemComponent implements OnChanges {
   entryLink: string[] = [];
   size: number | undefined = 0;
   public iconType: string = "";
+  public isCreatedFromTemplate: boolean = false;
   isLiked: boolean = false;
   @Input() isPrivateSearch = false;
   @Input() editable = false;
@@ -143,6 +145,7 @@ export class ListItemComponent implements OnChanges {
     private cdr: ChangeDetectorRef,
     private notificationService: NotificationService,
     private router: Router,
+    private templatedWorkflowService: TemplatedWorkflowService,
   ) {}
 
   initializeEntry() {
@@ -157,6 +160,11 @@ export class ListItemComponent implements OnChanges {
           this.entryLink = [HUB_WORKFLOW_RESULT_DETAIL, String(this.entry.id)];
         }
         this.size = this.entry.size;
+        // Tag workflows that were created from a template.
+        this.templatedWorkflowService
+          .getTemplatedWorkflowWids()
+          .pipe(untilDestroyed(this))
+          .subscribe(wids => (this.isCreatedFromTemplate = wids.has(this.entry.id as number)));
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {

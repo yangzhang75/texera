@@ -96,6 +96,15 @@
         *ngIf="!editingName">
         {{ entry.name }}
       </div>
+      <span
+        *ngIf="entry.type === 'workflow' && isCreatedFromTemplate"
+        class="template-badge"
+        title="This workflow was created from a template">
+        <i
+          nz-icon
+          nzType="experiment"></i>
+        created from template
+      </span>
       <input
         *ngIf="editingName"
         #nameInput

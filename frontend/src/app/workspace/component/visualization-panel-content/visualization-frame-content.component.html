@@ -18,5 +18,7 @@
 -->
 
 <iframe
+  #htmlContent
   [srcdoc]="htmlData"
+  (load)="fitChartToPanel()"
   id="html-content"></iframe>

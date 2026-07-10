@@ -17,9 +17,10 @@
  * under the License.
  */
 
-import { AfterContentInit, Component, Input } from "@angular/core";
+import { AfterContentInit, Component, ElementRef, Input, ViewChild } from "@angular/core";
 import { DomSanitizer } from "@angular/platform-browser";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
+import { PanelResizeService } from "../../service/workflow-result/panel-resize/panel-resize.service";
 import { auditTime, filter } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 
@@ -32,13 +33,15 @@ import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 export class VisualizationFrameContentComponent implements AfterContentInit {
   // operatorId: string = inject(NZ_MODAL_DATA).operatorId;
   @Input() operatorId?: string;
+  @ViewChild("htmlContent") iframe?: ElementRef<HTMLIFrameElement>;
   // progressive visualization update and redraw interval in milliseconds
   public static readonly UPDATE_INTERVAL_MS = 2000;
   htmlData: any = "";
 
   constructor(
     private workflowResultService: WorkflowResultService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private panelResizeService: PanelResizeService
   ) {}
 
   ngAfterContentInit() {
@@ -55,6 +58,33 @@ export class VisualizationFrameContentComponent implements AfterContentInit {
       .subscribe(() => {
         this.drawChart();
       });
+
+    // The chart lives in an iframe whose container follows the result panel, but Plotly figures
+    // are emitted at a fixed pixel size, so growing/shrinking the panel would clip them instead
+    // of scaling them. Re-fit the chart on every panel-size change so it tracks the panel.
+    this.panelResizeService.currentSize
+      .pipe(auditTime(100))
+      .pipe(untilDestroyed(this))
+      .subscribe(() => this.fitChartToPanel());
+  }
+
+  /**
+   * Make the embedded Plotly chart fill (and follow) the iframe. The srcdoc iframe is same-origin,
+   * so its window — and the `Plotly` global loaded inside it — is directly reachable. We stretch the
+   * graph div to 100% and call `Plotly.Plots.resize`, which recomputes the plot to its container's
+   * current size (the same trick Plotly's own responsive mode uses on window resize). No-op until the
+   * chart has actually rendered, so it's safe to call on load and on every resize tick.
+   */
+  fitChartToPanel() {
+    const win = this.iframe?.nativeElement?.contentWindow as any;
+    const plotly = win?.Plotly;
+    const graphDiv = win?.document?.querySelector(".plotly-graph-div") as HTMLElement | null;
+    if (!plotly?.Plots || !graphDiv) {
+      return;
+    }
+    graphDiv.style.width = "100%";
+    graphDiv.style.height = "100%";
+    plotly.Plots.resize(graphDiv);
   }
   drawChart() {
     if (!this.operatorId) {
@@ -78,6 +108,17 @@ export class VisualizationFrameContentComponent implements AfterContentInit {
 
     const firstDiv = doc.body.querySelector("div");
     if (firstDiv) firstDiv.style.height = "100%";
+
+    // Make the rendered result scale with the iframe (hence the result panel). Operators emit
+    // either a static <img> (e.g. a scanpy/matplotlib plot) or an interactive Plotly div. This
+    // CSS makes an image grow/shrink with the panel width (keeping aspect ratio) and lets a Plotly
+    // div fill the panel; for Plotly we also call Plotly.Plots.resize (fitChartToPanel) so it
+    // redraws to the new size. CSS has no <, >, or & so it survives XMLSerializer untouched.
+    const style = doc.createElement("style");
+    style.textContent =
+      "img{width:100%!important;height:auto!important;display:block;}" +
+      ".plotly-graph-div,.js-plotly-plot{width:100%!important;height:100%!important;}";
+    doc.head.appendChild(style);
 
     const serializer = new XMLSerializer();
     const newHtmlString = serializer.serializeToString(doc);

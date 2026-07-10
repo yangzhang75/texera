@@ -155,6 +155,7 @@
         </button>
         <button
           *ngIf="showTemplateCreationButton"
+          [disabled]="isEmbedded"
           (click)="onClickCreateTemplateFromWorkflow()"
           nz-button
           title="create template">

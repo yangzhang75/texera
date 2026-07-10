@@ -94,6 +94,15 @@ routes.push({
             },
           ],
         },
+        {
+          path: "template",
+          children: [
+            {
+              path: "result",
+              component: HubSearchResultComponent,
+            },
+          ],
+        },
       ],
     },
     {

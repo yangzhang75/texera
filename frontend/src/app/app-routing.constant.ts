@@ -27,6 +27,8 @@ export const HUB_WORKFLOW_RESULT_DETAIL = `${HUB_WORKFLOW_RESULT}/detail`;
 export const HUB_DATASET = `${HUB}/dataset`;
 export const HUB_DATASET_RESULT = `${HUB_DATASET}/result`;
 export const HUB_DATASET_RESULT_DETAIL = `${HUB_DATASET_RESULT}/detail`;
+export const HUB_TEMPLATE = `${HUB}/template`;
+export const HUB_TEMPLATE_RESULT = `${HUB_TEMPLATE}/result`;
 
 export const USER = "/user";
 export const USER_PROJECT = `${USER}/project`;

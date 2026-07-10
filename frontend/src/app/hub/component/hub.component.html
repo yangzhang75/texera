@@ -54,4 +54,16 @@
       nzType="database"></span>
     <span>Datasets</span>
   </li>
+  <li
+    *ngIf="sidebarTabs.template_enabled"
+    nz-menu-item
+    nz-tooltip="Search public templates"
+    nzMatchRouter="true"
+    nzTooltipPlacement="right"
+    [routerLink]="HUB_TEMPLATE_RESULT">
+    <span
+      nz-icon
+      nzType="experiment"></span>
+    <span>Templates</span>
+  </li>
 </ul>

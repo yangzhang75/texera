@@ -57,7 +57,7 @@ const HUB_DATASET_VIEW_MODE_STORAGE_KEY = "texera.hub.dataset.viewMode";
   ],
 })
 export class HubSearchResultComponent implements OnInit, AfterViewInit {
-  public searchType: "dataset" | "workflow" = "workflow";
+  public searchType: "dataset" | "workflow" | "template" = "workflow";
   public searchKeywords: string[] = [];
   currentUid = this.userService.getCurrentUser()?.uid;
   public viewMode: SearchResultsViewMode =
@@ -112,6 +112,8 @@ export class HubSearchResultComponent implements OnInit, AfterViewInit {
       this.searchType = "dataset";
     } else if (url.includes("workflow")) {
       this.searchType = "workflow";
+    } else if (url.includes("template")) {
+      this.searchType = "template";
     }
   }
 

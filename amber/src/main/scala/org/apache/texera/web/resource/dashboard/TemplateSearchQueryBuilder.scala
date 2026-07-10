@@ -71,9 +71,15 @@ object TemplateSearchQueryBuilder extends SearchQueryBuilder {
     var condition: Condition = DSL.trueCondition()
 
     if (uid == null) {
-      condition = DSL.falseCondition()
+      // Guests (e.g. the Hub) can only see public templates.
+      condition = TEMPLATE.IS_PUBLIC.eq(true)
     } else {
-      condition = TEMPLATE_USER_ACCESS.UID.eq(uid)
+      val privateAccessCondition = TEMPLATE_USER_ACCESS.UID.eq(uid)
+      if (includePublic) {
+        condition = privateAccessCondition.or(TEMPLATE.IS_PUBLIC.eq(true))
+      } else {
+        condition = privateAccessCondition
+      }
     }
 
     baseQuery.where(condition)

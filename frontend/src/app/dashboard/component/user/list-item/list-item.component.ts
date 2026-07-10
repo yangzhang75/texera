@@ -251,6 +251,22 @@ export class ListItemComponent implements OnChanges {
         nzCentered: true,
         nzWidth: "700px",
       });
+    } else if (this.entry.type === "template") {
+      // Templates share through the same generic ShareAccessComponent/endpoints (type "template");
+      // allOwners is only used for the email autocomplete, so an empty list is fine here.
+      modal = this.modalService.create({
+        nzContent: ShareAccessComponent,
+        nzData: {
+          writeAccess: this.entry.accessLevel === "WRITE",
+          type: "template",
+          id: this.entry.id,
+          allOwners: [],
+        },
+        nzFooter: null,
+        nzTitle: "Share this template with others",
+        nzCentered: true,
+        nzWidth: "700px",
+      });
     }
     if (modal) {
       modal.componentInstance?.refresh.pipe(untilDestroyed(this)).subscribe(() => {

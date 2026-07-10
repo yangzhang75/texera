@@ -46,7 +46,6 @@ import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowVersionRes
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.databind.node.{ArrayNode, ObjectNode}
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
 
 import scala.jdk.CollectionConverters._
 
@@ -79,17 +78,9 @@ object TemplatedWorkflowResource {
       wid: Integer,
       parameters: String
   ): Unit = {
+    // jOOQ POJO constructor follows the physical column order (tid, wid, parameters); the 1-to-n
+    // migration only moved the PRIMARY KEY to wid, it did NOT reorder columns.
     workflowOfTemplateDao.insert(new WorkflowOfTemplate(tid, wid, parameters))
-  }
-
-  private def getTemplatedWorkflowIdIfExists(tid: Integer): Option[Integer] = {
-    Option(
-      context
-        .select(WORKFLOW_OF_TEMPLATE.WID)
-        .from(WORKFLOW_OF_TEMPLATE)
-        .where(WORKFLOW_OF_TEMPLATE.TID.eq(tid))
-        .fetchOneInto(classOf[Integer])
-    )
   }
 
   /**
@@ -177,40 +168,27 @@ class TemplatedWorkflowResource extends LazyLogging {
   @POST
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/build")
-  def buildTemplatedWorkflowIfNotExists(
+  def buildTemplatedWorkflow(
       @QueryParam("tid") tid: Integer,
       @Auth user: SessionUser
   ): Integer = {
-    val wid: Option[Integer] = getTemplatedWorkflowIdIfExists(tid)
+    // 1-to-n: every call creates a NEW workflow from the template's current content. The caller
+    // becomes the owner with WRITE access (default), so the generated workflow is a normal,
+    // fully-editable workflow like any other. The build page only calls this on Submit.
     val template = templateService.retrieveTemplate(tid)
-    wid match {
-      case Some(wid) =>
-        val workflow = workflowDao.fetchOneByWid(wid)
-        if (workflow == null) {
-          throw new NotFoundException(s"Templated workflow $wid does not exist.")
-        }
-        wid
-
-      case None =>
-        val templatedWorkflow = new Workflow(
-          null, // wid
-          template.name, // name
-          template.description, // description
-          template.content, // content
-          null, // creationTime
-          null, // lastModifiedTime
-          false // isPublic
-        )
-        val workflow =
-          workflowPersistService.createWorkflow(
-            templatedWorkflow,
-            user,
-            privilege = PrivilegeEnum.READ
-          )
-        val newWid = workflow.workflow.getWid
-        buildTemplatedWorkflowRelation(tid, newWid, "")
-        newWid
-    }
+    val templatedWorkflow = new Workflow(
+      null, // wid
+      template.name, // name
+      template.description, // description
+      template.content, // content
+      null, // creationTime
+      null, // lastModifiedTime
+      false // isPublic
+    )
+    val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
+    val newWid = workflow.workflow.getWid
+    buildTemplatedWorkflowRelation(tid, newWid, "")
+    newWid
   }
 
   /**

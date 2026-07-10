@@ -190,10 +190,14 @@ CREATE TABLE IF NOT EXISTS template
     );
 
 -- workflow_of_template
+-- 1-to-n: a template can produce many workflows. wid is the primary key (a workflow belongs to at
+-- most one template); tid is a non-unique NOT NULL foreign key (many rows may share the same tid).
+-- Column order stays (tid, wid, parameters) to match databases migrated via sql/updates/28.sql, so
+-- the jOOQ-generated POJO constructor is identical for fresh and migrated databases.
 CREATE TABLE IF NOT EXISTS workflow_of_template
 (
-    tid         INT PRIMARY KEY,
-    wid         INT NOT NULL UNIQUE,
+    tid         INT NOT NULL,
+    wid         INT PRIMARY KEY,
     parameters  TEXT,
     FOREIGN KEY (tid) REFERENCES template(tid) ON DELETE CASCADE,
     FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE

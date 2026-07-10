@@ -185,7 +185,8 @@ CREATE TABLE IF NOT EXISTS template
     content                 TEXT NOT NULL,
     creation_time           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_modified_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    configurable_parameters TEXT
+    configurable_parameters TEXT,
+    is_public               BOOLEAN NOT NULL DEFAULT false
     );
 
 -- workflow_of_template

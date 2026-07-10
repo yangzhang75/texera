@@ -30,6 +30,7 @@ import { HttpErrorResponse } from "@angular/common/http";
 import { USER_DATASET, USER_PROJECT, USER_WORKFLOW } from "../../../../app-routing.constant";
 import { NzMessageService } from "ng-zorro-antd/message";
 import { DatasetService } from "../../../service/user/dataset/dataset.service";
+import { TemplateService } from "../../../service/user/template/template.service";
 import { WorkflowPersistService } from "src/app/common/service/workflow-persist/workflow-persist.service";
 import { WorkflowActionService } from "src/app/workspace/service/workflow-graph/model/workflow-action.service";
 import { NgIf, NgFor } from "@angular/common";
@@ -101,6 +102,7 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
     private modalService: NzModalService,
     private workflowPersistService: WorkflowPersistService,
     private datasetService: DatasetService,
+    private templateService: TemplateService,
     private workflowActionService: WorkflowActionService,
     private modalRef: NzModalRef
   ) {
@@ -146,6 +148,13 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
         .pipe(untilDestroyed(this))
         .subscribe(dashboardDataset => {
           this.isPublic = dashboardDataset.dataset.isPublic;
+        });
+    } else if (this.type === "template") {
+      this.templateService
+        .getTemplateType(this.id)
+        .pipe(untilDestroyed(this))
+        .subscribe(templateType => {
+          this.isPublic = templateType === "Public";
         });
     }
   }
@@ -362,6 +371,8 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
                 }
               } else if (this.type === "dataset") {
                 this.publishDataset();
+              } else if (this.type === "template") {
+                this.publishTemplate();
               }
               modal.close();
             },
@@ -392,6 +403,8 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
                 }
               } else if (this.type === "dataset") {
                 this.unpublishDataset();
+              } else if (this.type === "template") {
+                this.unpublishTemplate();
               }
               modal.close();
             },
@@ -429,6 +442,44 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
           next: () => {
             this.isPublic = false;
             this.notificationService.success("Workflow unpublished successfully");
+          },
+          error: (error: unknown) => {
+            if (error instanceof HttpErrorResponse) {
+              this.notificationService.error(error.error.message);
+            }
+          },
+        });
+    }
+  }
+
+  public publishTemplate(): void {
+    if (!this.isPublic) {
+      this.templateService
+        .updateTemplateIsPublished(this.id, true)
+        .pipe(untilDestroyed(this))
+        .subscribe({
+          next: () => {
+            this.isPublic = true;
+            this.notificationService.success("Template published successfully");
+          },
+          error: (error: unknown) => {
+            if (error instanceof HttpErrorResponse) {
+              this.notificationService.error(error.error.message);
+            }
+          },
+        });
+    }
+  }
+
+  public unpublishTemplate(): void {
+    if (this.isPublic) {
+      this.templateService
+        .updateTemplateIsPublished(this.id, false)
+        .pipe(untilDestroyed(this))
+        .subscribe({
+          next: () => {
+            this.isPublic = false;
+            this.notificationService.success("Template unpublished successfully");
           },
           error: (error: unknown) => {
             if (error instanceof HttpErrorResponse) {

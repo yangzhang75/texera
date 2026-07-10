@@ -46,6 +46,7 @@ import javax.ws.rs.{
   GET,
   NotFoundException,
   POST,
+  PUT,
   Path,
   PathParam,
   Produces,
@@ -151,7 +152,8 @@ class TemplateResource extends LazyLogging {
       workflow.content, // content
       null, // creationTime
       null, // lastModifiedTime
-      "" // configurableParameters
+      "", // configurableParameters
+      false // isPublic (new templates start private, like workflows)
     )
     createTemplate(template, user);
   }
@@ -244,6 +246,51 @@ class TemplateResource extends LazyLogging {
   }
 
   /**
+    * Makes a template public (visible in the Hub). Only a user with write access may change it.
+    */
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/public/{tid}")
+  def makePublic(@PathParam("tid") tid: Integer, @Auth sessionUser: SessionUser): Unit = {
+    val uid = sessionUser.getUser.getUid
+    // The template owner (recorded in template_of_user) is stored with READ in template_user_access,
+    // so allow the owner as well as anyone explicitly granted write access to change visibility.
+    if (!templateOfUserExists(tid, uid) && !TemplateAccessResource.hasWriteAccess(tid, uid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val template = templateDao.fetchOneByTid(tid)
+    template.setIsPublic(true)
+    templateDao.update(template)
+  }
+
+  /**
+    * Makes a template private (removes it from the Hub). Only a user with write access may change it.
+    */
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/private/{tid}")
+  def makePrivate(@PathParam("tid") tid: Integer, @Auth sessionUser: SessionUser): Unit = {
+    val uid = sessionUser.getUser.getUid
+    // The template owner (recorded in template_of_user) is stored with READ in template_user_access,
+    // so allow the owner as well as anyone explicitly granted write access to change visibility.
+    if (!templateOfUserExists(tid, uid) && !TemplateAccessResource.hasWriteAccess(tid, uid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val template = templateDao.fetchOneByTid(tid)
+    template.setIsPublic(false)
+    templateDao.update(template)
+  }
+
+  /**
+    * Returns "Public" or "Private" for the given template, mirroring the workflow endpoint.
+    */
+  @GET
+  @Path("/type/{tid}")
+  def getTemplateType(@PathParam("tid") tid: Integer): String = {
+    if (templateDao.fetchOneByTid(tid).getIsPublic) "Public" else "Private"
+  }
+
+  /**
     * This method duplicates the target template, the new template name is appended with `_copy`
     *
     * @param template , a template to be duplicated
@@ -280,7 +327,8 @@ class TemplateResource extends LazyLogging {
               assignNewOperatorIds(oldTemplate.getContent),
               null,
               null,
-              "" // configurableParameters (no isPublic value, unlike Workflow)
+              "", // configurableParameters
+              false // isPublic (a duplicated template starts private)
             ),
             sessionUser
           )

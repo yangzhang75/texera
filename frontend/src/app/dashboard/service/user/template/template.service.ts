@@ -36,6 +36,9 @@ export const TEMPLATE_LIST_URL = TEMPLATE_BASE_URL + "/list";
 export const TEMPLATE_DUPLICATE_URL = TEMPLATE_BASE_URL + "/duplicate";
 export const TEMPLATE_DELETE_URL = TEMPLATE_BASE_URL + "/delete";
 export const TEMPLATE_SIZE = TEMPLATE_BASE_URL + "/size";
+export const TEMPLATE_TYPE_URL = TEMPLATE_BASE_URL + "/type";
+export const TEMPLATE_PUBLIC_URL = TEMPLATE_BASE_URL + "/public";
+export const TEMPLATE_PRIVATE_URL = TEMPLATE_BASE_URL + "/private";
 
 export const DEFAULT_TEMPLATE_NAME = "Untitled Template";
 
@@ -74,6 +77,17 @@ export class TemplateService {
 
   public getTemplate(): Observable<{ tid: string; name: string }[]> {
     return this.http.get<{ tid: string; name: string }[]>(`${AppSettings.getApiEndpoint()}/${TEMPLATE_LIST_URL}`);
+  }
+
+  /** Returns "Public" or "Private" for the given template (mirrors the workflow type endpoint). */
+  public getTemplateType(tid: number): Observable<string> {
+    return this.http.get(`${AppSettings.getApiEndpoint()}/${TEMPLATE_TYPE_URL}/${tid}`, { responseType: "text" });
+  }
+
+  /** Publishes (public) or unpublishes (private) a template in the Hub. */
+  public updateTemplateIsPublished(tid: number, isPublished: boolean): Observable<void> {
+    const segment = isPublished ? TEMPLATE_PUBLIC_URL : TEMPLATE_PRIVATE_URL;
+    return this.http.put<void>(`${AppSettings.getApiEndpoint()}/${segment}/${tid}`, null);
   }
 
   public duplicateTemplate(targetTids: number[]): Observable<DashboardTemplate[]> {

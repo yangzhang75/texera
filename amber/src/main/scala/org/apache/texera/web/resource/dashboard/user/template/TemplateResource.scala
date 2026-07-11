@@ -23,7 +23,7 @@ import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
-import org.apache.texera.dao.jooq.generated.Tables.{TEMPLATE, TEMPLATE_OF_USER}
+import org.apache.texera.dao.jooq.generated.Tables.{TEMPLATE, TEMPLATE_OF_USER, TEMPLATE_USER_ACCESS}
 import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   TemplateDao,
@@ -184,9 +184,17 @@ class TemplateResource extends LazyLogging {
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/list")
   def retrieveTemplates(@Auth sessionUser: SessionUser): List[Map[String, Any]] = {
+    // "Your Work > Templates" only lists the user's own templates and ones shared with them.
+    // Public templates from others are browsed in the Hub, not here.
+    val uid = sessionUser.getUser.getUid
     context
-      .select(TEMPLATE.TID, TEMPLATE.NAME)
+      .selectDistinct(TEMPLATE.TID, TEMPLATE.NAME)
       .from(TEMPLATE)
+      .leftJoin(TEMPLATE_OF_USER)
+      .on(TEMPLATE_OF_USER.TID.eq(TEMPLATE.TID))
+      .leftJoin(TEMPLATE_USER_ACCESS)
+      .on(TEMPLATE_USER_ACCESS.TID.eq(TEMPLATE.TID))
+      .where(TEMPLATE_OF_USER.UID.eq(uid).or(TEMPLATE_USER_ACCESS.UID.eq(uid)))
       .fetch()
       .asScala
       .map(record =>
@@ -205,6 +213,18 @@ class TemplateResource extends LazyLogging {
       @PathParam("tid") tid: Integer,
       @Auth sessionUser: SessionUser
   ): TemplateEntry = {
+    val uid = sessionUser.getUser.getUid
+    val template = templateDao.fetchOneByTid(tid)
+    if (template == null) {
+      throw new NotFoundException(s"Template $tid does not exist.")
+    }
+    // Viewable if public, owned by the user, or shared with (at least) read access.
+    if (
+      !template.getIsPublic && !templateOfUserExists(tid, uid) && !TemplateAccessResource
+        .hasReadAccess(tid, uid)
+    ) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
     this.templateService.retrieveTemplate(tid);
   }
 

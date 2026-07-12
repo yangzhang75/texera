@@ -326,9 +326,12 @@ class TemplateResource extends LazyLogging {
   ): List[DashboardTemplate] = {
 
     val user = sessionUser.getUser
-    // do the permission check first
+    // Permission check: a template can be cloned if it is public (Hub) or the user has read access.
     for (tid <- templateIDs.tids) {
-      if (!TemplateAccessResource.hasReadAccess(tid, user.getUid)) {
+      val source = templateDao.fetchOneByTid(tid)
+      val allowed =
+        (source != null && source.getIsPublic) || TemplateAccessResource.hasReadAccess(tid, user.getUid)
+      if (!allowed) {
         throw new ForbiddenException("No sufficient access privilege.")
       }
     }

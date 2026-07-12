@@ -29,6 +29,7 @@ export const HUB_DATASET_RESULT = `${HUB_DATASET}/result`;
 export const HUB_DATASET_RESULT_DETAIL = `${HUB_DATASET_RESULT}/detail`;
 export const HUB_TEMPLATE = `${HUB}/template`;
 export const HUB_TEMPLATE_RESULT = `${HUB_TEMPLATE}/result`;
+export const HUB_TEMPLATE_RESULT_DETAIL = `${HUB_TEMPLATE_RESULT}/detail`;
 
 export const USER = "/user";
 export const USER_PROJECT = `${USER}/project`;

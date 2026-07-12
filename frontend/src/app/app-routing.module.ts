@@ -40,6 +40,7 @@ import { DatasetDetailComponent } from "./dashboard/component/user/user-dataset/
 import { UserDatasetComponent } from "./dashboard/component/user/user-dataset/user-dataset.component";
 import { UserTemplateComponent } from "./dashboard/component/user/user-template/user-template.component";
 import { HubWorkflowDetailComponent } from "./hub/component/workflow/detail/hub-workflow-detail.component";
+import { HubTemplateDetailComponent } from "./hub/component/template/detail/hub-template-detail.component";
 import { LandingPageComponent } from "./hub/component/landing-page/landing-page.component";
 import { USER_WORKFLOW } from "./app-routing.constant";
 import { HubSearchResultComponent } from "./hub/component/hub-search-result/hub-search-result.component";
@@ -100,6 +101,10 @@ routes.push({
             {
               path: "result",
               component: HubSearchResultComponent,
+            },
+            {
+              path: "result/detail/:id",
+              component: HubTemplateDetailComponent,
             },
           ],
         },

@@ -169,6 +169,7 @@ import { ListItemComponent } from "./dashboard/component/user/list-item/list-ite
 import { CardItemComponent } from "./dashboard/component/user/list-item/card-item/card-item.component";
 import { HubComponent } from "./hub/component/hub.component";
 import { HubWorkflowDetailComponent } from "./hub/component/workflow/detail/hub-workflow-detail.component";
+import { HubTemplateDetailComponent } from "./hub/component/template/detail/hub-template-detail.component";
 import { LandingPageComponent } from "./hub/component/landing-page/landing-page.component";
 import { BrowseSectionComponent } from "./hub/component/browse-section/browse-section.component";
 import { BreakpointConditionInputComponent } from "./workspace/component/code-editor-dialog/breakpoint-condition-input/breakpoint-condition-input.component";
@@ -360,6 +361,7 @@ registerLocaleData(en);
     SearchResultsComponent,
     HubComponent,
     HubWorkflowDetailComponent,
+    HubTemplateDetailComponent,
     LandingPageComponent,
     BrowseSectionComponent,
     BreakpointConditionInputComponent,

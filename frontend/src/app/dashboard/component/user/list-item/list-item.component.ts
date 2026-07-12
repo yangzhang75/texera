@@ -47,6 +47,7 @@ import { DatasetService, DEFAULT_DATASET_NAME } from "../../../service/user/data
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import {
   HUB_DATASET_RESULT_DETAIL,
+  HUB_TEMPLATE_RESULT_DETAIL,
   HUB_WORKFLOW_RESULT_DETAIL,
   USER_DATASET,
   USER_PROJECT,
@@ -186,7 +187,13 @@ export class ListItemComponent implements OnChanges {
       if (typeof this.entry.id === "number") {
         this.disableDelete = !this.entry.template.isOwner;
         this.owners = this.entry.accessibleUserIds;
-        this.entryLink = [USER_TEMPLATED_WORKFLOW, String(this.entry.id)];
+        // Owner (Your Work): open the build page to instantiate a workflow. Non-owner (Hub public):
+        // open the template detail page to preview and clone it into your own Templates.
+        if (this.entry.template.isOwner) {
+          this.entryLink = [USER_TEMPLATED_WORKFLOW, String(this.entry.id)];
+        } else {
+          this.entryLink = [HUB_TEMPLATE_RESULT_DETAIL, String(this.entry.id)];
+        }
         this.iconType = "experiment";
         this.size = this.entry.size;
       }

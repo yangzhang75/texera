@@ -81,4 +81,55 @@ describe("TemplatedWorkflowService", () => {
 
     expect(received).toEqual(updated);
   });
+
+  it("listTemplatedWorkflows should GET /list and return the (wid, tid) links", () => {
+    let received: { wid: number; tid: number }[] | undefined;
+    service.listTemplatedWorkflows().subscribe(list => (received = list));
+
+    const req = httpTestingController.expectOne(`${base}/list`);
+    expect(req.request.method).toEqual("GET");
+    req.flush([
+      { wid: 1, tid: 10 },
+      { wid: 2, tid: 10 },
+    ]);
+
+    expect(received).toEqual([
+      { wid: 1, tid: 10 },
+      { wid: 2, tid: 10 },
+    ]);
+  });
+
+  it("getTemplatedWorkflowWids should map the list to a Set of wids", () => {
+    let received: Set<number> | undefined;
+    service.getTemplatedWorkflowWids().subscribe(wids => (received = wids));
+
+    httpTestingController.expectOne(`${base}/list`).flush([
+      { wid: 1, tid: 10 },
+      { wid: 2, tid: 11 },
+    ]);
+
+    expect(received).toEqual(new Set([1, 2]));
+  });
+
+  it("getTemplatedWorkflowWids should cache the result (only one request for multiple subscribers)", () => {
+    service.getTemplatedWorkflowWids().subscribe();
+    service.getTemplatedWorkflowWids().subscribe();
+
+    // shareReplay: a single HTTP request serves both subscriptions.
+    const req = httpTestingController.expectOne(`${base}/list`);
+    req.flush([{ wid: 5, tid: 1 }]);
+  });
+
+  it("resetTemplatedWorkflowCache should force a refetch on the next call", () => {
+    service.getTemplatedWorkflowWids().subscribe();
+    httpTestingController.expectOne(`${base}/list`).flush([{ wid: 5, tid: 1 }]);
+
+    service.resetTemplatedWorkflowCache();
+
+    let received: Set<number> | undefined;
+    service.getTemplatedWorkflowWids().subscribe(wids => (received = wids));
+    httpTestingController.expectOne(`${base}/list`).flush([{ wid: 9, tid: 2 }]);
+
+    expect(received).toEqual(new Set([9]));
+  });
 });

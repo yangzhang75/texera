@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { AfterViewInit, Component, HostListener, Inject, OnDestroy, OnInit, Optional } from "@angular/core";
+import { Component, HostListener, Inject, OnDestroy, OnInit, Optional } from "@angular/core";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { ActivatedRoute, Router } from "@angular/router";
 import { throttleTime } from "rxjs/operators";
@@ -63,7 +63,7 @@ export const THROTTLE_TIME_MS = 1000;
     MiniMapComponent,
   ],
 })
-export class HubTemplateDetailComponent implements AfterViewInit, OnDestroy, OnInit {
+export class HubTemplateDetailComponent implements OnDestroy, OnInit {
   isHub: boolean = false;
   templateName: string = "";
   ownerName: string = "";
@@ -128,22 +128,10 @@ export class HubTemplateDetailComponent implements AfterViewInit, OnDestroy, OnI
         this.ownerName = ownerName;
       });
 
-    if (!isDefined(this.currentUser)) {
-      return;
-    }
-    this.hubService
-      .isLiked([this.tid], [EntityType.Template])
-      .pipe(untilDestroyed(this))
-      .subscribe((isLiked: LikedStatus[]) => {
-        this.isLiked = isLiked.length > 0 ? isLiked[0].isLiked : false;
-      });
-  }
-
-  ngAfterViewInit(): void {
-    if (!isDefined(this.tid)) {
-      return;
-    }
     // Fetch the template once for name/description and to render a read-only preview of its content.
+    // Done in ngOnInit (not ngAfterViewInit) so the bound name/description are set before the view is
+    // checked; the async response and reloadWorkflow (which don't touch this component's bindings)
+    // land after the embedded editor has initialized.
     this.templateService
       .retrieveTemplate(this.tid)
       .pipe(untilDestroyed(this))
@@ -167,6 +155,16 @@ export class HubTemplateDetailComponent implements AfterViewInit, OnDestroy, OnI
         error: () => {
           this.notificationService.error(`Failed to load template with id ${this.tid}`);
         },
+      });
+
+    if (!isDefined(this.currentUser)) {
+      return;
+    }
+    this.hubService
+      .isLiked([this.tid], [EntityType.Template])
+      .pipe(untilDestroyed(this))
+      .subscribe((isLiked: LikedStatus[]) => {
+        this.isLiked = isLiked.length > 0 ? isLiked[0].isLiked : false;
       });
   }
 

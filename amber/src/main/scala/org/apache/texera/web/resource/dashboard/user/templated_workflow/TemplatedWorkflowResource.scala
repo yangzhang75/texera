@@ -78,9 +78,19 @@ object TemplatedWorkflowResource {
       wid: Integer,
       parameters: String
   ): Unit = {
-    // jOOQ POJO constructor follows the physical column order (tid, wid, parameters); the 1-to-n
+    // jOOQ POJO constructor follows the physical column order (tid, wid, parameters); the
     // migration only moved the PRIMARY KEY to wid, it did NOT reorder columns.
     workflowOfTemplateDao.insert(new WorkflowOfTemplate(tid, wid, parameters))
+  }
+
+  private def getTemplatedWorkflowIdIfExists(tid: Integer): Option[Integer] = {
+    Option(
+      context
+        .select(WORKFLOW_OF_TEMPLATE.WID)
+        .from(WORKFLOW_OF_TEMPLATE)
+        .where(WORKFLOW_OF_TEMPLATE.TID.eq(tid))
+        .fetchAny(WORKFLOW_OF_TEMPLATE.WID)
+    )
   }
 
   /**
@@ -168,27 +178,37 @@ class TemplatedWorkflowResource extends LazyLogging {
   @POST
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/build")
-  def buildTemplatedWorkflow(
+  def buildTemplatedWorkflowIfNotExists(
       @QueryParam("tid") tid: Integer,
       @Auth user: SessionUser
   ): Integer = {
-    // 1-to-n: every call creates a NEW workflow from the template's current content. The caller
-    // becomes the owner with WRITE access (default), so the generated workflow is a normal,
-    // fully-editable workflow like any other. The build page only calls this on Submit.
-    val template = templateService.retrieveTemplate(tid)
-    val templatedWorkflow = new Workflow(
-      null, // wid
-      template.name, // name
-      template.description, // description
-      template.content, // content
-      null, // creationTime
-      null, // lastModifiedTime
-      false // isPublic
-    )
-    val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
-    val newWid = workflow.workflow.getWid
-    buildTemplatedWorkflowRelation(tid, newWid, "")
-    newWid
+    // Idempotent get-or-create: the build page calls this on open to show a runnable preview, so it
+    // must NOT spawn a new workflow on every open. Return the existing workflow for this template if
+    // there is one; otherwise create it once, owned by the caller with WRITE access (default) so the
+    // preview is a normal, fully-editable/runnable workflow.
+    getTemplatedWorkflowIdIfExists(tid) match {
+      case Some(wid) =>
+        val workflow = workflowDao.fetchOneByWid(wid)
+        if (workflow == null) {
+          throw new NotFoundException(s"Templated workflow $wid does not exist.")
+        }
+        wid
+      case None =>
+        val template = templateService.retrieveTemplate(tid)
+        val templatedWorkflow = new Workflow(
+          null, // wid
+          template.name, // name
+          template.description, // description
+          template.content, // content
+          null, // creationTime
+          null, // lastModifiedTime
+          false // isPublic
+        )
+        val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
+        val newWid = workflow.workflow.getWid
+        buildTemplatedWorkflowRelation(tid, newWid, "")
+        newWid
+    }
   }
 
   /**

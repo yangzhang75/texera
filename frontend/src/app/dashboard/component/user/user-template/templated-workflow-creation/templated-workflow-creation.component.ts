@@ -29,11 +29,10 @@ import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
+import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
-import {ActivatedRoute, Router} from "@angular/router";
-import {USER_WORKSPACE} from "../../../../../app-routing.constant";
+import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
 import {OperatorPredicate} from "../../../../../workspace/types/workflow-common.interface";
@@ -80,6 +79,7 @@ interface ConfigurableSection {
 })
 export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   public tid: number | undefined;
+  public wid: number | undefined;
   public template: WorkflowContent | undefined;
 
   public sections: ConfigurableSection[] = [];
@@ -112,7 +112,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     private workflowCompilingService: WorkflowCompilingService,
     private formlyJsonschema: FormlyJsonschema,
     private route: ActivatedRoute,
-    private router: Router,
     private http: HttpClient
   ) {
     this.userService
@@ -203,32 +202,46 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       return;
     }
 
-    // 1-to-n: create a NEW workflow from the template, apply the configured properties to it
-    // server-side (whitelisted), then open it in the workspace so the user can run/edit it freely.
+    if (!this.wid) {
+      this.notificationService.error("Missing workflow ID.");
+      return;
+    }
+
+    this.applyJobFormToOperators()
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => {
+          this.showEmbeddedWorkspace = true;
+        },
+        error: err => {
+          console.warn("Failed to update templated workflow", err);
+          this.notificationService.error("Failed to update workflow.");
+        },
+      });
+  }
+
+  private applyJobFormToOperators(forceUpdate = false): Observable<Workflow> {
     this.mergeFormValuesIntoOperatorProperties();
+
+    if (!forceUpdate && !this.workflowChanged()) {
+      // No-op: the SUBMIT button is already disabled when there is nothing to apply, so this is
+      // just a defensive guard -- no notification needed.
+      return of(this.workflowActionService.getWorkflow());
+    }
+
     this.writeOperatorPropertiesToGraph();
     const payload = this.getConfigurablePropertyUpdatePayload();
 
-    this.workflowReady = false;
-    this.templatedWorkflowService
-      .createTemplatedWorkflow(this.tid)
-      .pipe(
-        switchMap(newWid =>
-          this.templatedWorkflowService.updateTemplatedWorkflowProperties(newWid, payload).pipe(map(() => newWid))
-        ),
-        untilDestroyed(this)
-      )
-      .subscribe({
-        next: newWid => {
-          this.notificationService.success("Workflow created from template. Opening it in the workspace...");
-          this.router.navigate([USER_WORKSPACE, String(newWid)]);
-        },
-        error: err => {
-          this.workflowReady = true;
-          console.warn("Failed to create workflow from template", err);
-          this.notificationService.error("Failed to create workflow from template.");
-        },
-      });
+    return this.templatedWorkflowService.updateTemplatedWorkflowProperties(this.wid!, payload).pipe(
+      tap(updatedWorkflow => {
+        const currentMetadata = this.workflowActionService.getWorkflowMetadata();
+        this.workflowActionService.setWorkflowMetadata({
+          ...currentMetadata,
+          lastModifiedTime: updatedWorkflow.lastModifiedTime,
+        });
+        this.notificationService.success("Workflow updated.");
+      })
+    );
   }
 
   private getConfigurablePropertyUpdatePayload(): {
@@ -264,6 +277,17 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
       );
     }
+  }
+
+  private workflowChanged(): boolean {
+    return this.sections.some(section => {
+      const liveOperator = this.workflowActionService.getTexeraGraph().getOperator(section.operatorID);
+
+      return this.templatedWorkflowDraftService.operatorPropertiesChanged(
+        section.operatorID,
+        liveOperator.operatorProperties
+      );
+    });
   }
 
   /**
@@ -340,22 +364,50 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
         this.template = template.content;
         this.templatedWorkflowDraftService.initialize(template.content);
 
-        // 1-to-n: opening a template only shows a READ-ONLY preview of its content. No workflow is
-        // created here -- a brand-new workflow is created only when the user clicks Submit
-        // (onJobFormSubmitted). This is why the same template can be turned into many workflows.
-        // The embedded workspace runs in template mode ([mode]="'template'" [tid]="tid"), which
-        // loads the template into the shared graph read-only; we must NOT create/reload a workflow
-        // here or it would conflict with that read-only preview.
+        this.templatedWorkflowService.createTemplatedWorkflow(this.tid)
+          .pipe(
+            switchMap(wid => {
+              this.wid = wid;
 
-        // Seed the form from the template's own content (its default values).
-        this.templatedWorkflowDraftService.seedValuesFromContent(template.content);
-        this.lastEnrichedSignature = "";
-        this.rebuildSectionsFromDynamicSchemas();
+              this.workflowActionService.destroySharedModel();
+              this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
 
-        this.workflowReady = true;
-        // Reveal the preview only now: while the container is hidden it has height:0, so the
-        // embedded JointJS paper would initialize at zero size and render the operators clipped.
-        this.showEmbeddedWorkspace = true;
+              return this.workflowPersistService.retrieveWorkflow(this.wid);
+            }),
+            untilDestroyed(this)
+          )
+          .subscribe({
+            next: workflow => {
+              // Editing of the preview is locked by the embedded WorkspaceComponent
+              // (disableWorkflowModification); we must NOT mark the workflow readonly here,
+              // because a readonly workflow cannot be executed and the preview must stay runnable.
+              this.workflowActionService.reloadWorkflow(workflow);
+
+              // Reopening an existing templated workflow: /build is idempotent (returns the same
+              // wid) and its content already holds the values last applied via /update. Seed the
+              // form from THAT content (not the template defaults) so the user sees their last
+              // edits. seedValuesFromContent keeps the enriched dynamic schemas intact (dropdowns
+              // stay dropdowns); resetting the signature forces the sections to rebuild off the
+              // freshly-seeded values (the signature only tracks schemas, not values).
+              if (workflow.content) {
+                this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
+                this.lastEnrichedSignature = "";
+                this.rebuildSectionsFromDynamicSchemas();
+              }
+
+              this.workflowReady = true;
+              // Reveal the preview as soon as the workflow is loaded. While the container is
+              // hidden it has height:0, so the embedded JointJS paper would initialize at zero
+              // size and the operators would render clipped/off-center. Showing it now lets the
+              // paper size correctly and re-center on the loaded workflow.
+              this.showEmbeddedWorkspace = true;
+            },
+            error: err => {
+              this.workflowReady = false;
+              console.warn("Failed to create/load templated workflow", err);
+              this.notificationService.error("Failed to create workflow from template.");
+            },
+          });
 
         this.rebuildSectionsFromDynamicSchemas();
 

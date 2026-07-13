@@ -369,6 +369,11 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
             switchMap(wid => {
               this.wid = wid;
 
+              // A workflow was just get-or-created for this template; invalidate the cached
+              // wid->template set so the "created from template" tag shows on the Workflows list
+              // without a full page reload.
+              this.templatedWorkflowService.resetTemplatedWorkflowCache();
+
               this.workflowActionService.destroySharedModel();
               this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
 

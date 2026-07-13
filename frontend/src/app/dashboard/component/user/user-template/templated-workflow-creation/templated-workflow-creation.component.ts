@@ -29,7 +29,7 @@ import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
+import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute, Router} from "@angular/router";
@@ -80,7 +80,6 @@ interface ConfigurableSection {
 })
 export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   public tid: number | undefined;
-  public wid: number | undefined;
   public template: WorkflowContent | undefined;
 
   public sections: ConfigurableSection[] = [];
@@ -232,30 +231,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       });
   }
 
-  private applyJobFormToOperators(forceUpdate = false): Observable<Workflow> {
-    this.mergeFormValuesIntoOperatorProperties();
-
-    if (!forceUpdate && !this.workflowChanged()) {
-      // No-op: the SUBMIT button is already disabled when there is nothing to apply, so this is
-      // just a defensive guard -- no notification needed.
-      return of(this.workflowActionService.getWorkflow());
-    }
-
-    this.writeOperatorPropertiesToGraph();
-    const payload = this.getConfigurablePropertyUpdatePayload();
-
-    return this.templatedWorkflowService.updateTemplatedWorkflowProperties(this.wid!, payload).pipe(
-      tap(updatedWorkflow => {
-        const currentMetadata = this.workflowActionService.getWorkflowMetadata();
-        this.workflowActionService.setWorkflowMetadata({
-          ...currentMetadata,
-          lastModifiedTime: updatedWorkflow.lastModifiedTime,
-        });
-        this.notificationService.success("Workflow updated.");
-      })
-    );
-  }
-
   private getConfigurablePropertyUpdatePayload(): {
     operatorProperties: Record<string, Record<string, unknown>>;
   } {
@@ -289,17 +264,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
       );
     }
-  }
-
-  private workflowChanged(): boolean {
-    return this.sections.some(section => {
-      const liveOperator = this.workflowActionService.getTexeraGraph().getOperator(section.operatorID);
-
-      return this.templatedWorkflowDraftService.operatorPropertiesChanged(
-        section.operatorID,
-        liveOperator.operatorProperties
-      );
-    });
   }
 
   /**

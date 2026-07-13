@@ -22,12 +22,11 @@ import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router } from "@angular/router";
 import { NzIconModule } from "ng-zorro-antd/icon";
 import { NZ_MODAL_DATA } from "ng-zorro-antd/modal";
-import { ArrowLeftOutline, EyeOutline, LikeOutline, UserOutline } from "@ant-design/icons-angular/icons";
+import { ArrowLeftOutline } from "@ant-design/icons-angular/icons";
 import { of, throwError } from "rxjs";
 import { vi } from "vitest";
 
-import { HubTemplateDetailComponent, THROTTLE_TIME_MS } from "./hub-template-detail.component";
-import { ActionType, EntityType, HubService } from "../../../service/hub.service";
+import { HubTemplateDetailComponent } from "./hub-template-detail.component";
 import { UserService } from "../../../../common/service/user/user.service";
 import { StubUserService, MOCK_USER } from "../../../../common/service/user/stub-user.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
@@ -69,7 +68,6 @@ describe("HubTemplateDetailComponent", () => {
   let fixture: ComponentFixture<HubTemplateDetailComponent>;
   let component: HubTemplateDetailComponent;
 
-  let hubServiceMock: any;
   let templateServiceMock: any;
   let shareAccessServiceMock: any;
   let workflowActionServiceMock: any;
@@ -79,14 +77,6 @@ describe("HubTemplateDetailComponent", () => {
 
   function makeMocks() {
     stubGraph = { triggerCenterEvent: vi.fn() };
-
-    hubServiceMock = {
-      getCounts: vi.fn().mockReturnValue(of([{ entityId: 1, entityType: EntityType.Template, counts: {} }])),
-      postView: vi.fn().mockReturnValue(of(7)),
-      isLiked: vi.fn().mockReturnValue(of([])),
-      postLike: vi.fn().mockReturnValue(of(true)),
-      postUnlike: vi.fn().mockReturnValue(of(true)),
-    };
 
     templateServiceMock = {
       retrieveTemplate: vi.fn().mockReturnValue(of(MOCK_TEMPLATE)),
@@ -117,10 +107,7 @@ describe("HubTemplateDetailComponent", () => {
     });
 
     TestBed.configureTestingModule({
-      imports: [
-        HubTemplateDetailComponent,
-        NzIconModule.forChild([ArrowLeftOutline, EyeOutline, LikeOutline, UserOutline]),
-      ],
+      imports: [HubTemplateDetailComponent, NzIconModule.forChild([ArrowLeftOutline])],
       providers: [
         { provide: NZ_MODAL_DATA, useValue: opts.modalData },
         {
@@ -128,7 +115,6 @@ describe("HubTemplateDetailComponent", () => {
           useValue: { snapshot: { params: opts.routeId !== undefined ? { id: opts.routeId } : {} } },
         },
         { provide: Router, useValue: routerMock },
-        { provide: HubService, useValue: hubServiceMock },
         { provide: TemplateService, useValue: templateServiceMock },
         { provide: ShareAccessService, useValue: shareAccessServiceMock },
         { provide: WorkflowActionService, useValue: workflowActionServiceMock },
@@ -190,54 +176,21 @@ describe("HubTemplateDetailComponent", () => {
     });
   });
 
-  describe("ngOnInit", () => {
+  describe("ngOnInit / template load", () => {
     it("early-returns when tid is undefined", () => {
       build({ modalData: undefined, routeId: undefined, detectChanges: false });
       component.ngOnInit();
-      expect(hubServiceMock.getCounts).not.toHaveBeenCalled();
       expect(shareAccessServiceMock.getOwner).not.toHaveBeenCalled();
       expect(templateServiceMock.retrieveTemplate).not.toHaveBeenCalled();
     });
 
-    it("assigns like/clone counts and owner, and views the template as a Template entity", () => {
-      hubServiceMock.getCounts.mockReturnValue(
-        of([{ entityId: 1, entityType: EntityType.Template, counts: { like: 5, clone: 3 } }])
-      );
-      hubServiceMock.postView.mockReturnValue(of(12));
-      build({ modalData: { tid: 1 } });
-      expect(hubServiceMock.getCounts).toHaveBeenCalledWith(
-        [EntityType.Template],
-        [1],
-        [ActionType.Like, ActionType.Clone]
-      );
-      expect(component.likeCount).toBe(5);
-      expect(component.cloneCount).toBe(3);
-      expect(hubServiceMock.postView).toHaveBeenCalledWith(1, MOCK_USER.uid, EntityType.Template);
-      expect(component.viewCount).toBe(12);
-      expect(shareAccessServiceMock.getOwner).toHaveBeenCalledWith("template", 1);
-      expect(component.ownerName).toBe("owner");
-    });
-
-    it("does not call isLiked when there is no current user", () => {
-      build({ modalData: { tid: 1 }, userOverride: undefined });
-      expect(hubServiceMock.isLiked).not.toHaveBeenCalled();
-    });
-
-    it("sets isLiked from the response when logged in", () => {
-      hubServiceMock.isLiked.mockReturnValue(of([{ entityId: 1, entityType: EntityType.Template, isLiked: true }]));
-      build({ modalData: { tid: 1 } });
-      expect(hubServiceMock.isLiked).toHaveBeenCalledWith([1], [EntityType.Template]);
-      expect(component.isLiked).toBe(true);
-    });
-  });
-
-  describe("template load", () => {
-    it("loads the template, sets name/description, and renders a read-only preview", () => {
+    it("fetches the owner and loads the template (name/description + read-only preview)", () => {
       build({ modalData: { tid: 5 } });
+      expect(shareAccessServiceMock.getOwner).toHaveBeenCalledWith("template", 5);
+      expect(component.ownerName).toBe("owner");
       expect(templateServiceMock.retrieveTemplate).toHaveBeenCalledWith(5);
       expect(component.templateName).toBe(MOCK_TEMPLATE.name);
       expect(component.templateDescription).toBe(MOCK_TEMPLATE.description);
-      expect(workflowActionServiceMock.reloadWorkflow).toHaveBeenCalledTimes(1);
       const arg = workflowActionServiceMock.reloadWorkflow.mock.calls[0][0];
       expect(arg.content).toBe(MOCK_TEMPLATE.content);
       expect(arg.readonly).toBe(true);
@@ -297,41 +250,6 @@ describe("HubTemplateDetailComponent", () => {
       build({ modalData: { tid: 7 } });
       component.cloneTemplate();
       expect(notificationServiceMock.error).toHaveBeenCalledWith("Failed to clone template.");
-    });
-  });
-
-  describe("toggleLike", () => {
-    it("short-circuits without a user or tid", () => {
-      build({ modalData: { tid: 1 }, userOverride: undefined });
-      component.toggleLike();
-      expect(hubServiceMock.postLike).not.toHaveBeenCalled();
-      expect(hubServiceMock.postUnlike).not.toHaveBeenCalled();
-    });
-
-    it("likes as a Template entity and refreshes the like count", () => {
-      hubServiceMock.getCounts
-        .mockReturnValueOnce(of([{ entityId: 1, entityType: EntityType.Template, counts: { like: 0 } }]))
-        .mockReturnValueOnce(of([{ entityId: 1, entityType: EntityType.Template, counts: { like: 9 } }]));
-      build({ modalData: { tid: 1 } });
-      component.isLiked = false;
-      component.toggleLike();
-      expect(hubServiceMock.postLike).toHaveBeenCalledWith(1, EntityType.Template);
-      expect(component.isLiked).toBe(true);
-      expect(component.likeCount).toBe(9);
-    });
-  });
-
-  describe("misc", () => {
-    it("THROTTLE_TIME_MS is 1000", () => {
-      expect(THROTTLE_TIME_MS).toBe(1000);
-    });
-
-    it("formatCount and changeViewDisplayStyle behave", () => {
-      build({ modalData: { tid: 1 } });
-      expect(component.formatCount(1000)).toBe("1.0k");
-      expect(component.displayPreciseViewCount).toBe(false);
-      component.changeViewDisplayStyle();
-      expect(component.displayPreciseViewCount).toBe(true);
     });
   });
 });

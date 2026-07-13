@@ -24,8 +24,8 @@ import org.apache.texera.amber.util.JSONUtils.objectMapper
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.MockTexeraDB
 import org.apache.texera.dao.jooq.generated.Tables
-import org.apache.texera.dao.jooq.generated.tables.daos.{UserDao, WorkflowDao}
-import org.apache.texera.dao.jooq.generated.tables.pojos.{User, Workflow}
+import org.apache.texera.dao.jooq.generated.tables.daos.{TemplateDao, UserDao, WorkflowDao}
+import org.apache.texera.dao.jooq.generated.tables.pojos.{Template, User, Workflow}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -44,6 +44,7 @@ class TemplatedWorkflowResourceSpec
   private val operatorId = "TextInput-operator-1"
 
   private var workflowDao: WorkflowDao = _
+  private var templateDao: TemplateDao = _
   // lazy so it is constructed inside a test (after beforeAll swaps in the mock DB context),
   // not at spec construction time.
   private lazy val resource = new TemplatedWorkflowResource()
@@ -120,6 +121,18 @@ class TemplatedWorkflowResourceSpec
     userDao.insert(user)
 
     workflowDao = new WorkflowDao(getDSLContext.configuration())
+    templateDao = new TemplateDao(getDSLContext.configuration())
+  }
+
+  /** Insert a template row and return its generated tid. */
+  private def createTemplate(content: String): Integer = {
+    val template = new Template
+    template.setName("templated_workflow_spec_template")
+    template.setDescription("d")
+    template.setContent(content)
+    template.setIsPublic(false)
+    templateDao.insert(template)
+    template.getTid
   }
 
   override protected def afterAll(): Unit = shutdownDB()
@@ -287,5 +300,38 @@ class TemplatedWorkflowResourceSpec
         sessionUser
       )
     }
+  }
+
+  "buildTemplatedWorkflowIfNotExists" should "be idempotent (return the same wid on repeated calls)" in {
+    val tid = createTemplate(workflowContent("preview.csv"))
+    val wid1 = resource.buildTemplatedWorkflowIfNotExists(tid, sessionUser)
+    val wid2 = resource.buildTemplatedWorkflowIfNotExists(tid, sessionUser)
+    wid2 shouldBe wid1
+  }
+
+  "instantiateTemplatedWorkflow" should "create a NEW workflow on each call (1-to-n)" in {
+    val tid = createTemplate(workflowContent("preview.csv"))
+    val widA = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    val widB = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    widA should not be widB
+  }
+
+  it should "record every instantiated workflow in workflow_of_template (so it can be tagged)" in {
+    val tid = createTemplate(workflowContent("preview.csv"))
+    val widA = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    val widB = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    val listed = resource.listTemplatedWorkflows(sessionUser).map(_.wid)
+    listed should contain(widA)
+    listed should contain(widB)
+  }
+
+  it should "apply the submitted configurable properties to the new workflow" in {
+    val tid = createTemplate(workflowContent("old.csv"))
+    val wid = resource.instantiateTemplatedWorkflow(
+      tid,
+      updateRequest(Map(operatorId -> Map("fileName" -> textNode("new.csv")))),
+      sessionUser
+    )
+    workflowDao.fetchOneByWid(wid).getContent should include("new.csv")
   }
 }

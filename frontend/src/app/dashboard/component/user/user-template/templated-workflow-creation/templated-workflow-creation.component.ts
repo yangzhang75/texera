@@ -32,8 +32,7 @@ import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
-import {ActivatedRoute, Router} from "@angular/router";
-import {USER_WORKSPACE} from "../../../../../app-routing.constant";
+import {ActivatedRoute} from "@angular/router";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
 import {OperatorPredicate} from "../../../../../workspace/types/workflow-common.interface";
@@ -113,7 +112,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     private workflowCompilingService: WorkflowCompilingService,
     private formlyJsonschema: FormlyJsonschema,
     private route: ActivatedRoute,
-    private router: Router,
     private http: HttpClient
   ) {
     this.userService
@@ -211,9 +209,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    // 1-to-n: each Submit creates a NEW workflow from the template with the configured properties,
-    // then opens it in the workspace. So submitting twice yields two separate, fully-editable
-    // workflows (each tagged "created from template"); the preview above is never overwritten.
+    // 1-to-n: each Submit creates a NEW workflow from the template with the configured properties.
+    // We stay on this page (no navigation) so the user can tweak the parameters and submit again to
+    // produce another separate workflow. Each new workflow is tagged "created from template" and
+    // appears under Your Work > Workflows.
     this.mergeFormValuesIntoOperatorProperties();
     this.writeOperatorPropertiesToGraph();
     const payload = this.getConfigurablePropertyUpdatePayload();
@@ -222,10 +221,9 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       .instantiateTemplatedWorkflow(this.tid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
-        next: newWid => {
+        next: () => {
           this.templatedWorkflowService.resetTemplatedWorkflowCache();
-          this.notificationService.success("Workflow created from template. Opening it in the workspace...");
-          this.router.navigate([USER_WORKSPACE, String(newWid)]);
+          this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
         },
         error: err => {
           console.warn("Failed to create workflow from template", err);

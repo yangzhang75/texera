@@ -78,6 +78,7 @@ DROP TABLE IF EXISTS computing_unit_user_access CASCADE;
 DROP TABLE IF EXISTS notebook CASCADE;
 DROP TABLE IF EXISTS workflow_notebook_mapping CASCADE;
 DROP TABLE IF EXISTS virtual_environments CASCADE;
+DROP TABLE IF EXISTS workflow_report CASCADE;
 
 -- ============================================
 -- 4. Create PostgreSQL enum types
@@ -86,11 +87,13 @@ DROP TABLE IF EXISTS virtual_environments CASCADE;
 DROP TYPE IF EXISTS user_role_enum CASCADE;
 DROP TYPE IF EXISTS privilege_enum CASCADE;
 DROP TYPE IF EXISTS action_enum CASCADE;
+DROP TYPE IF EXISTS report_status_enum CASCADE;
 
 CREATE TYPE user_role_enum AS ENUM ('INACTIVE', 'RESTRICTED', 'REGULAR', 'ADMIN');
 CREATE TYPE action_enum AS ENUM ('like', 'unlike', 'view', 'clone');
 CREATE TYPE privilege_enum AS ENUM ('NONE', 'READ', 'WRITE');
 CREATE TYPE workflow_computing_unit_type_enum AS ENUM ('local', 'kubernetes');
+CREATE TYPE report_status_enum AS ENUM ('PENDING', 'CLOSED', 'ACTIONED');
 
 -- ============================================
 -- 5. Create tables
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS "user"
     account_creation_time   TIMESTAMPTZ NOT NULL DEFAULT now(),
     affiliation             VARCHAR(128),
     joining_reason          VARCHAR(500),
+    publish_disabled        BOOLEAN NOT NULL DEFAULT false,
     -- check that either password or google_id is not null
     CONSTRAINT ck_nulltest CHECK ((password IS NOT NULL) OR (google_id IS NOT NULL))
     );
@@ -514,6 +518,24 @@ CREATE TABLE IF NOT EXISTS workflow_notebook_mapping
     PRIMARY KEY (wid, vid, nid),
     FOREIGN KEY (vid) REFERENCES workflow_version(vid) ON DELETE CASCADE,
     FOREIGN KEY (wid, nid) REFERENCES notebook(wid, nid) ON DELETE CASCADE
+);
+
+-- workflow_report table
+-- Content-moderation reports filed by users against public workflows.
+CREATE TABLE IF NOT EXISTS workflow_report
+(
+    report_id       SERIAL PRIMARY KEY,
+    wid             INT NOT NULL,
+    reporter_uid    INT NOT NULL,
+    reason          VARCHAR(64) NOT NULL,
+    detail          TEXT,
+    status          report_status_enum NOT NULL DEFAULT 'PENDING',
+    resolver_uid    INT,
+    creation_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_time   TIMESTAMP,
+    FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE,
+    FOREIGN KEY (reporter_uid) REFERENCES "user"(uid) ON DELETE CASCADE,
+    FOREIGN KEY (resolver_uid) REFERENCES "user"(uid) ON DELETE SET NULL
 );
 
 -- START Fulltext search index creation (DO NOT EDIT THIS LINE)

@@ -18,9 +18,10 @@
  */
 
 import { DatePipe, Location, NgIf, NgFor, NgTemplateOutlet } from "@angular/common";
-import { Component, ElementRef, Input, OnDestroy, OnInit, ViewChild } from "@angular/core";
+import { Component, ElementRef, Input, OnDestroy, OnInit, TemplateRef, ViewChild } from "@angular/core";
 import { Router, RouterLink } from "@angular/router";
 import { UserService } from "../../../common/service/user/user.service";
+import { ReportService } from "../../../dashboard/service/user/report/report.service";
 import {
   DEFAULT_WORKFLOW_NAME,
   WorkflowPersistService,
@@ -134,6 +135,14 @@ export class MenuComponent implements OnInit, OnDestroy {
   public isWorkflowModifiable: boolean = false;
   public workflowId?: number;
   public isExportDeactivate: boolean = false;
+  /** True while this workflow is currently unpublished by moderation. */
+  public moderationUnpublished: boolean = false;
+  /** Distinct reasons the workflow was reported for. */
+  public moderationReasons: string[] = [];
+  /** When the workflow was unpublished (epoch millis), for display in the notice. */
+  public moderationResolvedTime: number | null = null;
+  private moderationCheckedWid?: number;
+  @ViewChild("moderationNoticeTpl") private moderationNoticeTpl!: TemplateRef<unknown>;
   public showRegion: boolean = false;
   public showGrid: boolean = false;
   public showNumWorkers: boolean = false;
@@ -187,7 +196,8 @@ export class MenuComponent implements OnInit, OnDestroy {
     private panelService: PanelService,
     private computingUnitStatusService: ComputingUnitStatusService,
     protected config: GuiConfigService,
-    private router: Router
+    private router: Router,
+    private reportService: ReportService
   ) {
     workflowWebsocketService
       .subscribeToEvent("ExecutionDurationUpdateEvent")
@@ -810,7 +820,74 @@ export class MenuComponent implements OnInit, OnDestroy {
       .subscribe(metadata => {
         this.workflowId = metadata.wid;
         // consider adding the oprerator reconnect
+        this.refreshModerationNotice(metadata.wid);
       });
+  }
+
+  /**
+   * If this workflow was unpublished from the Hub by a moderator (owner only), show a
+   * subtle warning marker in the toolbar and, once per take-down, a dialog explaining
+   * what happened. Acknowledgement is keyed by the take-down time, so a fresh
+   * moderation (after the owner republishes) notifies again. Failures are ignored so
+   * the toolbar is never affected.
+   */
+  private refreshModerationNotice(wid: number | undefined): void {
+    if (wid === undefined || wid === this.moderationCheckedWid) {
+      return;
+    }
+    this.moderationCheckedWid = wid;
+    this.reportService
+      .getModerationNotice(wid)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: notice => {
+          this.moderationUnpublished = notice.unpublished;
+          this.moderationReasons = notice.reasons ?? [];
+          this.moderationResolvedTime = notice.resolvedTime;
+          const ackKey = this.moderationAckKey(wid, notice.resolvedTime);
+          if (notice.unpublished && !this.isAcknowledged(ackKey)) {
+            this.acknowledge(ackKey);
+            this.openModerationNotice();
+          }
+        },
+        error: () => {
+          this.moderationUnpublished = false;
+          this.moderationReasons = [];
+          this.moderationResolvedTime = null;
+        },
+      });
+  }
+
+  /** Open the "workflow was unpublished" dialog with a single acknowledge button. */
+  openModerationNotice(): void {
+    this.modalService.create({
+      nzTitle: "This workflow was unpublished",
+      nzContent: this.moderationNoticeTpl,
+      nzOkText: "I understand",
+      nzCancelText: null,
+      nzWidth: 480,
+    });
+  }
+
+  /** Keyed by workflow + take-down time so each distinct moderation notifies once. */
+  private moderationAckKey(wid: number, resolvedTime: number | null): string {
+    return `texera-moderation-ack-${wid}-${resolvedTime ?? 0}`;
+  }
+
+  private isAcknowledged(key: string): boolean {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  private acknowledge(key: string): void {
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      // localStorage may be unavailable (e.g. private mode); the dialog simply re-appears next time.
+    }
   }
 
   /**

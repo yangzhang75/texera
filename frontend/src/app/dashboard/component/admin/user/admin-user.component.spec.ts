@@ -27,6 +27,8 @@ import { FormsModule } from "@angular/forms";
 import { NzDropDownModule } from "ng-zorro-antd/dropdown";
 import { NzModalModule } from "ng-zorro-antd/modal";
 import { commonTestProviders } from "../../../../common/testing/test-utils";
+import { of } from "rxjs";
+import { ReportService } from "../../../service/user/report/report.service";
 
 describe("AdminUserComponent", () => {
   let component: AdminUserComponent;
@@ -48,6 +50,17 @@ describe("AdminUserComponent", () => {
   it("should create", inject([HttpTestingController], () => {
     expect(component).toBeTruthy();
   }));
+
+  it("setPublishing suspends/restores via the report service using the user's uid", () => {
+    const reportService = TestBed.inject(ReportService);
+    const spy = vi.spyOn(reportService, "setAuthorPublishing").mockReturnValue(of(void 0));
+
+    component.setPublishing({ uid: 42, name: "bob" } as any, true);
+    expect(spy).toHaveBeenCalledWith(42, true);
+
+    component.setPublishing({ uid: 42, name: "bob" } as any, false);
+    expect(spy).toHaveBeenCalledWith(42, false);
+  });
 
   it("should search email case-insensitively", () => {
     component.userList = [

@@ -35,6 +35,7 @@ import org.apache.texera.web.auth.JwtAuth.setupJwtAuth
 import org.apache.texera.web.resource._
 import org.apache.texera.web.resource.auth.{AuthResource, GoogleAuthResource}
 import org.apache.texera.web.resource.dashboard.DashboardResource
+import org.apache.texera.web.resource.dashboard.ReportResource
 import org.apache.texera.web.resource.dashboard.admin.execution.AdminExecutionResource
 import org.apache.texera.web.resource.dashboard.admin.settings.AdminSettingsResource
 import org.apache.texera.web.resource.dashboard.admin.user.AdminUserResource
@@ -156,6 +157,7 @@ class TexeraWebApplication
     environment.jersey.register(classOf[ProjectAccessResource])
     environment.jersey.register(classOf[WorkflowExecutionsResource])
     environment.jersey.register(classOf[DashboardResource])
+    environment.jersey.register(classOf[ReportResource])
     environment.jersey.register(classOf[GmailResource])
     environment.jersey.register(classOf[AdminExecutionResource])
     environment.jersey.register(classOf[UserQuotaResource])

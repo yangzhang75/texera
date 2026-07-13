@@ -34,6 +34,7 @@ import {
 import { NzModalService } from "ng-zorro-antd/modal";
 import { NzMessageService } from "ng-zorro-antd/message";
 import { AdminUserService } from "../../../service/admin/user/admin-user.service";
+import { ReportService } from "../../../service/user/report/report.service";
 import { MilliSecond, Role, User } from "../../../../common/type/user";
 import { UserService } from "../../../../common/service/user/user.service";
 import { UserQuotaComponent } from "../../user/user-quota/user-quota.component";
@@ -50,6 +51,7 @@ import { NzSpaceCompactItemDirective } from "ng-zorro-antd/space";
 import { NzInputDirective } from "ng-zorro-antd/input";
 import { FormsModule } from "@angular/forms";
 import { NzButtonComponent } from "ng-zorro-antd/button";
+import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
 import { NzWaveDirective } from "ng-zorro-antd/core/wave";
 import { NgFor, NgClass, NgIf, DatePipe } from "@angular/common";
 import { UserAvatarComponent } from "../../user/user-avatar/user-avatar.component";
@@ -76,6 +78,7 @@ import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
     NzInputDirective,
     FormsModule,
     NzButtonComponent,
+    NzPopconfirmDirective,
     NzWaveDirective,
     NzTbodyComponent,
     NgFor,
@@ -117,7 +120,8 @@ export class AdminUserComponent implements OnInit {
     private modalService: NzModalService,
     private messageService: NzMessageService,
     private config: GuiConfigService,
-    private feedbackService: FeedbackService
+    private feedbackService: FeedbackService,
+    private reportService: ReportService
   ) {
     this.currentUid = this.userService.getCurrentUser()?.uid;
   }
@@ -160,6 +164,23 @@ export class AdminUserComponent implements OnInit {
     this.startEdit(user, "role");
     this.editRole = role;
     this.saveEdit();
+  }
+
+  /** Suspend or restore a user's right to publish workflows. */
+  public setPublishing(user: User, disabled: boolean): void {
+    this.reportService
+      .setAuthorPublishing(user.uid, disabled)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => {
+          this.messageService.success(
+            disabled ? `Suspended publishing for ${user.name}.` : `Restored publishing for ${user.name}.`
+          );
+          this.ngOnInit();
+        },
+        error: (err: unknown) =>
+          this.messageService.error((err as any)?.error?.message || "Failed to update publishing right."),
+      });
   }
 
   addUser(): void {

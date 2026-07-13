@@ -31,6 +31,7 @@ import { OperatorMetadataService } from "../../service/operator-metadata/operato
 import { StubOperatorMetadataService } from "../../service/operator-metadata/stub-operator-metadata.service";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { UserService } from "../../../common/service/user/user.service";
+import { ReportService } from "../../../dashboard/service/user/report/report.service";
 import { StubUserService } from "../../../common/service/user/stub-user.service";
 import { commonTestProviders } from "../../../common/testing/test-utils";
 import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-workflow.service";
@@ -783,6 +784,69 @@ describe("MenuComponent", () => {
 
       status$.next(ComputingUnitState.NoComputingUnit);
       expect(cuComponent.computingUnitStatus).toBe(ComputingUnitState.Running);
+    });
+  });
+
+  describe("moderation notice", () => {
+    it("opens an acknowledge-only dialog with the workflow-unpublished template", () => {
+      const createSpy = vi.spyOn(modalService, "create").mockReturnValue({} as any);
+      component.moderationReasons = ["Harassment", "Spam / advertising"];
+
+      component.openModerationNotice();
+
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      const config = createSpy.mock.calls[0][0]!;
+      expect(config.nzTitle).toBe("This workflow was unpublished");
+      expect(config.nzOkText).toBe("I understand");
+      expect(config.nzCancelText).toBeNull();
+      expect(config.nzContent).toBeDefined(); // renders the reason-chip template
+    });
+
+    it("flags the workflow and opens the dialog once when it was unpublished", () => {
+      vi.spyOn(TestBed.inject(ReportService), "getModerationNotice").mockReturnValue(
+        of({ unpublished: true, reasons: ["Harassment"], resolvedTime: 123 })
+      );
+      const createSpy = vi.spyOn(modalService, "create").mockReturnValue({} as any);
+      localStorage.removeItem("texera-moderation-ack-4242-123");
+
+      (component as any).refreshModerationNotice(4242);
+
+      expect(component.moderationUnpublished).toBe(true);
+      expect(component.moderationReasons).toEqual(["Harassment"]);
+      expect(component.moderationResolvedTime).toBe(123);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+
+      // A second check for the same workflow is a no-op (no repeated dialog).
+      (component as any).refreshModerationNotice(4242);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not flag a workflow that is not under moderation", () => {
+      vi.spyOn(TestBed.inject(ReportService), "getModerationNotice").mockReturnValue(
+        of({ unpublished: false, reasons: [], resolvedTime: null })
+      );
+
+      (component as any).refreshModerationNotice(555);
+
+      expect(component.moderationUnpublished).toBe(false);
+      expect(component.moderationReasons).toEqual([]);
+    });
+
+    it("re-opens the dialog for a fresh take-down (a new resolved time)", () => {
+      localStorage.removeItem("texera-moderation-ack-77-100");
+      localStorage.removeItem("texera-moderation-ack-77-200");
+      const createSpy = vi.spyOn(modalService, "create").mockReturnValue({} as any);
+      vi.spyOn(TestBed.inject(ReportService), "getModerationNotice")
+        .mockReturnValueOnce(of({ unpublished: true, reasons: ["Harassment"], resolvedTime: 100 }))
+        .mockReturnValueOnce(of({ unpublished: true, reasons: ["Spam / advertising"], resolvedTime: 200 }));
+
+      (component as any).refreshModerationNotice(77);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+
+      // The owner republished and was moderated again: a new resolved time must re-notify.
+      (component as any).moderationCheckedWid = undefined;
+      (component as any).refreshModerationNotice(77);
+      expect(createSpy).toHaveBeenCalledTimes(2);
     });
   });
 });

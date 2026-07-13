@@ -48,6 +48,7 @@ export interface User
     accountCreation?: Second;
     affiliation?: string;
     joiningReason: string;
+    publishDisabled?: boolean;
   }> {}
 
 export interface File

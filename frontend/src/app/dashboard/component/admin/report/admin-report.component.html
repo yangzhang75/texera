@@ -1,0 +1,170 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+
+<nz-card class="report-card">
+  <div class="report-header">
+    <h2>Reported Public Workflows</h2>
+    <button
+      nz-button
+      nzType="default"
+      [nzLoading]="loading"
+      (click)="loadReports()">
+      <span
+        nz-icon
+        nzType="reload"></span>
+      Refresh
+    </button>
+  </div>
+
+  <p
+    *ngIf="!loading && groups.length === 0"
+    class="report-empty">
+    No pending reports. 🎉
+  </p>
+
+  <nz-table
+    *ngIf="groups.length > 0"
+    #reportTable
+    [nzData]="groups"
+    [nzLoading]="loading"
+    nzSize="middle">
+    <thead>
+      <tr>
+        <th nzWidth="90px">Workflow ID</th>
+        <th>Name</th>
+        <th>Owner</th>
+        <th nzWidth="90px">Reports</th>
+        <th>Reasons</th>
+        <th>Reporters</th>
+        <th>Details</th>
+        <th nzWidth="180px">Reported at</th>
+        <th nzWidth="200px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let group of reportTable.data">
+        <td>{{ group.wid }}</td>
+        <td>
+          <a
+            class="report-wf-link"
+            [href]="detailLink(group.wid)"
+            target="_blank"
+            rel="noopener"
+            title="Open the workflow (read-only) in a new tab">
+            {{ group.workflowName }}
+          </a>
+        </td>
+        <td>
+          <div class="report-owner">{{ group.ownerName }}</div>
+          <span
+            *ngIf="group.ownerPublishDisabled"
+            class="publishing-suspended-tag"
+            title="This user's publishing right is currently suspended.">
+            suspended
+          </span>
+        </td>
+        <td>{{ group.reportCount }}</td>
+        <td>
+          <span
+            class="cell-ellipsis"
+            nz-tooltip
+            [nzTooltipTitle]="group.reasons">
+            {{ group.reasons }}
+          </span>
+        </td>
+        <td>
+          <span
+            class="cell-ellipsis"
+            nz-tooltip
+            [nzTooltipTitle]="group.reporters">
+            {{ group.reporters }}
+          </span>
+        </td>
+        <td>
+          <span *ngIf="group.details.length === 0">—</span>
+          <span
+            *ngIf="group.details.length > 0"
+            class="report-detail-icon"
+            nz-tooltip
+            [nzTooltipTitle]="detailText(group)">
+            <span
+              nz-icon
+              nzType="message"
+              nzTheme="outline"></span>
+          </span>
+        </td>
+        <td>{{ group.latestTime | date: "medium" }}</td>
+        <td>
+          <div class="report-actions">
+            <button
+              nz-button
+              nzType="default"
+              nzSize="small"
+              nz-popconfirm
+              nzPopconfirmTitle="Dismiss all reports?"
+              (nzOnConfirm)="dismiss(group)">
+              Dismiss
+            </button>
+            <button
+              nz-button
+              nzType="primary"
+              nzDanger
+              nzSize="small"
+              nz-popconfirm
+              nzPopconfirmTitle="Unpublish and remove from the Hub?"
+              (nzOnConfirm)="unpublish(group)">
+              Unpublish
+            </button>
+            <button
+              nz-button
+              nzType="text"
+              nzSize="small"
+              nz-dropdown
+              [nzDropdownMenu]="authorMenu"
+              title="More actions">
+              <span
+                nz-icon
+                nzType="more"></span>
+            </button>
+            <nz-dropdown-menu #authorMenu="nzDropdownMenu">
+              <ul nz-menu>
+                <li
+                  *ngIf="!group.ownerPublishDisabled"
+                  nz-menu-item
+                  nz-popconfirm
+                  nzPopconfirmTitle="Suspend {{ group.ownerName }}'s right to publish any workflow?"
+                  (nzOnConfirm)="setAuthorPublishing(group, true)">
+                  Restrict author from publishing
+                </li>
+                <li
+                  *ngIf="group.ownerPublishDisabled"
+                  nz-menu-item
+                  nz-popconfirm
+                  nzPopconfirmTitle="Restore {{ group.ownerName }}'s right to publish?"
+                  (nzOnConfirm)="setAuthorPublishing(group, false)">
+                  Allow author to publish
+                </li>
+              </ul>
+            </nz-dropdown-menu>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </nz-table>
+</nz-card>

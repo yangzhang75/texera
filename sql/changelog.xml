@@ -48,6 +48,16 @@
         <sqlFile path="sql/updates/27.sql"/>
     </changeSet>
 
+    <!-- Add workflow_report table and report_status_enum (report a public workflow) -->
+    <changeSet id="28" author="yangz75">
+        <sqlFile path="sql/updates/28.sql"/>
+    </changeSet>
+
+    <!-- Add user.publish_disabled (admin can suspend a user's publishing right) -->
+    <changeSet id="29" author="yangz75">
+        <sqlFile path="sql/updates/29.sql"/>
+    </changeSet>
+
     <!-- example changeSet
     <changeSet id="1" author="author">
         <sqlFile path="sql/updates/1.sql"/>

@@ -46,6 +46,7 @@ import {
   ABOUT,
   ADMIN_EXECUTION,
   ADMIN_GMAIL,
+  ADMIN_REPORTS,
   ADMIN_SETTINGS,
   ADMIN_USER,
   USER_COMPUTING_UNIT,
@@ -260,6 +261,7 @@ describe("DashboardComponent", () => {
     expect(ADMIN_EXECUTION).toBe("/admin/execution");
     expect(ADMIN_GMAIL).toBe("/admin/gmail");
     expect(ADMIN_SETTINGS).toBe("/admin/settings");
+    expect(ADMIN_REPORTS).toBe("/admin/reports");
     expect(ABOUT).toBe("/about");
   });
 
@@ -283,8 +285,8 @@ describe("DashboardComponent", () => {
     };
     fixture.detectChanges();
 
-    // 7 "Your Work" links (incl. Python Venvs) + 4 admin links + 1 about link + 1 feedback link = 13
-    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).length).toBe(13);
+    // 7 "Your Work" links (incl. Python Venvs) + 5 admin links + 1 about link + 1 feedback link = 14
+    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).length).toBe(14);
   });
 
   describe("sidebar active-route highlighting (#3490)", () => {

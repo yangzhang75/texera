@@ -21,7 +21,7 @@ import { Component, Input } from "@angular/core";
 import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router } from "@angular/router";
 import { NzIconModule } from "ng-zorro-antd/icon";
-import { NZ_MODAL_DATA } from "ng-zorro-antd/modal";
+import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
 import { ArrowLeftOutline, EyeOutline, LikeOutline, UserOutline } from "@ant-design/icons-angular/icons";
 import { config, of, throwError } from "rxjs";
 import { vi } from "vitest";
@@ -145,6 +145,7 @@ describe("HubWorkflowDetailComponent", () => {
         { provide: WorkflowActionService, useValue: workflowActionServiceMock },
         { provide: NotificationService, useValue: notificationServiceMock },
         { provide: UserService, useClass: StubUserService },
+        { provide: NzModalService, useValue: { create: () => ({}) } },
         ...commonTestProviders,
       ],
     });
@@ -437,6 +438,20 @@ describe("HubWorkflowDetailComponent", () => {
       expect(component.displayPreciseViewCount).toBe(true);
       component.changeViewDisplayStyle();
       expect(component.displayPreciseViewCount).toBe(false);
+    });
+  });
+
+  describe("openReportDialog", () => {
+    it("opens the report dialog with this workflow's id and name", () => {
+      build({ modalData: { wid: 42 } });
+      const modal = TestBed.inject(NzModalService);
+      const spy = vi.spyOn(modal, "create").mockReturnValue({} as any);
+      component.workflowName = "My WF";
+
+      component.openReportDialog();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]!.nzData).toEqual({ wid: 42, name: "My WF" });
     });
   });
 });

@@ -18,8 +18,10 @@
  */
 
 import { Component, EventEmitter, Input, Output, TemplateRef } from "@angular/core";
+import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { DashboardEntry } from "../../../type/dashboard-entry";
 import { UserService } from "../../../../common/service/user/user.service";
+import { ReportService } from "../../../service/user/report/report.service";
 import { NzCardComponent } from "ng-zorro-antd/card";
 import { ɵɵCdkVirtualScrollViewport, ɵɵCdkFixedSizeVirtualScroll } from "@angular/cdk/overlay";
 import { NzListComponent } from "ng-zorro-antd/list";
@@ -33,6 +35,7 @@ import { ɵNzTransitionPatchDirective } from "ng-zorro-antd/core/transition-patc
 export type LoadMoreFunction = (start: number, count: number) => Promise<{ entries: DashboardEntry[]; more: boolean }>;
 export type SearchResultsViewMode = "list" | "card";
 
+@UntilDestroy()
 @Component({
   selector: "texera-search-results",
   templateUrl: "./search-results.component.html",
@@ -68,6 +71,9 @@ export class SearchResultsComponent {
   /** Template rendered for each entry in card mode; receives the entry via $implicit. */
   @Input() cardTemplate?: TemplateRef<{ $implicit: DashboardEntry }>;
 
+  /** wids of the current user's own workflows that moderation unpublished. */
+  moderatedWids = new Set<number>();
+
   trackByEntryId = (_: number, entry: DashboardEntry): string => `${entry.type}-${entry.id}`;
   @Output() deleted = new EventEmitter<DashboardEntry>();
   @Output() duplicated = new EventEmitter<DashboardEntry>();
@@ -75,7 +81,10 @@ export class SearchResultsComponent {
   @Output() notifyWorkflow = new EventEmitter<void>();
   @Output() refresh = new EventEmitter<void>();
 
-  constructor(private userService: UserService) {}
+  constructor(
+    private userService: UserService,
+    private reportService: ReportService
+  ) {}
 
   getUid(): number | undefined {
     return this.userService.getCurrentUser()?.uid;
@@ -85,6 +94,26 @@ export class SearchResultsComponent {
     this.entries = [];
     this.loadMoreFunction = loadMoreFunction;
     this.resetCounter++;
+    this.refreshModeratedWorkflows();
+  }
+
+  /** True when the entry is one of the user's own workflows taken down by moderation. */
+  isModerated(entry: DashboardEntry): boolean {
+    return entry.type === "workflow" && entry.id !== undefined && this.moderatedWids.has(entry.id);
+  }
+
+  /** Only relevant on the user's own (private) dashboard; skipped for public/hub searches. */
+  private refreshModeratedWorkflows(): void {
+    if (!this.isPrivateSearch) {
+      return;
+    }
+    this.reportService
+      .getModeratedWorkflows()
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: wids => (this.moderatedWids = new Set(wids)),
+        error: () => (this.moderatedWids = new Set()), // non-critical; just show no flags
+      });
   }
 
   async loadMore(): Promise<void> {

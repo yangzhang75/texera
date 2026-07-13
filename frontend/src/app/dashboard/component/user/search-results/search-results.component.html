@@ -38,6 +38,7 @@
             [isPrivateSearch]="isPrivateSearch"
             [editable]="editable"
             [entry]="entry"
+            [unpublishedByReport]="isModerated(entry)"
             [currentUid]="this.currentUid"
             (checkboxChanged)="onEntryCheckboxChange()">
           </texera-list-item>

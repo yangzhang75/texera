@@ -43,6 +43,7 @@ import { LandingPageComponent } from "./hub/component/landing-page/landing-page.
 import { USER_WORKFLOW } from "./app-routing.constant";
 import { HubSearchResultComponent } from "./hub/component/hub-search-result/hub-search-result.component";
 import { AdminSettingsComponent } from "./dashboard/component/admin/settings/admin-settings.component";
+import { AdminReportComponent } from "./dashboard/component/admin/report/admin-report.component";
 
 const routes: Routes = [];
 
@@ -167,6 +168,10 @@ routes.push({
         {
           path: "settings",
           component: AdminSettingsComponent,
+        },
+        {
+          path: "reports",
+          component: AdminReportComponent,
         },
       ],
     },

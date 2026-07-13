@@ -17,81 +17,46 @@
  * under the License.
  */
 
-.extra-width {
-  width: 110px;
+.report-card {
+  margin: 16px;
 }
 
-.role {
-  border-radius: 50px;
-  color: white;
-  display: block;
-  width: 86px;
-  text-align: center;
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
-.c0 {
-  background-color: lightskyblue;
+.report-empty {
+  color: rgba(0, 0, 0, 0.45);
 }
 
-.c1 {
-  background-color: lightseagreen;
-}
-
-.c2 {
-  background-color: lightcoral;
-}
-
-.c3 {
-  background-color: lightslategray;
-}
-
-.search-box {
-  padding: 8px;
-}
-
-.search-box input {
-  width: 188px;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.search-box button {
-  width: 90px;
-}
-
-.search-button {
-  margin-right: 8px;
-}
-
-.container {
+.report-wf-link {
+  color: #1890ff;
   cursor: pointer;
-  min-height: 1.5em;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
-.limited-comment {
-  max-width: 250px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+// Long text (reasons, reporters) stays on one line and shows in full on hover.
+.cell-ellipsis {
+  display: inline-block;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
-  word-break: break-word;
-  white-space: normal;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-:host ::ng-deep .user-avatar {
-  display: inline-block;
-  border: 4.5px solid #ccc;
-  border-radius: 50%;
-  padding: 2px;
-  transition: border-color 0.2s ease;
+.report-detail-icon {
+  color: rgba(0, 0, 0, 0.45);
+  cursor: default;
 }
 
-:host ::ng-deep .user-avatar.active {
-  border-color: #4caf50;
-}
-
-.publishing-cell {
+.report-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -100,6 +65,7 @@
 
 .publishing-suspended-tag {
   display: inline-block;
+  margin-top: 4px;
   padding: 0 8px;
   font-size: 12px;
   line-height: 20px;

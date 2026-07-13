@@ -82,4 +82,18 @@ export class TemplatedWorkflowService {
       request
     );
   }
+
+  /**
+   * 1-to-n: create a brand-new workflow from the template with the given configurable properties.
+   * Every call yields a separate workflow (tagged "created from template"). Returns the new wid.
+   */
+  public instantiateTemplatedWorkflow(
+    tid: number,
+    request: { operatorProperties: Record<string, Record<string, unknown>> }
+  ): Observable<number> {
+    return this.http.post<number>(
+      `${AppSettings.getApiEndpoint()}/${TEMPLATED_WORKFLOW_BASE_URL}/instantiate?tid=${tid}`,
+      request
+    );
+  }
 }

@@ -320,4 +320,38 @@ class TemplatedWorkflowResource extends LazyLogging {
 
     workflowDao.fetchOneByWid(wid)
   }
+
+  /**
+    * 1-to-n: create a brand-new workflow from the template and apply the submitted configurable
+    * properties to it. Every call yields a separate workflow that is recorded in
+    * workflow_of_template (so it carries the "created from template" tag) and owned by the caller
+    * with WRITE access. Returns the new wid. The build page calls this on Submit.
+    */
+  @POST
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/instantiate")
+  def instantiateTemplatedWorkflow(
+      @QueryParam("tid") tid: Integer,
+      request: TemplatedWorkflowConfigurablePropertiesUpdateRequest,
+      @Auth sessionUser: SessionUser
+  ): Integer = {
+    val template = templateService.retrieveTemplate(tid)
+    val newWorkflow = new Workflow(
+      null, // wid
+      template.name, // name
+      template.description, // description
+      template.content, // content
+      null, // creationTime
+      null, // lastModifiedTime
+      false // isPublic
+    )
+    val created = workflowPersistService.createWorkflow(newWorkflow, sessionUser)
+    val newWid = created.workflow.getWid
+    buildTemplatedWorkflowRelation(tid, newWid, "")
+    // Reuse /update's whitelisted apply logic on the new workflow, if any properties were submitted.
+    if (request != null && request.operatorProperties != null && request.operatorProperties.nonEmpty) {
+      updateTemplatedWorkflowConfigurableProperties(newWid, request, sessionUser)
+    }
+    newWid
+  }
 }

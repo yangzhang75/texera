@@ -82,6 +82,19 @@ describe("TemplatedWorkflowService", () => {
     expect(received).toEqual(updated);
   });
 
+  it("instantiateTemplatedWorkflow should POST properties to /instantiate?tid= and return the new wid", () => {
+    const payload = { operatorProperties: { "CSVFileScan-op-1": { fileName: "a.csv" } } };
+    let received: number | undefined;
+    service.instantiateTemplatedWorkflow(84, payload).subscribe(wid => (received = wid));
+
+    const req = httpTestingController.expectOne(`${base}/instantiate?tid=84`);
+    expect(req.request.method).toEqual("POST");
+    expect(req.request.body).toEqual(payload);
+    req.flush(305);
+
+    expect(received).toEqual(305);
+  });
+
   it("listTemplatedWorkflows should GET /list and return the (wid, tid) links", () => {
     let received: { wid: number; tid: number }[] | undefined;
     service.listTemplatedWorkflows().subscribe(list => (received = list));

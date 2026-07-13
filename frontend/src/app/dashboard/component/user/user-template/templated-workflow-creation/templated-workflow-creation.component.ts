@@ -32,7 +32,8 @@ import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
-import {ActivatedRoute} from "@angular/router";
+import {ActivatedRoute, Router} from "@angular/router";
+import {USER_WORKSPACE} from "../../../../../app-routing.constant";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
 import {OperatorPredicate} from "../../../../../workspace/types/workflow-common.interface";
@@ -112,6 +113,7 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     private workflowCompilingService: WorkflowCompilingService,
     private formlyJsonschema: FormlyJsonschema,
     private route: ActivatedRoute,
+    private router: Router,
     private http: HttpClient
   ) {
     this.userService
@@ -209,20 +211,25 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    if (!this.wid) {
-      this.notificationService.error("Missing workflow ID.");
-      return;
-    }
+    // 1-to-n: each Submit creates a NEW workflow from the template with the configured properties,
+    // then opens it in the workspace. So submitting twice yields two separate, fully-editable
+    // workflows (each tagged "created from template"); the preview above is never overwritten.
+    this.mergeFormValuesIntoOperatorProperties();
+    this.writeOperatorPropertiesToGraph();
+    const payload = this.getConfigurablePropertyUpdatePayload();
 
-    this.applyJobFormToOperators()
+    this.templatedWorkflowService
+      .instantiateTemplatedWorkflow(this.tid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
-        next: () => {
-          this.showEmbeddedWorkspace = true;
+        next: newWid => {
+          this.templatedWorkflowService.resetTemplatedWorkflowCache();
+          this.notificationService.success("Workflow created from template. Opening it in the workspace...");
+          this.router.navigate([USER_WORKSPACE, String(newWid)]);
         },
         error: err => {
-          console.warn("Failed to update templated workflow", err);
-          this.notificationService.error("Failed to update workflow.");
+          console.warn("Failed to create workflow from template", err);
+          this.notificationService.error("Failed to create workflow from template.");
         },
       });
   }

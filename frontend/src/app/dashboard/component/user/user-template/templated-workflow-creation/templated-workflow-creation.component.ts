@@ -20,7 +20,7 @@
 import {FormlyFieldConfig, FormlyModule} from "@ngx-formly/core";
 import {FormlyJsonschema} from "@ngx-formly/core/json-schema";
 import {FormGroup, ReactiveFormsModule} from "@angular/forms";
-import {AfterViewInit, Component} from "@angular/core";
+import {AfterViewInit, Component, OnDestroy} from "@angular/core";
 import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
@@ -77,7 +77,7 @@ interface ConfigurableSection {
     WorkspaceComponent,
   ],
 })
-export class TemplatedWorkflowCreationComponent implements AfterViewInit {
+export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDestroy {
   public tid: number | undefined;
   public wid: number | undefined;
   public template: WorkflowContent | undefined;
@@ -129,6 +129,13 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .subscribe(event => {
         this.executionState = event.current.state;
       });
+  }
+
+  ngOnDestroy(): void {
+    // The preview loads the template's workflow into the shared collaborative model. If we leave it
+    // behind, its operators can leak into the next workflow opened (which then merges + auto-persists
+    // duplicated operators). Tear the shared model down so the next workspace starts from a clean slate.
+    this.workflowActionService.destroySharedModel();
   }
 
   public get formValid(): boolean {

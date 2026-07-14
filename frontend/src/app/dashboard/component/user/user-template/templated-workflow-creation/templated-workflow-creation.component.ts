@@ -158,29 +158,32 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     return !this.workflowReady || this.isWorkflowExecutionActive;
   }
 
-  // Cosmetic "nothing to apply" state: the button looks grey but stays CLICKABLE, so it can never
-  // block an edit (a click still commits + applies). Grey when the form matches what is already
-  // applied to the live graph; the moment the form differs (the top form vs the bottom preview),
-  // it goes bright. Read via form.getRawValue() (always the current control value) so it never gets
-  // stuck grey after an edit.
+  // Snapshot of the last configuration that was successfully submitted (operator property values +
+  // the chosen name). Undefined until the first successful Submit.
+  private lastSubmitted: { properties: Record<string, Record<string, unknown>>; name: string } | undefined;
+
+  // Cosmetic "already created this" state: the button looks grey but stays CLICKABLE, so it can
+  // never block a submit (a click still creates). It goes grey right after a successful Submit --
+  // signalling the workflow was created and stopping the user from spamming duplicate identical
+  // copies -- and returns to bright the moment any parameter (or the name) changes, because that
+  // would create a genuinely different workflow. Before the first submit it stays bright.
   public get submitIdle(): boolean {
     if (this.submitDisabled) {
       return false;
     }
-    return !this.hasPendingChanges();
+    return this.lastSubmitted !== undefined && isEqual(this.currentSubmission(), this.lastSubmitted);
   }
 
-  private hasPendingChanges(): boolean {
-    const graph = this.workflowActionService.getTexeraGraph();
-    return this.sections.some(section => {
-      if (!graph.hasOperator(section.operatorID)) {
-        return false;
-      }
-      const live = graph.getOperator(section.operatorID).operatorProperties;
-      const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
-      const merged = { ...draft, ...section.form.getRawValue() };
-      return !isEqual(merged, live);
-    });
+  // The current configuration the user would submit right now: live form-control values per
+  // operator plus the preview's current name. Compared against `lastSubmitted` to drive the grey
+  // (already-created) state.
+  private currentSubmission(): { properties: Record<string, Record<string, unknown>>; name: string } {
+    const properties: Record<string, Record<string, unknown>> = {};
+    for (const section of this.sections) {
+      properties[section.operatorID] = { ...section.form.getRawValue() };
+    }
+    const name = this.workflowActionService.getWorkflowMetadata()?.name?.trim() || "";
+    return { properties, name };
   }
 
   public onJobFormSubmitted(): void {
@@ -219,12 +222,16 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     // server-side when blank), so their chosen name carries onto the submitted workflow.
     const name = this.workflowActionService.getWorkflowMetadata()?.name?.trim() || undefined;
     const payload = { ...this.getConfigurablePropertyUpdatePayload(), name };
+    // Snapshot exactly what we're submitting; on success it greys the button so identical re-submits
+    // are visibly discouraged until the user changes something.
+    const submitted = this.currentSubmission();
 
     this.templatedWorkflowService
       .instantiateTemplatedWorkflow(this.tid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
+          this.lastSubmitted = submitted;
           this.templatedWorkflowService.resetTemplatedWorkflowCache();
           this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
         },

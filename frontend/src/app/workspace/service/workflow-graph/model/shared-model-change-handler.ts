@@ -352,6 +352,9 @@ export class SharedModelChangeHandler {
             this.handlePortEvent(event, operatorID, true);
           } else if (event.path.includes("outputPorts")) {
             this.handlePortEvent(event, operatorID, false);
+          } else if (event.path.includes("configurableProperties")) {
+            // Template-authoring metadata (which properties are user-configurable). It lives on the
+            // operator shared type but drives no joint-graph state, so there is nothing to propagate.
           } else {
             throw new Error(`undefined operation on shared type: .${event}`);
           }

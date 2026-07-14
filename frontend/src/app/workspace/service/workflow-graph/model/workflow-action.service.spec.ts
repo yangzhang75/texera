@@ -277,4 +277,24 @@ describe("WorkflowActionService", () => {
     // expect(sentimentOpPos).toEqual(mockPoint);
     // expect(resultOpPos).toEqual(mockPoint);
   });
+
+  // Toggling which operator properties are configurable (template authoring) writes a
+  // `configurableProperties` array onto the operator's shared type. The shared-model change handler
+  // observes operators deeply, so this must be a path it recognizes -- otherwise it throws
+  // "undefined operation on shared type" mid-transaction, corrupting the model so nothing can be
+  // submitted afterwards.
+  it("should mark operator properties configurable without breaking the shared model", () => {
+    service.addOperator(mockScanPredicate, mockPoint);
+
+    expect(() =>
+      service.setOperatorConfigurableProperties(mockScanPredicate.operatorID, ["tableName"])
+    ).not.toThrow();
+    expect(texeraGraph.getOperator(mockScanPredicate.operatorID).configurableProperties).toEqual(["tableName"]);
+
+    // Editing the set again (the delete+insert path that used to throw) must also be safe.
+    expect(() =>
+      service.setOperatorConfigurableProperties(mockScanPredicate.operatorID, [])
+    ).not.toThrow();
+    expect(texeraGraph.getOperator(mockScanPredicate.operatorID).configurableProperties).toEqual([]);
+  });
 });

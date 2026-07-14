@@ -215,7 +215,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     // appears under Your Work > Workflows.
     this.mergeFormValuesIntoOperatorProperties();
     this.writeOperatorPropertiesToGraph();
-    const payload = this.getConfigurablePropertyUpdatePayload();
+    // Name the new workflow after what the user set in the preview (falls back to the template name
+    // server-side when blank), so their chosen name carries onto the submitted workflow.
+    const name = this.workflowActionService.getWorkflowMetadata()?.name?.trim() || undefined;
+    const payload = { ...this.getConfigurablePropertyUpdatePayload(), name };
 
     this.templatedWorkflowService
       .instantiateTemplatedWorkflow(this.tid, payload)

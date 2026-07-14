@@ -89,7 +89,7 @@ export class TemplatedWorkflowService {
    */
   public instantiateTemplatedWorkflow(
     tid: number,
-    request: { operatorProperties: Record<string, Record<string, unknown>> }
+    request: { operatorProperties: Record<string, Record<string, unknown>>; name?: string }
   ): Observable<number> {
     return this.http.post<number>(
       `${AppSettings.getApiEndpoint()}/${TEMPLATED_WORKFLOW_BASE_URL}/instantiate?tid=${tid}`,

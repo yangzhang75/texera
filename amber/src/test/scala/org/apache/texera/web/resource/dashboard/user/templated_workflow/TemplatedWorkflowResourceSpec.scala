@@ -84,10 +84,12 @@ class TemplatedWorkflowResourceSpec
   private def numberNode(value: Int): JsonNode = objectMapper.readTree(value.toString)
 
   private def updateRequest(
-      properties: Map[String, Map[String, JsonNode]]
+      properties: Map[String, Map[String, JsonNode]],
+      name: String = null
   ): TemplatedWorkflowConfigurablePropertiesUpdateRequest = {
     val request = new TemplatedWorkflowConfigurablePropertiesUpdateRequest
     request.operatorProperties = properties
+    request.name = name
     request
   }
 
@@ -349,6 +351,26 @@ class TemplatedWorkflowResourceSpec
     )
     val workflow = workflowDao.fetchOneByWid(wid)
     workflow.getLastModifiedTime shouldBe workflow.getCreationTime
+  }
+
+  it should "name the new workflow after the user's chosen name when one is provided" in {
+    val tid = createTemplate(workflowContent("old.csv"))
+    val wid = resource.instantiateTemplatedWorkflow(
+      tid,
+      updateRequest(Map(operatorId -> Map("fileName" -> textNode("new.csv"))), name = "My Report"),
+      sessionUser
+    )
+    workflowDao.fetchOneByWid(wid).getName shouldBe "My Report"
+  }
+
+  it should "fall back to the template's name when no name is provided (or blank)" in {
+    val tid = createTemplate(workflowContent("old.csv"))
+    val templateName = new TemplateDao(getDSLContext.configuration()).fetchOneByTid(tid).getName
+    val widNull = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    val widBlank =
+      resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty, name = "   "), sessionUser)
+    workflowDao.fetchOneByWid(widNull).getName shouldBe templateName
+    workflowDao.fetchOneByWid(widBlank).getName shouldBe templateName
   }
 
   it should "not bump the workflow's timestamps when applying properties (targeted content update)" in {

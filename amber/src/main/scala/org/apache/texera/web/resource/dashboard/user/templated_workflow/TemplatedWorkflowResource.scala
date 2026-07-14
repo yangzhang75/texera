@@ -56,6 +56,8 @@ import scala.jdk.CollectionConverters._
   */
 class TemplatedWorkflowConfigurablePropertiesUpdateRequest {
   var operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty
+  // Optional name for the workflow created by /instantiate. When blank, the template's name is used.
+  var name: String = _
 }
 
 /**
@@ -346,9 +348,13 @@ class TemplatedWorkflowResource extends LazyLogging {
       @Auth sessionUser: SessionUser
   ): Integer = {
     val template = templateService.retrieveTemplate(tid)
+    // Honor a user-chosen name from the build page; fall back to the template's name when blank.
+    val workflowName =
+      if (request != null && request.name != null && request.name.trim.nonEmpty) request.name.trim
+      else template.name
     val newWorkflow = new Workflow(
       null, // wid
-      template.name, // name
+      workflowName, // name
       template.description, // description
       template.content, // content
       null, // creationTime

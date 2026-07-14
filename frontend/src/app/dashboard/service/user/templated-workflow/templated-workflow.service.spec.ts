@@ -95,6 +95,16 @@ describe("TemplatedWorkflowService", () => {
     expect(received).toEqual(305);
   });
 
+  it("instantiateTemplatedWorkflow should forward the chosen workflow name in the body", () => {
+    const payload = { operatorProperties: {}, name: "My Report" };
+    service.instantiateTemplatedWorkflow(84, payload).subscribe();
+
+    const req = httpTestingController.expectOne(`${base}/instantiate?tid=84`);
+    expect(req.request.body).toEqual(payload);
+    expect(req.request.body.name).toEqual("My Report");
+    req.flush(306);
+  });
+
   it("listTemplatedWorkflows should GET /list and return the (wid, tid) links", () => {
     let received: { wid: number; tid: number }[] | undefined;
     service.listTemplatedWorkflows().subscribe(list => (received = list));

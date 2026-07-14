@@ -39,7 +39,7 @@ import javax.ws.rs.{
   QueryParam
 }
 import org.apache.texera.web.service.{TemplateService, WorkflowPersistService}
-import org.apache.texera.dao.jooq.generated.Tables.WORKFLOW_OF_TEMPLATE
+import org.apache.texera.dao.jooq.generated.Tables.{WORKFLOW, WORKFLOW_OF_TEMPLATE}
 import org.apache.texera.dao.jooq.generated.tables.pojos._
 import org.apache.texera.web.resource.dashboard.user.templated_workflow.TemplatedWorkflowResource._
 import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowVersionResource
@@ -316,7 +316,17 @@ class TemplatedWorkflowResource extends LazyLogging {
     workflow.setContent(objectMapper.writeValueAsString(contentObject))
 
     WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
-    workflowDao.update(workflow)
+    // Update ONLY the content column. Using workflowDao.update(workflow) rewrites the whole record,
+    // and jOOQ re-stamps the timestamp columns truncated to whole seconds -- that loses the
+    // sub-second precision a freshly-created workflow gets from the DB default, so several workflows
+    // created in the same second sort arbitrarily and a newly instantiated one may not appear at the
+    // top of the list. A targeted content update leaves creation/last-modified untouched, keeping the
+    // generated workflow's timestamps identical to a normal workflow's.
+    context
+      .update(WORKFLOW)
+      .set(WORKFLOW.CONTENT, workflow.getContent)
+      .where(WORKFLOW.WID.eq(wid))
+      .execute()
 
     workflowDao.fetchOneByWid(wid)
   }

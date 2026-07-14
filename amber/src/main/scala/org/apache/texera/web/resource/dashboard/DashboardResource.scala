@@ -155,18 +155,27 @@ object DashboardResource {
     // Regex pattern to extract column name and order direction
     val pattern = "(Name|CreateTime|EditTime)(Asc|Desc)".r
 
+    // A stable secondary key so results are deterministic when the primary key ties. This matters
+    // because jOOQ stamps last_modified_time on every update truncated to whole seconds, so two
+    // resources created/edited in the same second would otherwise order arbitrarily -- e.g. two
+    // template workflows instantiated back-to-back, where the newer one could sort below the older.
+    // Ordering ties by creation time descending keeps the most recently created resource on top.
+    val tieBreaker = UnifiedResourceSchema.resourceCreationTimeField.desc()
+
     searchQueryParams.orderBy match {
       case pattern(column, order) =>
         val field = getColumnField(column)
         field match {
           case Some(value) =>
-            List(order match {
+            val primary = order match {
               case "Asc"  => value.asc()
               case "Desc" => value.desc()
-            })
-          case None => List()
+            }
+            // Don't repeat creation time as its own tiebreaker.
+            if (column == "CreateTime") List(primary) else List(primary, tieBreaker)
+          case None => List(tieBreaker)
         }
-      case _ => List() // Default case if the orderBy string doesn't match the pattern
+      case _ => List(tieBreaker) // Default case if the orderBy string doesn't match the pattern
     }
   }
 

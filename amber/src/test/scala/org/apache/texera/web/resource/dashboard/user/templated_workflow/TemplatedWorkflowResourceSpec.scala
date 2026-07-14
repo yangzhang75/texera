@@ -334,4 +334,35 @@ class TemplatedWorkflowResourceSpec
     )
     workflowDao.fetchOneByWid(wid).getContent should include("new.csv")
   }
+
+  it should "leave the instantiated workflow's timestamps un-truncated (so the newest sorts to the top)" in {
+    // Applying properties must not re-stamp the workflow's timestamps truncated to whole seconds;
+    // otherwise workflows created in the same second sort arbitrarily and the newest can drop below
+    // an older one. createWorkflow inserts both timestamps from the same DB default, so they are
+    // equal; a whole-second re-stamp on update would push last_modified past creation. Asserting
+    // they remain equal proves the applied update did not re-stamp/truncate.
+    val tid = createTemplate(workflowContent("old.csv"))
+    val wid = resource.instantiateTemplatedWorkflow(
+      tid,
+      updateRequest(Map(operatorId -> Map("fileName" -> textNode("new.csv")))),
+      sessionUser
+    )
+    val workflow = workflowDao.fetchOneByWid(wid)
+    workflow.getLastModifiedTime shouldBe workflow.getCreationTime
+  }
+
+  it should "not bump the workflow's timestamps when applying properties (targeted content update)" in {
+    freshWorkflow()
+    val before = workflowDao.fetchOneByWid(testWid)
+    resource.updateTemplatedWorkflowConfigurableProperties(
+      testWid,
+      updateRequest(Map(operatorId -> Map("fileName" -> textNode("kept.csv")))),
+      sessionUser
+    )
+    val after = workflowDao.fetchOneByWid(testWid)
+    // Content changed, timestamps preserved exactly (no whole-second truncation).
+    after.getContent should include("kept.csv")
+    after.getCreationTime shouldBe before.getCreationTime
+    after.getLastModifiedTime shouldBe before.getLastModifiedTime
+  }
 }

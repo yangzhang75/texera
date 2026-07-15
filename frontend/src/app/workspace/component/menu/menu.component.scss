@@ -193,26 +193,22 @@ texera-coeditor-user-icon {
 
 // The template-authoring "Finish" button sits on its own (outside the icon-only compact group),
 // so it keeps its natural width and label instead of being clipped.
+// Template-authoring action buttons (Cancel / Finish). They sit outside the icon-only compact
+// group so they keep their natural width and label, with a cleaner pill look.
+.template-cancel-button,
 .template-finish-button {
-  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits,
-  // and give it a cleaner, more finished look than a plain toolbar button.
+  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits.
   width: auto !important;
   height: 32px;
   padding: 0 16px !important;
-  margin-left: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   border-radius: 16px;
   font-weight: 500;
-  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.35);
   transition:
     box-shadow 0.2s ease,
     transform 0.05s ease;
-
-  &:hover {
-    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.45);
-  }
 
   &:active {
     transform: translateY(1px);
@@ -220,5 +216,18 @@ texera-coeditor-user-icon {
 
   i {
     font-size: 13px;
+  }
+}
+
+.template-cancel-button {
+  margin-left: 12px;
+}
+
+.template-finish-button {
+  margin-left: 8px;
+  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.35);
+
+  &:hover {
+    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.45);
   }
 }

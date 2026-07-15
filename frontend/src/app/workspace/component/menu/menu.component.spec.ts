@@ -546,6 +546,38 @@ describe("MenuComponent", () => {
     });
   });
 
+  describe("onClickCancelTemplate", () => {
+    it("deletes the template and navigates back once the discard is confirmed", () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, "navigate").mockResolvedValue(true);
+      const deleteSpy = vi.spyOn(component.templateService, "deleteTemplate").mockReturnValue(of({} as any));
+      // Auto-confirm the discard dialog.
+      vi.spyOn(modalService, "confirm").mockImplementation((cfg: any) => {
+        cfg.nzOnOk();
+        return {} as NzModalRef;
+      });
+
+      component.mode = "template";
+      (component as any).entityId = 42;
+      component.onClickCancelTemplate();
+
+      expect(deleteSpy).toHaveBeenCalledWith([42]);
+      expect(navigateSpy).toHaveBeenCalledWith([USER_TEMPLATE]);
+    });
+
+    it("does not delete anything if the discard dialog is dismissed", () => {
+      const deleteSpy = vi.spyOn(component.templateService, "deleteTemplate").mockReturnValue(of({} as any));
+      // Dialog opened but the user does not confirm (nzOnOk never called).
+      vi.spyOn(modalService, "confirm").mockReturnValue({} as NzModalRef);
+
+      component.mode = "template";
+      (component as any).entityId = 42;
+      component.onClickCancelTemplate();
+
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+  });
+
   it("onClickCreateNewWorkflow resets the graph and navigates back to root", () => {
     const resetSpy = vi.spyOn(workflowActionService, "resetAsNewWorkflow").mockImplementation(() => {});
     const goSpy = vi.spyOn(location, "go").mockImplementation(() => {});

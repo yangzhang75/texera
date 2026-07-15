@@ -737,6 +737,41 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * "Cancel" on the template-authoring page: the template was created when the page opened, so
+   * cancelling discards (deletes) it and returns the user to the workflow they started from. Guarded
+   * by a confirm because the delete is permanent.
+   */
+  public onClickCancelTemplate(): void {
+    const tid = this.entityId;
+    const fromWid = this.route.snapshot.queryParamMap.get("fromWid");
+    const goBack = () => this.router.navigate(fromWid ? [USER_WORKFLOW, fromWid] : [USER_TEMPLATE]);
+
+    this.modalService.confirm({
+      nzTitle: "Discard this template?",
+      nzContent: "The template created on this page will be permanently deleted.",
+      nzOkText: "Discard",
+      nzOkDanger: true,
+      nzCancelText: "Keep editing",
+      nzOnOk: () => {
+        if (!tid) {
+          goBack();
+          return;
+        }
+        this.templateService
+          .deleteTemplate([tid])
+          .pipe(untilDestroyed(this))
+          .subscribe({
+            next: () => {
+              this.notificationService.info("Template discarded.");
+              goBack();
+            },
+            error: () => this.notificationService.error("Failed to discard the template."),
+          });
+      },
+    });
+  }
+
+  /**
    * Returns true if there's any operator on the graph; false otherwise
    */
   public hasOperators(): boolean {

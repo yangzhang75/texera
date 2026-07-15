@@ -168,6 +168,18 @@
       </nz-space-compact>
       <button
         *ngIf="isTemplateMode"
+        class="template-cancel-button"
+        (click)="onClickCancelTemplate()"
+        nz-button
+        nzType="default"
+        title="Discard this template and go back to the workflow">
+        <i
+          nz-icon
+          nzType="close"></i>
+        Cancel
+      </button>
+      <button
+        *ngIf="isTemplateMode"
         class="template-finish-button"
         (click)="onClickFinishTemplate()"
         nz-button

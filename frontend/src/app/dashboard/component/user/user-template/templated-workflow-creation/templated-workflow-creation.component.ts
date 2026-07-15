@@ -207,37 +207,32 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    if (!this.tid) {
-      this.notificationService.error("Missing template ID.");
+    if (!this.wid) {
+      this.notificationService.error("Workflow is not ready yet.");
       return;
     }
 
-    // 1-to-n: each Submit creates a NEW workflow from the template with the configured properties.
-    // We stay on this page (no navigation) so the user can tweak the parameters and submit again to
-    // produce another separate workflow. Each new workflow is tagged "created from template" and
-    // appears under Your Work > Workflows.
+    // The preview IS the workflow. Submit applies the configured properties to that same workflow
+    // (created once on page open and already listed under Your Work > Workflows) -- it does NOT
+    // create a second, duplicate workflow. Its name is whatever the user set in the preview.
     this.mergeFormValuesIntoOperatorProperties();
     this.writeOperatorPropertiesToGraph();
-    // Name the new workflow after what the user set in the preview (falls back to the template name
-    // server-side when blank), so their chosen name carries onto the submitted workflow.
-    const name = this.workflowActionService.getWorkflowMetadata()?.name?.trim() || undefined;
-    const payload = { ...this.getConfigurablePropertyUpdatePayload(), name };
+    const payload = this.getConfigurablePropertyUpdatePayload();
     // Snapshot exactly what we're submitting; on success it greys the button so identical re-submits
     // are visibly discouraged until the user changes something.
     const submitted = this.currentSubmission();
 
     this.templatedWorkflowService
-      .instantiateTemplatedWorkflow(this.tid, payload)
+      .updateTemplatedWorkflowProperties(this.wid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
           this.lastSubmitted = submitted;
-          this.templatedWorkflowService.resetTemplatedWorkflowCache();
-          this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
+          this.notificationService.success("Workflow saved. Find it under Your Work > Workflows.");
         },
         error: err => {
-          console.warn("Failed to create workflow from template", err);
-          this.notificationService.error("Failed to create workflow from template.");
+          console.warn("Failed to save the workflow", err);
+          this.notificationService.error("Failed to save the workflow.");
         },
       });
   }

@@ -112,6 +112,8 @@ export class ListItemComponent implements OnChanges {
   size: number | undefined = 0;
   public iconType: string = "";
   public isCreatedFromTemplate: boolean = false;
+  // Which template this workflow was created from (shown in the badge so the origin is traceable).
+  public templateTid: number | undefined;
   isLiked: boolean = false;
   @Input() isPrivateSearch = false;
   @Input() editable = false;
@@ -161,11 +163,15 @@ export class ListItemComponent implements OnChanges {
           this.entryLink = [HUB_WORKFLOW_RESULT_DETAIL, String(this.entry.id)];
         }
         this.size = this.entry.size;
-        // Tag workflows that were created from a template.
+        // Tag workflows that were created from a template, and record WHICH template (tid).
         this.templatedWorkflowService
-          .getTemplatedWorkflowWids()
+          .getTemplatedWorkflowTidMap()
           .pipe(untilDestroyed(this))
-          .subscribe(wids => (this.isCreatedFromTemplate = wids.has(this.entry.id as number)));
+          .subscribe(tidMap => {
+            const tid = tidMap.get(this.entry.id as number);
+            this.isCreatedFromTemplate = tid !== undefined;
+            this.templateTid = tid;
+          });
       }
       this.iconType = "project";
     } else if (this.entry.type === "project") {

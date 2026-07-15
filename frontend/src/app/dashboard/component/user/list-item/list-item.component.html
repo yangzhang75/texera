@@ -99,11 +99,11 @@
       <span
         *ngIf="entry.type === 'workflow' && isCreatedFromTemplate"
         class="template-badge"
-        title="This workflow was created from a template">
+        [title]="'This workflow was created from template #' + templateTid">
         <i
           nz-icon
           nzType="experiment"></i>
-        created from template
+        created from template #{{ templateTid }}
       </span>
       <input
         *ngIf="editingName"

@@ -53,24 +53,30 @@ export class TemplatedWorkflowService {
     );
   }
 
-  private templatedWids$?: Observable<Set<number>>;
+  private templatedTidMap$?: Observable<Map<number, number>>;
 
   /**
-   * Set of wids created from a template, cached (shareReplay) so many list items share one request.
-   * Refreshed on page reload; call resetTemplatedWorkflowCache() to force a refetch.
+   * Map of wid -> source template tid for every workflow created from a template, cached
+   * (shareReplay) so many list items share one request. Refreshed on page reload; call
+   * resetTemplatedWorkflowCache() to force a refetch.
    */
-  public getTemplatedWorkflowWids(): Observable<Set<number>> {
-    if (!this.templatedWids$) {
-      this.templatedWids$ = this.listTemplatedWorkflows().pipe(
-        map(list => new Set(list.map(l => l.wid))),
+  public getTemplatedWorkflowTidMap(): Observable<Map<number, number>> {
+    if (!this.templatedTidMap$) {
+      this.templatedTidMap$ = this.listTemplatedWorkflows().pipe(
+        map(list => new Map(list.map(l => [l.wid, l.tid] as [number, number]))),
         shareReplay(1)
       );
     }
-    return this.templatedWids$;
+    return this.templatedTidMap$;
+  }
+
+  /** Set of wids created from a template (derived from the cached wid -> tid map). */
+  public getTemplatedWorkflowWids(): Observable<Set<number>> {
+    return this.getTemplatedWorkflowTidMap().pipe(map(m => new Set(m.keys())));
   }
 
   public resetTemplatedWorkflowCache(): void {
-    this.templatedWids$ = undefined;
+    this.templatedTidMap$ = undefined;
   }
 
   public updateTemplatedWorkflowProperties(

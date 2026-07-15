@@ -122,6 +122,23 @@ describe("TemplatedWorkflowService", () => {
     ]);
   });
 
+  it("getTemplatedWorkflowTidMap should map each wid to its source template tid", () => {
+    let received: Map<number, number> | undefined;
+    service.getTemplatedWorkflowTidMap().subscribe(m => (received = m));
+
+    httpTestingController.expectOne(`${base}/list`).flush([
+      { wid: 1, tid: 10 },
+      { wid: 2, tid: 11 },
+    ]);
+
+    expect(received).toEqual(
+      new Map([
+        [1, 10],
+        [2, 11],
+      ])
+    );
+  });
+
   it("getTemplatedWorkflowWids should map the list to a Set of wids", () => {
     let received: Set<number> | undefined;
     service.getTemplatedWorkflowWids().subscribe(wids => (received = wids));

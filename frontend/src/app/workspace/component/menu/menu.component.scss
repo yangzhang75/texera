@@ -193,41 +193,40 @@ texera-coeditor-user-icon {
 
 // The template-authoring "Finish" button sits on its own (outside the icon-only compact group),
 // so it keeps its natural width and label instead of being clipped.
-// Template-authoring action buttons (Cancel / Finish). They sit outside the icon-only compact
-// group so they keep their natural width and label, with a cleaner pill look.
-.template-cancel-button,
-.template-finish-button {
-  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits.
-  width: auto !important;
-  height: 32px;
-  padding: 0 16px !important;
+// Template-authoring actions (Cancel / Finish): right-aligned, flat and quiet so they read as the
+// page's primary actions without shouting over the toolbar. Inspired by the restrained
+// Cancel/Done pairing in Apple's editing UIs.
+.template-actions {
+  margin-left: auto; // push the pair to the right, away from the left icon tools
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border-radius: 16px;
-  font-weight: 500;
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.05s ease;
+  gap: 4px;
 
-  &:active {
-    transform: translateY(1px);
-  }
-
-  i {
+  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so labels fit.
+  .template-cancel-button,
+  .template-finish-button {
+    width: auto !important;
+    height: 28px;
+    padding: 0 14px !important;
+    border-radius: 8px;
     font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    transition: background-color 0.15s ease;
   }
-}
 
-.template-cancel-button {
-  margin-left: 12px;
-}
+  // Cancel: quiet, borderless text button.
+  .template-cancel-button {
+    color: rgba(0, 0, 0, 0.55);
+    &:hover {
+      color: rgba(0, 0, 0, 0.85);
+      background-color: rgba(0, 0, 0, 0.04);
+    }
+  }
 
-.template-finish-button {
-  margin-left: 8px;
-  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.35);
-
-  &:hover {
-    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.45);
+  // Finish: a single, flat accent button (no heavy shadow / gradient).
+  .template-finish-button {
+    box-shadow: none;
   }
 }

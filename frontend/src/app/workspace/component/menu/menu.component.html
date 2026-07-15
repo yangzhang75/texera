@@ -166,30 +166,26 @@
             nzType="experiment"></i>
         </button>
       </nz-space-compact>
-      <button
+      <div
         *ngIf="isTemplateMode"
-        class="template-cancel-button"
-        (click)="onClickCancelTemplate()"
-        nz-button
-        nzType="default"
-        title="Discard this template and go back to the workflow">
-        <i
-          nz-icon
-          nzType="close"></i>
-        Cancel
-      </button>
-      <button
-        *ngIf="isTemplateMode"
-        class="template-finish-button"
-        (click)="onClickFinishTemplate()"
-        nz-button
-        nzType="primary"
-        title="Finish creating this template and go back to the workflow">
-        <i
-          nz-icon
-          nzType="check"></i>
-        Finish
-      </button>
+        class="template-actions">
+        <button
+          class="template-cancel-button"
+          (click)="onClickCancelTemplate()"
+          nz-button
+          nzType="text"
+          title="Discard this template and go back to the workflow">
+          Cancel
+        </button>
+        <button
+          class="template-finish-button"
+          (click)="onClickFinishTemplate()"
+          nz-button
+          nzType="primary"
+          title="Finish creating this template and go back to the workflow">
+          Finish
+        </button>
+      </div>
       <ng-template #utilities>
         <nz-space-compact>
           <button

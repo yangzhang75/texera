@@ -18,7 +18,7 @@
  */
 
 import { DatePipe, Location } from "@angular/common";
-import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { ComponentFixture, TestBed, fakeAsync, tick } from "@angular/core/testing";
 import { HttpClientTestingModule } from "@angular/common/http/testing";
 import { RouterTestingModule } from "@angular/router/testing";
 import { NzModalService, NzModalModule, NzModalRef } from "ng-zorro-antd/modal";
@@ -495,6 +495,33 @@ describe("MenuComponent", () => {
 
       expect(navigateSpy).not.toHaveBeenCalled();
     });
+  });
+
+  describe("workflow name editing", () => {
+    it("keeps the name the user is typing while the field is focused, and re-syncs on blur", fakeAsync(() => {
+      const meta$ = new Subject<void>();
+      vi.spyOn(workflowActionService, "workflowMetaDataChanged").mockReturnValue(meta$ as any);
+      vi.spyOn(workflowActionService, "getWorkflowMetadata").mockReturnValue({
+        name: "saved-name",
+        lastModifiedTime: undefined,
+        creationTime: undefined,
+      } as any);
+
+      component.registerWorkflowMetadataDisplayRefresh();
+
+      // Mid-edit: an auto-save / collab metadata event must NOT revert the input.
+      component.isEditingWorkflowName = true;
+      component.currentWorkflowName = "typing-in-progress";
+      meta$.next();
+      tick(100);
+      expect(component.currentWorkflowName).toBe("typing-in-progress");
+
+      // After blur, the displayed name syncs to the saved metadata again.
+      component.isEditingWorkflowName = false;
+      meta$.next();
+      tick(100);
+      expect(component.currentWorkflowName).toBe("saved-name");
+    }));
   });
 
   describe("onClickFinishTemplate", () => {

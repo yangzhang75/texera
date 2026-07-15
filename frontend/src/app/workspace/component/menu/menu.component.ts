@@ -152,6 +152,9 @@ export class MenuComponent implements OnInit, OnDestroy {
   @Input() public pid?: number = undefined;
   @Input() public autoSaveState: string = "";
   @Input() public currentWorkflowName: string = ""; // reset workflowName
+  // True while the name input is focused, so the metadata-refresh stream doesn't overwrite the
+  // value the user is typing (which reverted the rename mid-edit).
+  public isEditingWorkflowName: boolean = false;
   @Input() public currentExecutionName: string = ""; // reset executionName
   @Input() public particularVersionDate: string = ""; // placeholder for the metadata information of a particular workflow version
   @ViewChild("workflowNameInput") workflowNameInput: ElementRef<HTMLInputElement> | undefined;
@@ -784,7 +787,12 @@ export class MenuComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(100))
       .pipe(untilDestroyed(this))
       .subscribe(() => {
-        this.currentWorkflowName = this.workflowActionService.getWorkflowMetadata()?.name;
+        // Don't clobber the name the user is mid-way through typing. Auto-save / collab sync fire
+        // this stream while editing; overwriting currentWorkflowName here reverted the input to the
+        // last-saved name. Only refresh the displayed name when the field is NOT being edited.
+        if (!this.isEditingWorkflowName) {
+          this.currentWorkflowName = this.workflowActionService.getWorkflowMetadata()?.name;
+        }
         // Use timeout to make sure this.adjustWorkflowNameWidth() runs
         // after currentWorkflowName is set. Otherwise, the input width may not match
         // the latest name right after refresh.

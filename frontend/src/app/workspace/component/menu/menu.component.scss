@@ -194,11 +194,31 @@ texera-coeditor-user-icon {
 // The template-authoring "Finish" button sits on its own (outside the icon-only compact group),
 // so it keeps its natural width and label instead of being clipped.
 .template-finish-button {
-  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits.
+  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits,
+  // and give it a cleaner, more finished look than a plain toolbar button.
   width: auto !important;
-  padding: 0 12px !important;
-  margin-left: 8px;
+  height: 32px;
+  padding: 0 16px !important;
+  margin-left: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  border-radius: 16px;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(24, 144, 255, 0.35);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.05s ease;
+
+  &:hover {
+    box-shadow: 0 4px 10px rgba(24, 144, 255, 0.45);
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+
+  i {
+    font-size: 13px;
+  }
 }

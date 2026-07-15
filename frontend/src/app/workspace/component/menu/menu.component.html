@@ -40,6 +40,8 @@
             #workflowNameInput
             *ngIf="!displayParticularWorkflowVersion"
             (input)="adjustWorkflowNameWidth()"
+            (focus)="isEditingWorkflowName = true"
+            (blur)="isEditingWorkflowName = false"
             (change)="onWorkflowNameChange()"
             [(ngModel)]="currentWorkflowName"
             class="workflow-name"

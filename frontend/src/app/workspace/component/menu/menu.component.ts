@@ -155,6 +155,9 @@ export class MenuComponent implements OnInit, OnDestroy {
   // True while the name input is focused, so the metadata-refresh stream doesn't overwrite the
   // value the user is typing (which reverted the rename mid-edit).
   public isEditingWorkflowName: boolean = false;
+  // The workflow the user came from when they clicked "create template"; captured at init because
+  // the URL query param that carries it is stripped on the first auto-save. Cancel returns here.
+  private sourceWorkflowWid: string | undefined = undefined;
   @Input() public currentExecutionName: string = ""; // reset executionName
   @Input() public particularVersionDate: string = ""; // placeholder for the metadata information of a particular workflow version
   @ViewChild("workflowNameInput") workflowNameInput: ElementRef<HTMLInputElement> | undefined;
@@ -233,6 +236,11 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   public ngOnInit(): void {
+    // Capture the source workflow id NOW, while the ?fromWid=... query param is still on the URL.
+    // The workspace rewrites the URL on its first auto-save (location.go without query params), so
+    // reading it later (e.g. in Cancel) would find it gone.
+    this.sourceWorkflowWid = this.route.snapshot.queryParamMap.get("fromWid") ?? undefined;
+
     // The Workflow Template feature is governed by the admin "Template" toggle (the same
     // template_enabled setting that shows/hides the Templates sidebar tab). When it is off, the
     // "create template" button is hidden so the one switch turns the whole feature on/off at runtime.
@@ -739,7 +747,7 @@ export class MenuComponent implements OnInit, OnDestroy {
    */
   public onClickCancelTemplate(): void {
     const tid = this.entityId;
-    const fromWid = this.route.snapshot.queryParamMap.get("fromWid");
+    const fromWid = this.sourceWorkflowWid;
     // Cancel returns the user to the workflow they started from (NOT the Templates tab). Fall back
     // to the workflow list only if the source workflow is unknown.
     const goBack = () => this.router.navigate(fromWid ? [USER_WORKFLOW, fromWid] : [USER_WORKFLOW]);

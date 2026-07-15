@@ -562,8 +562,25 @@ describe("MenuComponent", () => {
       component.onClickCancelTemplate();
 
       expect(deleteSpy).toHaveBeenCalledWith([42]);
-      // Cancel returns to the workflow (list, since no source wid in the test route) -- not Templates.
+      // Cancel returns to the workflow (list, since no captured source wid) -- not Templates.
       expect(navigateSpy).toHaveBeenCalledWith([USER_WORKFLOW]);
+    });
+
+    it("returns to the exact source workflow when its id was captured", () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, "navigate").mockResolvedValue(true);
+      vi.spyOn(component.templateService, "deleteTemplate").mockReturnValue(of({} as any));
+      vi.spyOn(modalService, "confirm").mockImplementation((cfg: any) => {
+        cfg.nzOnOk();
+        return {} as NzModalRef;
+      });
+
+      component.mode = "template";
+      (component as any).entityId = 42;
+      (component as any).sourceWorkflowWid = "77"; // captured at init from ?fromWid=77
+      component.onClickCancelTemplate();
+
+      expect(navigateSpy).toHaveBeenCalledWith([USER_WORKFLOW, "77"]);
     });
 
     it("does not delete anything if the discard dialog is dismissed", () => {

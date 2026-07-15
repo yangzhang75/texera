@@ -28,7 +28,7 @@ import org.apache.texera.amber.core.virtualidentity.ExecutionIdentity
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
 import org.apache.texera.dao.jooq.generated.Tables._
-import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
+import org.apache.texera.dao.jooq.generated.enums.{PrivilegeEnum, ReportStatusEnum}
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   WorkflowDao,
   WorkflowOfProjectDao,
@@ -700,9 +700,29 @@ class WorkflowResource extends LazyLogging {
     if (!WorkflowAccessResource.hasWriteAccess(wid, user.getUid)) {
       throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
     }
+    // An admin can suspend a user's publishing right (e.g. a repeat offender).
+    val publishDisabled = context
+      .select(USER.PUBLISH_DISABLED)
+      .from(USER)
+      .where(USER.UID.eq(user.getUid))
+      .fetchOneInto(classOf[java.lang.Boolean])
+    if (publishDisabled != null && publishDisabled) {
+      throw new ForbiddenException("Your publishing has been suspended by an administrator.")
+    }
     val workflow: Workflow = workflowDao.fetchOneByWid(wid)
     workflow.setIsPublic(true)
     workflowDao.update(workflow)
+    // Republishing resolves any moderation take-down: close reports that were
+    // actioned so a later voluntary unpublish is not mistaken for moderation.
+    context
+      .update(WORKFLOW_REPORT)
+      .set(WORKFLOW_REPORT.STATUS, ReportStatusEnum.CLOSED)
+      .where(
+        WORKFLOW_REPORT.WID
+          .eq(wid)
+          .and(WORKFLOW_REPORT.STATUS.eq(ReportStatusEnum.ACTIONED))
+      )
+      .execute()
   }
 
   @PUT

@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class UserActivityEventListenerSpec extends AnyFlatSpec with Matchers {
 
   private def sessionUser(uid: Integer): SessionUser = {
-    val u = new User(uid, "u", null, null, null, null, UserRoleEnum.REGULAR, null, null, null, null)
+    val u = new User(uid, "u", null, null, null, null, UserRoleEnum.REGULAR, null, null, null, null, null)
     new SessionUser(u)
   }
 

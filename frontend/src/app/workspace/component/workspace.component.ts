@@ -340,6 +340,9 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
 
   loadTemplateWithId(tid: number): void {
     this.isLoading = true;
+    // Each template-authoring session starts with persistence ON. (Cancel turns it OFF so the
+    // discarded template is not re-saved on teardown; reset it here so the next session saves.)
+    this.templateService.setTemplatePersistFlag(true);
     this.workflowActionService.disableWorkflowModification();
     this.templateService
       .retrieveTemplate(tid)

@@ -753,6 +753,9 @@ export class MenuComponent implements OnInit, OnDestroy {
       nzOkDanger: true,
       nzCancelText: "Keep editing",
       nzOnOk: () => {
+        // Stop auto-save/teardown from re-persisting the template we're about to delete -- otherwise
+        // the workspace's ngOnDestroy persist would recreate it right after we discard it.
+        this.templateService.setTemplatePersistFlag(false);
         if (!tid) {
           goBack();
           return;

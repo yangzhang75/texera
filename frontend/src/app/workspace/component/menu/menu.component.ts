@@ -727,13 +727,9 @@ export class MenuComponent implements OnInit, OnDestroy {
    * from -- giving a clear end to the "mark properties configurable" step.
    */
   public onClickFinishTemplate(): void {
-    const fromWid = this.route.snapshot.queryParamMap.get("fromWid");
+    // The template is kept -> take the user to the Templates tab to see it.
     this.notificationService.success("Template created. Find it under Your Work > Templates.");
-    if (fromWid) {
-      this.router.navigate([USER_WORKFLOW, fromWid]);
-    } else {
-      this.router.navigate([USER_TEMPLATE]);
-    }
+    this.router.navigate([USER_TEMPLATE]);
   }
 
   /**
@@ -744,7 +740,9 @@ export class MenuComponent implements OnInit, OnDestroy {
   public onClickCancelTemplate(): void {
     const tid = this.entityId;
     const fromWid = this.route.snapshot.queryParamMap.get("fromWid");
-    const goBack = () => this.router.navigate(fromWid ? [USER_WORKFLOW, fromWid] : [USER_TEMPLATE]);
+    // Cancel returns the user to the workflow they started from (NOT the Templates tab). Fall back
+    // to the workflow list only if the source workflow is unknown.
+    const goBack = () => this.router.navigate(fromWid ? [USER_WORKFLOW, fromWid] : [USER_WORKFLOW]);
 
     this.modalService.confirm({
       nzTitle: "Discard this template?",

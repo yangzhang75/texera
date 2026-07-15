@@ -525,7 +525,7 @@ describe("MenuComponent", () => {
   });
 
   describe("onClickFinishTemplate", () => {
-    it("notifies where the template lives and returns to the Templates list when no source workflow is known", () => {
+    it("notifies where the template lives and opens the Templates tab", () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, "navigate").mockResolvedValue(true);
       const successSpy = vi.spyOn(notificationService, "success").mockImplementation(() => {});
@@ -534,7 +534,7 @@ describe("MenuComponent", () => {
       component.onClickFinishTemplate();
 
       expect(successSpy).toHaveBeenCalledWith("Template created. Find it under Your Work > Templates.");
-      // No fromWid query param in the test route -> falls back to the Templates list.
+      // Finish keeps the template -> go to the Templates tab.
       expect(navigateSpy).toHaveBeenCalledWith([USER_TEMPLATE]);
     });
 
@@ -562,7 +562,8 @@ describe("MenuComponent", () => {
       component.onClickCancelTemplate();
 
       expect(deleteSpy).toHaveBeenCalledWith([42]);
-      expect(navigateSpy).toHaveBeenCalledWith([USER_TEMPLATE]);
+      // Cancel returns to the workflow (list, since no source wid in the test route) -- not Templates.
+      expect(navigateSpy).toHaveBeenCalledWith([USER_WORKFLOW]);
     });
 
     it("does not delete anything if the discard dialog is dismissed", () => {

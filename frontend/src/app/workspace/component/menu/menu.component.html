@@ -163,6 +163,17 @@
             nz-icon
             nzType="experiment"></i>
         </button>
+        <button
+          *ngIf="isTemplateMode"
+          (click)="onClickFinishTemplate()"
+          nz-button
+          nzType="primary"
+          title="Finish creating this template and go back to the workflow">
+          <i
+            nz-icon
+            nzType="check"></i>
+          Finish
+        </button>
       </nz-space-compact>
       <ng-template #utilities>
         <nz-space-compact>

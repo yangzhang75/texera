@@ -48,7 +48,7 @@ import type { ModalOptions } from "ng-zorro-antd/modal";
 import type { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
 import { WorkflowContent } from "../../../common/type/workflow";
 import { Router } from "@angular/router";
-import { USER_WORKFLOW } from "../../../app-routing.constant";
+import { USER_TEMPLATE, USER_WORKFLOW } from "../../../app-routing.constant";
 import type { Mocked } from "vitest";
 
 vi.mock("file-saver", () => ({ saveAs: vi.fn() }));
@@ -494,6 +494,28 @@ describe("MenuComponent", () => {
       await component.onClickOpenShareAccess();
 
       expect(navigateSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onClickFinishTemplate", () => {
+    it("notifies where the template lives and returns to the Templates list when no source workflow is known", () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, "navigate").mockResolvedValue(true);
+      const successSpy = vi.spyOn(notificationService, "success").mockImplementation(() => {});
+
+      component.mode = "template";
+      component.onClickFinishTemplate();
+
+      expect(successSpy).toHaveBeenCalledWith("Template created. Find it under Your Work > Templates.");
+      // No fromWid query param in the test route -> falls back to the Templates list.
+      expect(navigateSpy).toHaveBeenCalledWith([USER_TEMPLATE]);
+    });
+
+    it("shows the Finish button only in template mode", () => {
+      component.mode = "workflow";
+      expect(component.isTemplateMode).toBe(false);
+      component.mode = "template";
+      expect(component.isTemplateMode).toBe(true);
     });
   });
 

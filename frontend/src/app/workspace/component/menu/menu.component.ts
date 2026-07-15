@@ -711,8 +711,26 @@ export class MenuComponent implements OnInit, OnDestroy {
       .createTemplateFromWorkflow(workflow.wid)
       .pipe(untilDestroyed(this))
       .subscribe(template => {
-        this.router.navigate([`${USER_TEMPLATE}/${template.template.tid}`]);
+        // Remember the source workflow so "Finish" can bring the user back to it.
+        this.router.navigate([`${USER_TEMPLATE}/${template.template.tid}`], {
+          queryParams: { fromWid: workflow.wid },
+        });
       });
+  }
+
+  /**
+   * "Finish" on the template-authoring page: the template is already auto-saved, so this just tells
+   * the user it was created (and where to find it) and returns them to the workflow they started
+   * from -- giving a clear end to the "mark properties configurable" step.
+   */
+  public onClickFinishTemplate(): void {
+    const fromWid = this.route.snapshot.queryParamMap.get("fromWid");
+    this.notificationService.success("Template created. Find it under Your Work > Templates.");
+    if (fromWid) {
+      this.router.navigate([USER_WORKFLOW, fromWid]);
+    } else {
+      this.router.navigate([USER_TEMPLATE]);
+    }
   }
 
   /**

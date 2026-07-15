@@ -194,6 +194,9 @@ texera-coeditor-user-icon {
 // The template-authoring "Finish" button sits on its own (outside the icon-only compact group),
 // so it keeps its natural width and label instead of being clipped.
 .template-finish-button {
+  // Override the icon-button rule ([nz-button] { width: 32px; padding: 0 }) so the label fits.
+  width: auto !important;
+  padding: 0 12px !important;
   margin-left: 8px;
   display: inline-flex;
   align-items: center;

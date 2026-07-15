@@ -190,3 +190,12 @@ texera-coeditor-user-icon {
 ::ng-deep .layers-dropdown {
   user-select: none;
 }
+
+// The template-authoring "Finish" button sits on its own (outside the icon-only compact group),
+// so it keeps its natural width and label instead of being clipped.
+.template-finish-button {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

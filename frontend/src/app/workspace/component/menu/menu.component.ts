@@ -145,6 +145,10 @@ export class MenuComponent implements OnInit, OnDestroy {
   protected readonly USER_WORKFLOW = USER_WORKFLOW;
 
   @Input() public mode: "workflow" | "template" = "workflow";
+  // The workspace's live entity id (tid in template mode). Bound from the workspace so it stays
+  // correct even when the router reuses this component across a workflow<->template switch (the
+  // route-derived entityId does not update on reuse). Cancel uses this to delete the RIGHT template.
+  @Input() public currentEntityId?: number;
   // True when this toolbar is inside the read-only embedded preview (e.g. the templated-workflow
   // editor). Disables actions that make no sense there, such as "create new".
   @Input() public isEmbedded: boolean = false;
@@ -746,7 +750,9 @@ export class MenuComponent implements OnInit, OnDestroy {
    * by a confirm because the delete is permanent.
    */
   public onClickCancelTemplate(): void {
-    const tid = this.entityId;
+    // Use the live id from the workspace (the route-derived entityId is stale after the router
+    // reuses this component on the workflow->template switch).
+    const tid = this.currentEntityId ?? this.entityId;
     const fromWid = this.sourceWorkflowWid;
     // Cancel returns the user to the workflow they started from (NOT the Templates tab). Fall back
     // to the workflow list only if the source workflow is unknown.

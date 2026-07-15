@@ -558,7 +558,7 @@ describe("MenuComponent", () => {
       });
 
       component.mode = "template";
-      (component as any).entityId = 42;
+      component.currentEntityId = 42;
       component.onClickCancelTemplate();
 
       expect(deleteSpy).toHaveBeenCalledWith([42]);
@@ -576,7 +576,7 @@ describe("MenuComponent", () => {
       });
 
       component.mode = "template";
-      (component as any).entityId = 42;
+      component.currentEntityId = 42;
       (component as any).sourceWorkflowWid = "77"; // captured at init from ?fromWid=77
       component.onClickCancelTemplate();
 
@@ -589,7 +589,7 @@ describe("MenuComponent", () => {
       vi.spyOn(modalService, "confirm").mockReturnValue({} as NzModalRef);
 
       component.mode = "template";
-      (component as any).entityId = 42;
+      component.currentEntityId = 42;
       component.onClickCancelTemplate();
 
       expect(deleteSpy).not.toHaveBeenCalled();

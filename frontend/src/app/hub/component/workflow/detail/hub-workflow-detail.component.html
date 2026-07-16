@@ -85,6 +85,19 @@
           (click)="cloneWorkflow()">
           <span>Clone</span>
         </button>
+
+        <button
+          *ngIf="isHub && isRegularUser"
+          nz-button
+          nzType="text"
+          class="report-button"
+          title="Report this workflow"
+          (click)="openReportDialog()">
+          <i
+            nz-icon
+            nzType="flag"></i>
+          <span>Report</span>
+        </button>
       </div>
     </div>
 

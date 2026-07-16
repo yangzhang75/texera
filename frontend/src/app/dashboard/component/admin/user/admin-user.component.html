@@ -107,6 +107,7 @@
       </th>
       <th>Quota</th>
       <th>Feedbacks</th>
+      <th nzWidth="190px">Publishing</th>
       <th
         [nzSortFn]="sortByAccountCreation"
         [nzSortDirections]="['ascend', 'descend']">
@@ -332,6 +333,34 @@
               nzType="message"></i>
           </nz-badge>
         </button>
+      </td>
+      <td>
+        <div class="publishing-cell">
+          <button
+            *ngIf="!user.publishDisabled"
+            nz-button
+            nzType="default"
+            nzDanger
+            nzSize="small"
+            [disabled]="currentUid === user.uid"
+            nz-popconfirm
+            nzPopconfirmTitle="Suspend this user's right to publish workflows?"
+            (nzOnConfirm)="setPublishing(user, true)">
+            Suspend
+          </button>
+          <ng-container *ngIf="user.publishDisabled">
+            <span class="publishing-suspended-tag">suspended</span>
+            <button
+              nz-button
+              nzType="default"
+              nzSize="small"
+              nz-popconfirm
+              nzPopconfirmTitle="Restore this user's right to publish?"
+              (nzOnConfirm)="setPublishing(user, false)">
+              Restore
+            </button>
+          </ng-container>
+        </div>
       </td>
       <td>
         <ng-container *ngIf="getAccountCreation(user) as ac; else noAC">

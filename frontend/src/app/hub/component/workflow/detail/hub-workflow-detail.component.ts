@@ -29,7 +29,8 @@ import { ActionType, EntityType, HubService, LikedStatus } from "../../../servic
 import { Role, User } from "src/app/common/type/user";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { NZ_MODAL_DATA } from "ng-zorro-antd/modal";
+import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
+import { ReportWorkflowDialogComponent } from "../../../../dashboard/component/user/report-workflow-dialog/report-workflow-dialog.component";
 import { HUB_WORKFLOW_RESULT, USER_WORKSPACE } from "../../../../app-routing.constant";
 import { NgIf, NgClass } from "@angular/common";
 import { NzSpaceCompactItemDirective } from "ng-zorro-antd/space";
@@ -69,6 +70,8 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
   workflowDescription: string = "";
   isLogin = this.userService.isLogin();
   isActivatedUser: boolean = false;
+  // Only regular users report workflows; admins take workflows down directly.
+  isRegularUser: boolean = false;
   isLiked: boolean = false;
   likeCount: number = 0;
   cloneCount: number = 0;
@@ -85,6 +88,7 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
     private notificationService: NotificationService,
     private hubService: HubService,
     private workflowPersistService: WorkflowPersistService,
+    private modalService: NzModalService,
     @Optional() @Inject(NZ_MODAL_DATA) public input: { wid: number } | undefined
   ) {
     this.wid = input?.wid; //Accessing from the pop up. getting wid from the @Input
@@ -99,6 +103,7 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
     if (this.currentUser?.role === Role.ADMIN || this.currentUser?.role === Role.REGULAR) {
       this.isActivatedUser = true;
     }
+    this.isRegularUser = this.currentUser?.role === Role.REGULAR;
     this.workflowActionService.disableWorkflowModification();
   }
 
@@ -265,6 +270,20 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
           }
         });
     }
+  }
+
+  openReportDialog(): void {
+    if (!isDefined(this.wid)) {
+      return;
+    }
+    this.modalService.create({
+      nzTitle: "Report this workflow",
+      nzContent: ReportWorkflowDialogComponent,
+      nzData: { wid: this.wid, name: this.workflowName },
+      nzFooter: null,
+      nzCentered: true,
+      nzWidth: "520px",
+    });
   }
 
   formatCount = formatCount;

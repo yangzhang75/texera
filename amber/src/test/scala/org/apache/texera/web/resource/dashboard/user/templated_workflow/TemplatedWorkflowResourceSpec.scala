@@ -24,14 +24,30 @@ import org.apache.texera.amber.util.JSONUtils.objectMapper
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.MockTexeraDB
 import org.apache.texera.dao.jooq.generated.Tables
-import org.apache.texera.dao.jooq.generated.tables.daos.{UserDao, WorkflowDao}
-import org.apache.texera.dao.jooq.generated.tables.pojos.{User, Workflow}
+import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
+import org.apache.texera.dao.jooq.generated.tables.daos.{
+  TemplateDao,
+  TemplateOfUserDao,
+  TemplateUserAccessDao,
+  UserDao,
+  WorkflowDao,
+  WorkflowUserAccessDao
+}
+import org.apache.texera.dao.jooq.generated.tables.pojos.{
+  Template,
+  TemplateOfUser,
+  TemplateUserAccess,
+  User,
+  Workflow,
+  WorkflowUserAccess
+}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import javax.ws.rs.{BadRequestException, NotFoundException}
+import javax.ws.rs.{BadRequestException, ForbiddenException, NotFoundException}
 import java.util.UUID
+import scala.jdk.CollectionConverters._
 
 class TemplatedWorkflowResourceSpec
     extends AnyFlatSpec
@@ -40,10 +56,16 @@ class TemplatedWorkflowResourceSpec
     with MockTexeraDB {
 
   private val testUid = 5000 + scala.util.Random.nextInt(1000)
+  // A second, unrelated user with no access to the test template/workflow (for access-control tests).
+  private val otherUid = testUid + 1
   private val testWid = 6000 + scala.util.Random.nextInt(1000)
   private val operatorId = "TextInput-operator-1"
 
   private var workflowDao: WorkflowDao = _
+  private var templateDao: TemplateDao = _
+  private var templateOfUserDao: TemplateOfUserDao = _
+  private var templateUserAccessDao: TemplateUserAccessDao = _
+  private var workflowUserAccessDao: WorkflowUserAccessDao = _
   // lazy so it is constructed inside a test (after beforeAll swaps in the mock DB context),
   // not at spec construction time.
   private lazy val resource = new TemplatedWorkflowResource()
@@ -53,6 +75,49 @@ class TemplatedWorkflowResourceSpec
     user.setUid(testUid)
     new SessionUser(user)
   }
+
+  private def otherSessionUser: SessionUser = {
+    val user = new User
+    user.setUid(otherUid)
+    new SessionUser(user)
+  }
+
+  // Insert a template owned by testUid (with a READ access row, matching how /template/create seeds
+  // ownership) and return its generated tid.
+  private def createTestTemplate(content: String): Integer = {
+    val template = new Template(null, "spec_template", "d", content, null, null, "")
+    templateDao.insert(template)
+    val tid = template.getTid
+    templateOfUserDao.insert(new TemplateOfUser(testUid, tid))
+    templateUserAccessDao.insert(new TemplateUserAccess(testUid, tid, PrivilegeEnum.READ))
+    tid
+  }
+
+  private def previewWidsFor(tid: Integer): Seq[Integer] =
+    getDSLContext
+      .select(Tables.WORKFLOW_OF_TEMPLATE.WID)
+      .from(Tables.WORKFLOW_OF_TEMPLATE)
+      .where(
+        Tables.WORKFLOW_OF_TEMPLATE.TID
+          .eq(tid)
+          .and(Tables.WORKFLOW_OF_TEMPLATE.PARAMETERS.eq("preview"))
+      )
+      .fetch(Tables.WORKFLOW_OF_TEMPLATE.WID)
+      .asScala
+      .toSeq
+
+  private def realWidsFor(tid: Integer): Seq[Integer] =
+    getDSLContext
+      .select(Tables.WORKFLOW_OF_TEMPLATE.WID)
+      .from(Tables.WORKFLOW_OF_TEMPLATE)
+      .where(
+        Tables.WORKFLOW_OF_TEMPLATE.TID
+          .eq(tid)
+          .and(Tables.WORKFLOW_OF_TEMPLATE.PARAMETERS.ne("preview"))
+      )
+      .fetch(Tables.WORKFLOW_OF_TEMPLATE.WID)
+      .asScala
+      .toSeq
 
   // One operator whose `fileName` is the only configurable property.
   private def workflowContent(fileName: String): String =
@@ -102,6 +167,9 @@ class TemplatedWorkflowResourceSpec
     workflow.setDescription("d")
     workflow.setContent(content)
     workflowDao.insert(workflow)
+    // /update requires the caller to have WRITE access to the workflow; grant it (deleting the
+    // WORKFLOW row above cascades the old access row away).
+    workflowUserAccessDao.insert(new WorkflowUserAccess(testUid, testWid, PrivilegeEnum.WRITE))
   }
 
   private def freshWorkflow(): Unit = freshWorkflowWith(workflowContent("old.csv"))
@@ -120,6 +188,10 @@ class TemplatedWorkflowResourceSpec
     userDao.insert(user)
 
     workflowDao = new WorkflowDao(getDSLContext.configuration())
+    templateDao = new TemplateDao(getDSLContext.configuration())
+    templateOfUserDao = new TemplateOfUserDao(getDSLContext.configuration())
+    templateUserAccessDao = new TemplateUserAccessDao(getDSLContext.configuration())
+    workflowUserAccessDao = new WorkflowUserAccessDao(getDSLContext.configuration())
   }
 
   override protected def afterAll(): Unit = shutdownDB()
@@ -285,6 +357,70 @@ class TemplatedWorkflowResourceSpec
         999999,
         updateRequest(Map(operatorId -> Map("fileName" -> textNode("x.csv")))),
         sessionUser
+      )
+    }
+  }
+
+  it should "reject an update from a user without write access to the workflow (IDOR guard)" in {
+    freshWorkflow() // owned by testUid with WRITE
+
+    assertThrows[ForbiddenException] {
+      resource.updateTemplatedWorkflowConfigurableProperties(
+        testWid,
+        updateRequest(Map(operatorId -> Map("fileName" -> textNode("evil.csv")))),
+        otherSessionUser
+      )
+    }
+    // The content must be untouched by the rejected write.
+    workflowDao.fetchOneByWid(testWid).getContent should not include "evil.csv"
+  }
+
+  "buildTemplatedWorkflowIfNotExists" should "create a hidden preview workflow and be idempotent" in {
+    val tid = createTestTemplate(workflowContent("preview.csv"))
+
+    val wid1 = resource.buildTemplatedWorkflowIfNotExists(tid, sessionUser)
+    val wid2 = resource.buildTemplatedWorkflowIfNotExists(tid, sessionUser)
+
+    // Opening the build page twice must reuse the same preview, never spawn a second workflow.
+    wid1 shouldBe wid2
+    previewWidsFor(tid) shouldBe Seq(wid1)
+    realWidsFor(tid) shouldBe empty
+  }
+
+  it should "reject a user without read access to the template" in {
+    val tid = createTestTemplate(workflowContent("x.csv"))
+
+    assertThrows[ForbiddenException] {
+      resource.buildTemplatedWorkflowIfNotExists(tid, otherSessionUser)
+    }
+  }
+
+  "instantiateTemplatedWorkflow" should "create a new workflow on each call (1-to-n) and apply whitelisted properties" in {
+    val tid = createTestTemplate(workflowContent("orig.csv"))
+    val request = updateRequest(Map(operatorId -> Map("fileName" -> textNode("mine.csv"))))
+
+    val w1 = resource.instantiateTemplatedWorkflow(tid, request, sessionUser)
+    val w2 = resource.instantiateTemplatedWorkflow(tid, request, sessionUser)
+
+    // Every Submit yields a distinct, non-preview (real) workflow linked to the template.
+    w1 should not be w2
+    realWidsFor(tid) should contain allOf (w1, w2)
+    previewWidsFor(tid) shouldBe empty
+
+    // The submitted value was applied to the new workflow's content.
+    val content = workflowDao.fetchOneByWid(w1).getContent
+    content should include("mine.csv")
+    content should not include "orig.csv"
+  }
+
+  it should "reject a user without read access to the template" in {
+    val tid = createTestTemplate(workflowContent("x.csv"))
+
+    assertThrows[ForbiddenException] {
+      resource.instantiateTemplatedWorkflow(
+        tid,
+        updateRequest(Map(operatorId -> Map("fileName" -> textNode("mine.csv")))),
+        otherSessionUser
       )
     }
   }

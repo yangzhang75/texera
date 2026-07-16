@@ -23,7 +23,13 @@ import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
-import org.apache.texera.dao.jooq.generated.Tables.{TEMPLATE, TEMPLATE_OF_USER}
+import org.apache.texera.dao.jooq.generated.Tables.{
+  TEMPLATE,
+  TEMPLATE_OF_USER,
+  TEMPLATE_USER_ACCESS,
+  WORKFLOW,
+  WORKFLOW_OF_TEMPLATE
+}
 import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   TemplateDao,
@@ -166,6 +172,23 @@ class TemplateResource extends LazyLogging {
       context.transaction { _ =>
         for (tid <- templateIDs.tids) {
           if (templateOfUserExists(tid, user.getUid)) {
+            // Also delete the template's throwaway build-page preview workflow(s)
+            // (workflow_of_template.parameters = 'preview'). Otherwise deleting the template would
+            // orphan the preview -- and since it is no longer linked to a template, it would
+            // resurface in the user's workflow list. Submit-created workflows (parameters = '') are
+            // the user's own and are intentionally left untouched.
+            val previewWids = context
+              .select(WORKFLOW_OF_TEMPLATE.WID)
+              .from(WORKFLOW_OF_TEMPLATE)
+              .where(
+                WORKFLOW_OF_TEMPLATE.TID.eq(tid).and(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq("preview"))
+              )
+              .fetch(WORKFLOW_OF_TEMPLATE.WID)
+              .asScala
+              .toList
+            if (previewWids.nonEmpty) {
+              context.deleteFrom(WORKFLOW).where(WORKFLOW.WID.in(previewWids.asJava)).execute()
+            }
             templateDao.deleteById(tid)
           } else {
             throw new BadRequestException("The template does not exist.")
@@ -182,9 +205,16 @@ class TemplateResource extends LazyLogging {
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/list")
   def retrieveTemplates(@Auth sessionUser: SessionUser): List[Map[String, Any]] = {
+    // "Your Work > Templates" only lists the user's own templates and ones shared with them.
+    val uid = sessionUser.getUser.getUid
     context
-      .select(TEMPLATE.TID, TEMPLATE.NAME)
+      .selectDistinct(TEMPLATE.TID, TEMPLATE.NAME)
       .from(TEMPLATE)
+      .leftJoin(TEMPLATE_OF_USER)
+      .on(TEMPLATE_OF_USER.TID.eq(TEMPLATE.TID))
+      .leftJoin(TEMPLATE_USER_ACCESS)
+      .on(TEMPLATE_USER_ACCESS.TID.eq(TEMPLATE.TID))
+      .where(TEMPLATE_OF_USER.UID.eq(uid).or(TEMPLATE_USER_ACCESS.UID.eq(uid)))
       .fetch()
       .asScala
       .map(record =>
@@ -203,6 +233,15 @@ class TemplateResource extends LazyLogging {
       @PathParam("tid") tid: Integer,
       @Auth sessionUser: SessionUser
   ): TemplateEntry = {
+    val uid = sessionUser.getUser.getUid
+    val template = templateDao.fetchOneByTid(tid)
+    if (template == null) {
+      throw new NotFoundException(s"Template $tid does not exist.")
+    }
+    // Viewable only if owned by the user or shared with (at least) read access.
+    if (!templateOfUserExists(tid, uid) && !TemplateAccessResource.hasReadAccess(tid, uid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
     this.templateService.retrieveTemplate(tid);
   }
 

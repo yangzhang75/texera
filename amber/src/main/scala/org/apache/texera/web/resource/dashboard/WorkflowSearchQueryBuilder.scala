@@ -86,6 +86,19 @@ object WorkflowSearchQueryBuilder extends SearchQueryBuilder {
       }
     }
 
+    // Hide build-page preview workflows (workflow_of_template.parameters = 'preview'). They are
+    // throwaway previews used to run/configure a template before Submit, not workflows the user
+    // created -- only Submit-created workflows should appear in the list. (Marker matches
+    // TemplatedWorkflowResource.PREVIEW_MARKER.)
+    condition = condition.and(
+      WORKFLOW.WID.notIn(
+        DSL
+          .select(WORKFLOW_OF_TEMPLATE.WID)
+          .from(WORKFLOW_OF_TEMPLATE)
+          .where(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq("preview"))
+      )
+    )
+
     baseQuery.where(condition)
   }
 

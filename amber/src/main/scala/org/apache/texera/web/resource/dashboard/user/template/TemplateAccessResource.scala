@@ -85,7 +85,8 @@ object TemplateAccessResource {
       .where(TEMPLATE_USER_ACCESS.TID.eq(tid).and(TEMPLATE_USER_ACCESS.UID.eq(uid)))
       .fetchOneInto(classOf[TemplateUserAccess])
 
-    access.getPrivilege
+    // No access row means the user has no privilege on this template.
+    if (access == null) PrivilegeEnum.NONE else access.getPrivilege
   }
 }
 

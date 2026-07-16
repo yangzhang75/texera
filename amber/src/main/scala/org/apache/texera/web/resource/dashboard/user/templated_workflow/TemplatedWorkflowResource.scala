@@ -38,14 +38,17 @@ import javax.ws.rs.{
   QueryParam
 }
 import org.apache.texera.web.service.{TemplateService, WorkflowPersistService}
-import org.apache.texera.dao.jooq.generated.Tables.WORKFLOW_OF_TEMPLATE
+import org.apache.texera.dao.jooq.generated.Tables.{WORKFLOW, WORKFLOW_OF_TEMPLATE}
 import org.apache.texera.dao.jooq.generated.tables.pojos._
 import org.apache.texera.web.resource.dashboard.user.templated_workflow.TemplatedWorkflowResource._
-import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowVersionResource
+import org.apache.texera.web.resource.dashboard.user.template.TemplateAccessResource
+import org.apache.texera.web.resource.dashboard.user.workflow.{
+  WorkflowAccessResource,
+  WorkflowVersionResource
+}
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.databind.node.{ArrayNode, ObjectNode}
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
 
 import scala.jdk.CollectionConverters._
 
@@ -56,6 +59,8 @@ import scala.jdk.CollectionConverters._
   */
 class TemplatedWorkflowConfigurablePropertiesUpdateRequest {
   var operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty
+  // Optional name for the workflow created by /instantiate. When blank, the template's name is used.
+  var name: String = _
 }
 
 object TemplatedWorkflowResource {
@@ -67,21 +72,32 @@ object TemplatedWorkflowResource {
     context.configuration
   )
 
+  // Marker stored in workflow_of_template.parameters to tell the build page's throwaway preview
+  // workflow apart from the real workflows a user creates by Submitting. Preview rows are excluded
+  // from the workflow list (see WorkflowSearchQueryBuilder), so opening a template to preview it
+  // never adds a workflow the user didn't Submit.
+  private val PREVIEW_MARKER = "preview"
+
   private def buildTemplatedWorkflowRelation(
       tid: Integer,
       wid: Integer,
       parameters: String
   ): Unit = {
+    // jOOQ POJO constructor follows the physical column order (tid, wid, parameters); the
+    // migration only moved the PRIMARY KEY to wid, it did NOT reorder columns.
     workflowOfTemplateDao.insert(new WorkflowOfTemplate(tid, wid, parameters))
   }
 
   private def getTemplatedWorkflowIdIfExists(tid: Integer): Option[Integer] = {
+    // Only the preview row is reused across build-page opens; Submit-created workflows are separate.
     Option(
       context
         .select(WORKFLOW_OF_TEMPLATE.WID)
         .from(WORKFLOW_OF_TEMPLATE)
-        .where(WORKFLOW_OF_TEMPLATE.TID.eq(tid))
-        .fetchOneInto(classOf[Integer])
+        .where(
+          WORKFLOW_OF_TEMPLATE.TID.eq(tid).and(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq(PREVIEW_MARKER))
+        )
+        .fetchAny(WORKFLOW_OF_TEMPLATE.WID)
     )
   }
 
@@ -156,9 +172,13 @@ class TemplatedWorkflowResource extends LazyLogging {
       @QueryParam("tid") tid: Integer,
       @Auth user: SessionUser
   ): Integer = {
-    val wid: Option[Integer] = getTemplatedWorkflowIdIfExists(tid)
-    val template = templateService.retrieveTemplate(tid)
-    wid match {
+    // Only the template's owner or a user it was shared with may open/preview it.
+    requireTemplateReadAccess(tid, user)
+    // Idempotent get-or-create: the build page calls this on open to show a runnable preview, so it
+    // must NOT spawn a new workflow on every open. Return the existing preview for this template if
+    // there is one; otherwise create it once, owned by the caller with WRITE access (default) so the
+    // preview is a normal, fully-editable/runnable workflow.
+    getTemplatedWorkflowIdIfExists(tid) match {
       case Some(wid) =>
         val workflow = workflowDao.fetchOneByWid(wid)
         if (workflow == null) {
@@ -167,6 +187,7 @@ class TemplatedWorkflowResource extends LazyLogging {
         wid
 
       case None =>
+        val template = templateService.retrieveTemplate(tid)
         val templatedWorkflow = new Workflow(
           null, // wid
           template.name, // name
@@ -176,14 +197,10 @@ class TemplatedWorkflowResource extends LazyLogging {
           null, // lastModifiedTime
           false // isPublic
         )
-        val workflow =
-          workflowPersistService.createWorkflow(
-            templatedWorkflow,
-            user,
-            privilege = PrivilegeEnum.READ
-          )
+        val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
         val newWid = workflow.workflow.getWid
-        buildTemplatedWorkflowRelation(tid, newWid, "")
+        // Mark as the throwaway preview so it is NOT listed as a created-from-template workflow.
+        buildTemplatedWorkflowRelation(tid, newWid, PREVIEW_MARKER)
         newWid
     }
   }
@@ -220,6 +237,12 @@ class TemplatedWorkflowResource extends LazyLogging {
     val workflow = workflowDao.fetchOneByWid(wid)
     if (workflow == null) {
       throw new NotFoundException(s"Workflow $wid does not exist.")
+    }
+
+    // The caller may only write to a workflow they have write access to (e.g. one they created by
+    // building/instantiating this template). This blocks tampering with an arbitrary wid.
+    if (!WorkflowAccessResource.hasWriteAccess(wid, user.getUid)) {
+      throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
     }
 
     val objectMapper = new ObjectMapper()
@@ -293,8 +316,77 @@ class TemplatedWorkflowResource extends LazyLogging {
     workflow.setContent(objectMapper.writeValueAsString(contentObject))
 
     WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
-    workflowDao.update(workflow)
+    // Update ONLY the content column. Using workflowDao.update(workflow) rewrites the whole record,
+    // and jOOQ re-stamps the timestamp columns truncated to whole seconds -- that loses the
+    // sub-second precision a freshly-created workflow gets from the DB default, so several workflows
+    // created in the same second sort arbitrarily and a newly instantiated one may not appear at the
+    // top of the list. A targeted content update leaves creation/last-modified untouched.
+    context
+      .update(WORKFLOW)
+      .set(WORKFLOW.CONTENT, workflow.getContent)
+      .where(WORKFLOW.WID.eq(wid))
+      .execute()
 
     workflowDao.fetchOneByWid(wid)
+  }
+
+  /**
+    * 1-to-n: create a brand-new workflow from the template and apply the submitted configurable
+    * properties to it. Every call yields a separate workflow that is recorded in
+    * workflow_of_template and owned by the caller with WRITE access. Returns the new wid. The build
+    * page calls this on Submit.
+    */
+  @POST
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/instantiate")
+  def instantiateTemplatedWorkflow(
+      @QueryParam("tid") tid: Integer,
+      request: TemplatedWorkflowConfigurablePropertiesUpdateRequest,
+      @Auth sessionUser: SessionUser
+  ): Integer = {
+    // Only the template's owner or a user it was shared with may instantiate it.
+    requireTemplateReadAccess(tid, sessionUser)
+    val template = templateService.retrieveTemplate(tid)
+    // Honor a user-chosen name from the build page; fall back to the template's name when blank.
+    val workflowName =
+      if (request != null && request.name != null && request.name.trim.nonEmpty) request.name.trim
+      else template.name
+    val newWorkflow = new Workflow(
+      null, // wid
+      workflowName, // name
+      template.description, // description
+      template.content, // content
+      null, // creationTime
+      null, // lastModifiedTime
+      false // isPublic
+    )
+    val created = workflowPersistService.createWorkflow(newWorkflow, sessionUser)
+    val newWid = created.workflow.getWid
+    buildTemplatedWorkflowRelation(tid, newWid, "")
+    // Reuse /update's whitelisted apply logic on the new workflow, if any properties were submitted.
+    // The caller has WRITE access to newWid (just created), so the write-access check there passes.
+    if (
+      request != null && request.operatorProperties != null && request.operatorProperties.nonEmpty
+    ) {
+      updateTemplatedWorkflowConfigurableProperties(newWid, request, sessionUser)
+    }
+    newWid
+  }
+
+  /**
+    * Ensures the caller may read template `tid` -- i.e. is its owner or has been shared it. Guests
+    * are rejected. Used to gate /build and /instantiate, which otherwise expose any template by id.
+    */
+  private def requireTemplateReadAccess(tid: Integer, sessionUser: SessionUser): Unit = {
+    val user = sessionUser.getUser
+    if (user == org.apache.texera.web.auth.GuestAuthFilter.GUEST) {
+      throw new ForbiddenException("Guest user does not have access to db.")
+    }
+    if (tid == null) {
+      throw new BadRequestException("Template id cannot be null.")
+    }
+    if (!TemplateAccessResource.hasReadAccess(tid, user.getUid)) {
+      throw new ForbiddenException(s"You do not have permission to access template $tid")
+    }
   }
 }

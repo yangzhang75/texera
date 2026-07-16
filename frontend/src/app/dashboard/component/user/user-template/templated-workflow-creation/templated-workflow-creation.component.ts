@@ -207,32 +207,32 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    if (!this.wid) {
-      this.notificationService.error("Workflow is not ready yet.");
+    if (!this.tid) {
+      this.notificationService.error("Missing template ID.");
       return;
     }
 
-    // The preview IS the workflow. Submit applies the configured properties to that same workflow
-    // (created once on page open and already listed under Your Work > Workflows) -- it does NOT
-    // create a second, duplicate workflow. Its name is whatever the user set in the preview.
+    // Deferred creation: nothing is persisted until Submit. Opening the page only shows a read-only
+    // template preview (no workflow), so opening never adds a stray workflow. Each Submit creates
+    // ONE new workflow from the template with the configured properties (1-to-n).
     this.mergeFormValuesIntoOperatorProperties();
-    this.writeOperatorPropertiesToGraph();
     const payload = this.getConfigurablePropertyUpdatePayload();
     // Snapshot exactly what we're submitting; on success it greys the button so identical re-submits
     // are visibly discouraged until the user changes something.
     const submitted = this.currentSubmission();
 
     this.templatedWorkflowService
-      .updateTemplatedWorkflowProperties(this.wid, payload)
+      .instantiateTemplatedWorkflow(this.tid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
           this.lastSubmitted = submitted;
-          this.notificationService.success("Workflow saved. Find it under Your Work > Workflows.");
+          this.templatedWorkflowService.resetTemplatedWorkflowCache();
+          this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
         },
         error: err => {
-          console.warn("Failed to save the workflow", err);
-          this.notificationService.error("Failed to save the workflow.");
+          console.warn("Failed to create workflow from template", err);
+          this.notificationService.error("Failed to create workflow from template.");
         },
       });
   }
@@ -381,57 +381,13 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
         this.template = template.content;
         this.templatedWorkflowDraftService.initialize(template.content);
 
-        this.templatedWorkflowService.createTemplatedWorkflow(this.tid)
-          .pipe(
-            switchMap(wid => {
-              this.wid = wid;
-
-              // A workflow was just get-or-created for this template; invalidate the cached
-              // wid->template set so the "created from template" tag shows on the Workflows list
-              // without a full page reload.
-              this.templatedWorkflowService.resetTemplatedWorkflowCache();
-
-              this.workflowActionService.destroySharedModel();
-              this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
-
-              return this.workflowPersistService.retrieveWorkflow(this.wid);
-            }),
-            untilDestroyed(this)
-          )
-          .subscribe({
-            next: workflow => {
-              // Editing of the preview is locked by the embedded WorkspaceComponent
-              // (disableWorkflowModification); we must NOT mark the workflow readonly here,
-              // because a readonly workflow cannot be executed and the preview must stay runnable.
-              this.workflowActionService.reloadWorkflow(workflow);
-
-              // Reopening an existing templated workflow: /build is idempotent (returns the same
-              // wid) and its content already holds the values last applied via /update. Seed the
-              // form from THAT content (not the template defaults) so the user sees their last
-              // edits. seedValuesFromContent keeps the enriched dynamic schemas intact (dropdowns
-              // stay dropdowns); resetting the signature forces the sections to rebuild off the
-              // freshly-seeded values (the signature only tracks schemas, not values).
-              if (workflow.content) {
-                this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
-                this.lastEnrichedSignature = "";
-                this.rebuildSectionsFromDynamicSchemas();
-              }
-
-              this.workflowReady = true;
-              // Reveal the preview as soon as the workflow is loaded. While the container is
-              // hidden it has height:0, so the embedded JointJS paper would initialize at zero
-              // size and the operators would render clipped/off-center. Showing it now lets the
-              // paper size correctly and re-center on the loaded workflow.
-              this.showEmbeddedWorkspace = true;
-            },
-            error: err => {
-              this.workflowReady = false;
-              console.warn("Failed to create/load templated workflow", err);
-              this.notificationService.error("Failed to create workflow from template.");
-            },
-          });
-
+        // Deferred creation: DO NOT create a workflow here. The embedded preview loads the template
+        // read-only (by tid, template mode) so opening this page never persists/lists a workflow.
+        // A workflow is created only on Submit (via /instantiate). The config form is seeded from
+        // the template's own defaults.
         this.rebuildSectionsFromDynamicSchemas();
+        this.workflowReady = true;
+        this.showEmbeddedWorkspace = true;
 
         // Do not suppress this stream. Texera's existing schema propagation may still
         // populate/enrich DynamicSchemaService, especially during initial template loading.

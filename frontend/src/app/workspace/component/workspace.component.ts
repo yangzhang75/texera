@@ -457,7 +457,9 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   registerLoadOperatorMetadata() {
-    const id = Number(this.wid ?? this.route.snapshot.params.id);
+    // Include tid so an embedded template preview (mode=template, no wid) resolves its id instead
+    // of NaN (which left the preview stuck on the loading spinner).
+    const id = Number(this.wid ?? this.tid ?? this.route.snapshot.params.id);
     // load workflow with id if presented in the URL
     if (id) {
       // show loading spinner right away while waiting for workflow to load

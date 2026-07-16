@@ -52,13 +52,13 @@
 
 <div
   class="readonly-embedded-workspace-container"
-  *ngIf="wid && showEmbeddedWorkspace"
+  *ngIf="tid && showEmbeddedWorkspace"
 >
   <div class="inner-scale">
     <texera-workspace
-      [wid]="wid"
+      [tid]="tid"
       [isEmbedded]="true"
-      [mode]="'workflow'"
+      [mode]="'template'"
     >
     </texera-workspace>
   </div>

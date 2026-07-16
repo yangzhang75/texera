@@ -25,11 +25,11 @@ import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
 import {WorkflowActionService} from "../../../../../workspace/service/workflow-graph/model/workflow-action.service";
-import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
+import {WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription, tap} from "rxjs";
+import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute} from "@angular/router";
@@ -202,46 +202,29 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       return;
     }
 
-    if (!this.wid) {
-      this.notificationService.error("Missing workflow ID.");
-      return;
-    }
+    // 1-to-n: every Submit creates a brand-new workflow from the template with the current form
+    // values applied. Reflect the values in the in-page preview first, then instantiate. Stay on the
+    // page so the user can submit again to create another workflow.
+    this.mergeFormValuesIntoOperatorProperties();
+    this.writeOperatorPropertiesToGraph();
+    const payload = this.getConfigurablePropertyUpdatePayload();
+    // Name the new workflow after the (possibly user-renamed) preview workflow, so renaming the
+    // preview before Submit actually names the created workflow -- otherwise every Submit would
+    // reuse the template's name and all created workflows would look identical.
+    const name = this.workflowActionService.getWorkflowMetadata().name;
 
-    this.applyJobFormToOperators()
+    this.templatedWorkflowService
+      .instantiateTemplatedWorkflow(this.tid, { ...payload, name })
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
-          this.showEmbeddedWorkspace = true;
+          this.notificationService.success("Workflow created. Find it under Your Work > Workflows.");
         },
         error: err => {
-          console.warn("Failed to update templated workflow", err);
-          this.notificationService.error("Failed to update workflow.");
+          console.warn("Failed to instantiate templated workflow", err);
+          this.notificationService.error("Failed to create workflow.");
         },
       });
-  }
-
-  private applyJobFormToOperators(forceUpdate = false): Observable<Workflow> {
-    this.mergeFormValuesIntoOperatorProperties();
-
-    if (!forceUpdate && !this.workflowChanged()) {
-      // No-op: the SUBMIT button is already disabled when there is nothing to apply, so this is
-      // just a defensive guard -- no notification needed.
-      return of(this.workflowActionService.getWorkflow());
-    }
-
-    this.writeOperatorPropertiesToGraph();
-    const payload = this.getConfigurablePropertyUpdatePayload();
-
-    return this.templatedWorkflowService.updateTemplatedWorkflowProperties(this.wid!, payload).pipe(
-      tap(updatedWorkflow => {
-        const currentMetadata = this.workflowActionService.getWorkflowMetadata();
-        this.workflowActionService.setWorkflowMetadata({
-          ...currentMetadata,
-          lastModifiedTime: updatedWorkflow.lastModifiedTime,
-        });
-        this.notificationService.success("Workflow updated.");
-      })
-    );
   }
 
   private getConfigurablePropertyUpdatePayload(): {
@@ -277,17 +260,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
       );
     }
-  }
-
-  private workflowChanged(): boolean {
-    return this.sections.some(section => {
-      const liveOperator = this.workflowActionService.getTexeraGraph().getOperator(section.operatorID);
-
-      return this.templatedWorkflowDraftService.operatorPropertiesChanged(
-        section.operatorID,
-        liveOperator.operatorProperties
-      );
-    });
   }
 
   /**

@@ -81,4 +81,23 @@ describe("TemplatedWorkflowService", () => {
 
     expect(received).toEqual(updated);
   });
+
+  it("instantiateTemplatedWorkflow should POST the payload to /instantiate with the tid and return the new wid", () => {
+    const payload = {
+      operatorProperties: {
+        "Limit-op-1": { limit: 88 },
+      },
+    };
+    let received: number | undefined;
+
+    service.instantiateTemplatedWorkflow(42, payload).subscribe(wid => (received = wid));
+
+    const req = httpTestingController.expectOne(`${base}/instantiate?tid=42`);
+    expect(req.request.method).toEqual("POST");
+    expect(req.request.body).toEqual(payload);
+    // 1-to-n: the backend returns the brand-new workflow's wid.
+    req.flush(512);
+
+    expect(received).toEqual(512);
+  });
 });

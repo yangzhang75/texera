@@ -22,7 +22,7 @@ import { Observable } from "rxjs";
 import { AppSettings } from "../../../../common/app-setting";
 import { Template } from "../../../../common/type/template";
 import { WorkflowContent } from "../../../../common/type/workflow";
-import { filter, map } from "rxjs/operators";
+import { filter, map, switchMap } from "rxjs/operators";
 import { DashboardTemplate } from "../../../type/dashboard-template.interface";
 import { jsonCast } from "../../../../common/util/storage";
 import { checkIfGraphBroken } from "../../../../common/util/graph-check";
@@ -124,6 +124,14 @@ export class TemplateService {
         filter((updatedTemplate: Template) => updatedTemplate != null),
         map(TemplateService.parseTemplateInfo)
       );
+  }
+
+  /**
+   * Rename a template from the dashboard list. There is no dedicated rename endpoint, so fetch the
+   * template and persist it with the new name (the /persist endpoint enforces owner/write access).
+   */
+  public updateTemplateName(tid: number, name: string): Observable<Template> {
+    return this.retrieveTemplate(tid).pipe(switchMap(template => this.persistTemplate({ ...template, name })));
   }
 
   public getSizes(tids: number[]): Observable<Record<number, number>> {

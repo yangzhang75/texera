@@ -251,6 +251,20 @@ export class ListItemComponent implements OnChanges {
         nzCentered: true,
         nzWidth: "700px",
       });
+    } else if (this.entry.type === "template") {
+      modal = this.modalService.create({
+        nzContent: ShareAccessComponent,
+        nzData: {
+          writeAccess: this.entry.template.accessLevel === "WRITE",
+          type: "template",
+          id: this.entry.id,
+          allOwners: [],
+        },
+        nzFooter: null,
+        nzTitle: "Share this template with others",
+        nzCentered: true,
+        nzWidth: "700px",
+      });
     }
     if (modal) {
       modal.componentInstance?.refresh.pipe(untilDestroyed(this)).subscribe(() => {
@@ -365,6 +379,13 @@ export class ListItemComponent implements OnChanges {
         this.datasetService.updateDatasetName.bind(this.datasetService),
         "name",
         newName,
+        this.originalName
+      );
+    } else if (this.entry.type === "template") {
+      this.updateProperty(
+        this.templateService.updateTemplateName.bind(this.templateService),
+        "name",
+        name || "Untitled Template",
         this.originalName
       );
     }

@@ -19,7 +19,7 @@
 <div class="tw-form">
   <header class="tw-header">
     <h2 class="job-title">Build Workflow from Template</h2>
-    <p class="tw-subtitle">Set the parameters below, then apply them to your workflow. The preview updates after you submit.</p>
+    <p class="tw-subtitle">Set the parameters below and click Submit. A new workflow is created under Your Work &gt; Workflows, where you can open and run it.</p>
   </header>
 
   <div *ngIf="sections.length === 0" class="empty-state">
@@ -50,16 +50,9 @@
   </div>
 </div>
 
-<div
-  class="readonly-embedded-workspace-container"
-  *ngIf="tid && showEmbeddedWorkspace"
->
-  <div class="inner-scale">
-    <texera-workspace
-      [tid]="tid"
-      [isEmbedded]="true"
-      [mode]="'template'"
-    >
-    </texera-workspace>
-  </div>
-</div>
+<!--
+  No inline workspace preview here: rendering an embedded workspace required either a persisted
+  workflow (which spawned a stray "created from template" workflow on open) or template mode (which
+  showed the authoring toolbar). The build page is the "configure parameters -> Submit" step; the
+  generated workflow is opened/run from Your Work > Workflows after Submit.
+-->

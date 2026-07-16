@@ -21,8 +21,12 @@ package org.apache.texera.web.resource.dashboard.user.template
 
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.MockTexeraDB
-import org.apache.texera.dao.jooq.generated.tables.daos.UserDao
+import org.apache.texera.dao.jooq.generated.tables.daos.{UserDao, WorkflowDao}
 import org.apache.texera.dao.jooq.generated.tables.pojos.{Template, User}
+import org.apache.texera.web.resource.dashboard.user.templated_workflow.{
+  TemplatedWorkflowConfigurablePropertiesUpdateRequest,
+  TemplatedWorkflowResource
+}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -137,5 +141,21 @@ class TemplateResourceSpec
     assertThrows[ForbiddenException] {
       resource.duplicateTemplate(TemplateResource.TemplateIDs(List(tid)), session(otherUid))
     }
+  }
+
+  "deleteTemplate" should "also delete the build-page preview workflow, but keep Submit-created ones" in {
+    val owner = session(ownerUid)
+    val tid = createOwnedTemplate(owner)
+    val tw = new TemplatedWorkflowResource()
+    val previewWid = tw.buildTemplatedWorkflowIfNotExists(tid, owner)
+    val submittedWid =
+      tw.instantiateTemplatedWorkflow(tid, new TemplatedWorkflowConfigurablePropertiesUpdateRequest, owner)
+
+    resource.deleteTemplate(TemplateResource.TemplateIDs(List(tid)), owner)
+
+    val workflowDao = new WorkflowDao(getDSLContext.configuration())
+    // The throwaway preview is gone; the user's Submit-created workflow survives.
+    workflowDao.fetchOneByWid(previewWid) shouldBe null
+    workflowDao.fetchOneByWid(submittedWid) should not be null
   }
 }

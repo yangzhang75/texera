@@ -23,7 +23,13 @@ import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
-import org.apache.texera.dao.jooq.generated.Tables.{TEMPLATE, TEMPLATE_OF_USER, TEMPLATE_USER_ACCESS}
+import org.apache.texera.dao.jooq.generated.Tables.{
+  TEMPLATE,
+  TEMPLATE_OF_USER,
+  TEMPLATE_USER_ACCESS,
+  WORKFLOW,
+  WORKFLOW_OF_TEMPLATE
+}
 import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   TemplateDao,
@@ -168,6 +174,23 @@ class TemplateResource extends LazyLogging {
       context.transaction { _ =>
         for (tid <- templateIDs.tids) {
           if (templateOfUserExists(tid, user.getUid)) {
+            // Also delete the template's throwaway build-page preview workflow(s)
+            // (workflow_of_template.parameters = 'preview'). Otherwise deleting the template would
+            // orphan the preview -- and since it is no longer linked to a template, it would resurface
+            // in the user's workflow list. Submit-created workflows (parameters = '') are the user's
+            // own and are intentionally left untouched.
+            val previewWids = context
+              .select(WORKFLOW_OF_TEMPLATE.WID)
+              .from(WORKFLOW_OF_TEMPLATE)
+              .where(
+                WORKFLOW_OF_TEMPLATE.TID.eq(tid).and(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq("preview"))
+              )
+              .fetch(WORKFLOW_OF_TEMPLATE.WID)
+              .asScala
+              .toList
+            if (previewWids.nonEmpty) {
+              context.deleteFrom(WORKFLOW).where(WORKFLOW.WID.in(previewWids.asJava)).execute()
+            }
             templateDao.deleteById(tid)
           } else {
             throw new BadRequestException("The template does not exist.")

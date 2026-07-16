@@ -160,7 +160,7 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
 
   // Snapshot of the last configuration that was successfully submitted (operator property values +
   // the chosen name). Undefined until the first successful Submit.
-  private lastSubmitted: { properties: Record<string, Record<string, unknown>>; name: string } | undefined;
+  private lastSubmitted: { properties: Record<string, Record<string, unknown>> } | undefined;
 
   // Cosmetic "already created this" state: the button looks grey but stays CLICKABLE, so it can
   // never block a submit (a click still creates). It goes grey right after a successful Submit --
@@ -177,13 +177,12 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
   // The current configuration the user would submit right now: live form-control values per
   // operator plus the preview's current name. Compared against `lastSubmitted` to drive the grey
   // (already-created) state.
-  private currentSubmission(): { properties: Record<string, Record<string, unknown>>; name: string } {
+  private currentSubmission(): { properties: Record<string, Record<string, unknown>> } {
     const properties: Record<string, Record<string, unknown>> = {};
     for (const section of this.sections) {
       properties[section.operatorID] = { ...section.form.getRawValue() };
     }
-    const name = this.workflowActionService.getWorkflowMetadata()?.name?.trim() || "";
-    return { properties, name };
+    return { properties };
   }
 
   public onJobFormSubmitted(): void {
@@ -207,32 +206,42 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    if (!this.wid) {
-      this.notificationService.error("Workflow is not ready yet.");
+    if (!this.tid) {
+      this.notificationService.error("Missing template ID.");
       return;
     }
 
-    // The preview IS the workflow. Submit applies the configured properties to that same workflow
-    // (created once on page open and already listed under Your Work > Workflows) -- it does NOT
-    // create a second, duplicate workflow. Its name is whatever the user set in the preview.
+    // Deferred creation (as in the original design): opening the page creates NO workflow. Submit
+    // creates one from the template + configured properties (1-to-n), then reveals the runnable
+    // preview of THAT workflow so the user can run it right here.
     this.mergeFormValuesIntoOperatorProperties();
-    this.writeOperatorPropertiesToGraph();
     const payload = this.getConfigurablePropertyUpdatePayload();
-    // Snapshot exactly what we're submitting; on success it greys the button so identical re-submits
-    // are visibly discouraged until the user changes something.
+    // Snapshot what we submitted; on success it greys the button so identical re-submits are
+    // visibly discouraged until the user changes a parameter.
     const submitted = this.currentSubmission();
 
     this.templatedWorkflowService
-      .updateTemplatedWorkflowProperties(this.wid, payload)
-      .pipe(untilDestroyed(this))
-      .subscribe({
-        next: () => {
+      .instantiateTemplatedWorkflow(this.tid, payload)
+      .pipe(
+        switchMap(wid => {
+          this.wid = wid;
           this.lastSubmitted = submitted;
-          this.notificationService.success("Workflow saved. Find it under Your Work > Workflows.");
+          this.templatedWorkflowService.resetTemplatedWorkflowCache();
+          this.workflowActionService.destroySharedModel();
+          this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
+          return this.workflowPersistService.retrieveWorkflow(wid);
+        }),
+        untilDestroyed(this)
+      )
+      .subscribe({
+        next: workflow => {
+          this.workflowActionService.reloadWorkflow(workflow);
+          this.showEmbeddedWorkspace = true;
+          this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
         },
         error: err => {
-          console.warn("Failed to save the workflow", err);
-          this.notificationService.error("Failed to save the workflow.");
+          console.warn("Failed to create workflow from template", err);
+          this.notificationService.error("Failed to create workflow from template.");
         },
       });
   }
@@ -381,57 +390,26 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
         this.template = template.content;
         this.templatedWorkflowDraftService.initialize(template.content);
 
-        this.templatedWorkflowService.createTemplatedWorkflow(this.tid)
-          .pipe(
-            switchMap(wid => {
-              this.wid = wid;
-
-              // A workflow was just get-or-created for this template; invalidate the cached
-              // wid->template set so the "created from template" tag shows on the Workflows list
-              // without a full page reload.
-              this.templatedWorkflowService.resetTemplatedWorkflowCache();
-
-              this.workflowActionService.destroySharedModel();
-              this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
-
-              return this.workflowPersistService.retrieveWorkflow(this.wid);
-            }),
-            untilDestroyed(this)
-          )
-          .subscribe({
-            next: workflow => {
-              // Editing of the preview is locked by the embedded WorkspaceComponent
-              // (disableWorkflowModification); we must NOT mark the workflow readonly here,
-              // because a readonly workflow cannot be executed and the preview must stay runnable.
-              this.workflowActionService.reloadWorkflow(workflow);
-
-              // Reopening an existing templated workflow: /build is idempotent (returns the same
-              // wid) and its content already holds the values last applied via /update. Seed the
-              // form from THAT content (not the template defaults) so the user sees their last
-              // edits. seedValuesFromContent keeps the enriched dynamic schemas intact (dropdowns
-              // stay dropdowns); resetting the signature forces the sections to rebuild off the
-              // freshly-seeded values (the signature only tracks schemas, not values).
-              if (workflow.content) {
-                this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
-                this.lastEnrichedSignature = "";
-                this.rebuildSectionsFromDynamicSchemas();
-              }
-
-              this.workflowReady = true;
-              // Reveal the preview as soon as the workflow is loaded. While the container is
-              // hidden it has height:0, so the embedded JointJS paper would initialize at zero
-              // size and the operators would render clipped/off-center. Showing it now lets the
-              // paper size correctly and re-center on the loaded workflow.
-              this.showEmbeddedWorkspace = true;
-            },
-            error: err => {
-              this.workflowReady = false;
-              console.warn("Failed to create/load templated workflow", err);
-              this.notificationService.error("Failed to create workflow from template.");
-            },
-          });
+        // Deferred creation (matches the original design): opening the page creates NO workflow, so
+        // just viewing a template never adds a stray "created from template" workflow. Load the
+        // template content into the shared model in-memory only (readonly, wid undefined) to drive
+        // the configurable-property form and its dynamic schemas. The runnable preview (embedded
+        // workspace, *ngIf="wid") appears only AFTER Submit, once a real workflow exists.
+        this.workflowActionService.destroySharedModel();
+        this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
+        this.workflowActionService.reloadWorkflow({
+          wid: undefined,
+          name: "template-preview",
+          description: undefined,
+          creationTime: undefined,
+          lastModifiedTime: undefined,
+          isPublished: 0,
+          readonly: true,
+          content: template.content,
+        });
 
         this.rebuildSectionsFromDynamicSchemas();
+        this.workflowReady = true;
 
         // Do not suppress this stream. Texera's existing schema propagation may still
         // populate/enrich DynamicSchemaService, especially during initial template loading.

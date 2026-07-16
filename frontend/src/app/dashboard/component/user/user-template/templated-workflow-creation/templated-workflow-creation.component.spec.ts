@@ -88,14 +88,6 @@ describe("TemplatedWorkflowCreationComponent submitIdle", () => {
     expect(component.submitIdle).toBe(false);
   });
 
-  it("reactivates when only the workflow name changes after submitting", () => {
-    (component as any).lastSubmitted = (component as any).currentSubmission();
-    expect(component.submitIdle).toBe(true);
-
-    metadataName = "A Different Name";
-    expect(component.submitIdle).toBe(false);
-  });
-
   it("is never grey while the preview is still loading or running", () => {
     (component as any).lastSubmitted = (component as any).currentSubmission();
     expect(component.submitIdle).toBe(true);

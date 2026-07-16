@@ -311,6 +311,16 @@ class TemplatedWorkflowResourceSpec
     wid2 shouldBe wid1
   }
 
+  it should "NOT list the preview workflow as created-from-template (only Submit-created ones are)" in {
+    val tid = createTemplate(workflowContent("preview.csv"))
+    val previewWid = resource.buildTemplatedWorkflowIfNotExists(tid, sessionUser)
+    val submittedWid = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)
+    val listed = resource.listTemplatedWorkflows(sessionUser).map(_.wid)
+    // Opening the build page created the preview, but only the Submit-created workflow is tagged.
+    listed should not contain previewWid
+    listed should contain(submittedWid)
+  }
+
   "instantiateTemplatedWorkflow" should "create a NEW workflow on each call (1-to-n)" in {
     val tid = createTemplate(workflowContent("preview.csv"))
     val widA = resource.instantiateTemplatedWorkflow(tid, updateRequest(Map.empty), sessionUser)

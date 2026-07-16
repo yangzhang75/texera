@@ -75,6 +75,12 @@ object TemplatedWorkflowResource {
     context.configuration
   )
 
+  // Marker stored in workflow_of_template.parameters to tell the build page's throwaway preview
+  // workflow apart from the real workflows a user creates by Submitting. Preview rows are excluded
+  // from the "created from template" tag and from the workflow list, so opening a template to
+  // preview it never adds a workflow the user didn't Submit.
+  private val PREVIEW_MARKER = "preview"
+
   private def buildTemplatedWorkflowRelation(
       tid: Integer,
       wid: Integer,
@@ -86,11 +92,12 @@ object TemplatedWorkflowResource {
   }
 
   private def getTemplatedWorkflowIdIfExists(tid: Integer): Option[Integer] = {
+    // Only the preview row is reused across build-page opens; Submit-created workflows are separate.
     Option(
       context
         .select(WORKFLOW_OF_TEMPLATE.WID)
         .from(WORKFLOW_OF_TEMPLATE)
-        .where(WORKFLOW_OF_TEMPLATE.TID.eq(tid))
+        .where(WORKFLOW_OF_TEMPLATE.TID.eq(tid).and(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq(PREVIEW_MARKER)))
         .fetchAny(WORKFLOW_OF_TEMPLATE.WID)
     )
   }
@@ -163,9 +170,11 @@ class TemplatedWorkflowResource extends LazyLogging {
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/list")
   def listTemplatedWorkflows(@Auth user: SessionUser): List[TemplatedWorkflowInfo] = {
+    // Exclude build-page preview rows: only Submit-created workflows are "created from template".
     context
       .select(WORKFLOW_OF_TEMPLATE.WID, WORKFLOW_OF_TEMPLATE.TID)
       .from(WORKFLOW_OF_TEMPLATE)
+      .where(WORKFLOW_OF_TEMPLATE.PARAMETERS.ne(PREVIEW_MARKER).or(WORKFLOW_OF_TEMPLATE.PARAMETERS.isNull))
       .fetch()
       .asScala
       .map(r => TemplatedWorkflowInfo(r.get(WORKFLOW_OF_TEMPLATE.WID), r.get(WORKFLOW_OF_TEMPLATE.TID)))
@@ -208,7 +217,8 @@ class TemplatedWorkflowResource extends LazyLogging {
         )
         val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
         val newWid = workflow.workflow.getWid
-        buildTemplatedWorkflowRelation(tid, newWid, "")
+        // Mark as the throwaway preview so it is NOT tagged/listed as a created-from-template workflow.
+        buildTemplatedWorkflowRelation(tid, newWid, PREVIEW_MARKER)
         newWid
     }
   }

@@ -113,6 +113,9 @@
   color: rgba(0, 0, 0, 0.3) !important;
   box-shadow: none !important;
   text-shadow: none !important;
+  // Looks un-clickable (already-submitted state). It stays technically clickable so a pending
+  // nz-input-number blur still commits on click; the click then finds no change and is a no-op.
+  cursor: not-allowed !important;
 
   &:hover {
     background: #eee !important;

@@ -93,6 +93,11 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   private workflowReady: boolean = false;
   public showEmbeddedWorkspace = false;
 
+  // The configurable-property values of the last successful Submit (null until the first Submit).
+  // Submit is greyed only while the form still matches this snapshot, so: fresh open = bright,
+  // just-submitted = grey (and clicking it does not create a duplicate), edited = bright again.
+  private lastSubmittedPayload: Record<string, Record<string, unknown>> | null = null;
+
   // Signature of the schemas the configurable sections were last built from. Used to skip
   // redundant rebuilds (which would otherwise destroy the field being edited and drop focus).
   private lastEnrichedSignature = "";
@@ -151,29 +156,25 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     return !this.workflowReady || this.isWorkflowExecutionActive;
   }
 
-  // Cosmetic "nothing to apply" state: the button looks grey but stays CLICKABLE, so it can never
-  // block an edit (a click still commits + applies). Grey when the form matches what is already
-  // applied to the live graph; the moment the form differs (the top form vs the bottom preview),
-  // it goes bright. Read via form.getRawValue() (always the current control value) so it never gets
-  // stuck grey after an edit.
+  // "Already submitted this exact state" state: the button looks grey once the current form matches
+  // the last successful Submit, so a second click can't create a duplicate. It stays CLICKABLE on
+  // purpose (only cursor: not-allowed styling) so a pending edit in an nz-input-number -- which
+  // commits its value on blur -- still commits when the button is clicked; the click then finds the
+  // change and creates. Fresh open (no Submit yet) and any edit are NOT idle -> the button is bright.
   public get submitIdle(): boolean {
     if (this.submitDisabled) {
       return false;
     }
-    return !this.hasPendingChanges();
+    return this.lastSubmittedPayload !== null && !this.hasPendingChanges();
   }
 
+  // Pending = the current form values differ from what was last submitted. Before the first Submit
+  // (no snapshot) everything counts as pending, so the button is clickable on a freshly opened page.
   private hasPendingChanges(): boolean {
-    const graph = this.workflowActionService.getTexeraGraph();
-    return this.sections.some(section => {
-      if (!graph.hasOperator(section.operatorID)) {
-        return false;
-      }
-      const live = graph.getOperator(section.operatorID).operatorProperties;
-      const draft = this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID) ?? {};
-      const merged = { ...draft, ...section.form.getRawValue() };
-      return !isEqual(merged, live);
-    });
+    if (this.lastSubmittedPayload === null) {
+      return true;
+    }
+    return !isEqual(this.getConfigurablePropertyUpdatePayload().operatorProperties, this.lastSubmittedPayload);
   }
 
   public onJobFormSubmitted(): void {
@@ -202,6 +203,12 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       return;
     }
 
+    // Nothing changed since the last Submit -- don't create a duplicate workflow. (The click has
+    // already committed any pending nz-input-number blur, so this reads the up-to-date form values.)
+    if (!this.hasPendingChanges()) {
+      return;
+    }
+
     // 1-to-n: every Submit creates a brand-new workflow from the template with the current form
     // values applied. Reflect the values in the in-page preview first, then instantiate. Stay on the
     // page so the user can submit again to create another workflow.
@@ -218,6 +225,8 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
+          // Remember what we just submitted so Submit greys out until the form changes again.
+          this.lastSubmittedPayload = cloneDeep(payload.operatorProperties);
           this.notificationService.success("Workflow created. Find it under Your Work > Workflows.");
         },
         error: err => {

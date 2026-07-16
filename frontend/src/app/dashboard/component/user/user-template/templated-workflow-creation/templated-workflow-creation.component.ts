@@ -207,14 +207,15 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
       return;
     }
 
-    if (!this.wid) {
-      this.notificationService.error("Workflow is not ready yet.");
+    if (!this.tid) {
+      this.notificationService.error("Missing template ID.");
       return;
     }
 
-    // The preview IS the workflow. Submit applies the configured properties to that same workflow
-    // (created once on page open and already listed under Your Work > Workflows) -- it does NOT
-    // create a second, duplicate workflow. Its name is whatever the user set in the preview.
+    // 1-to-n: each Submit creates a NEW workflow from the template with the configured properties.
+    // Submitting twice yields two separate, fully-editable workflows (each tagged "created from
+    // template"); the runnable preview above is never overwritten and we stay on this page so the
+    // user can tweak parameters and submit again.
     this.mergeFormValuesIntoOperatorProperties();
     this.writeOperatorPropertiesToGraph();
     const payload = this.getConfigurablePropertyUpdatePayload();
@@ -223,16 +224,17 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit, OnDest
     const submitted = this.currentSubmission();
 
     this.templatedWorkflowService
-      .updateTemplatedWorkflowProperties(this.wid, payload)
+      .instantiateTemplatedWorkflow(this.tid, payload)
       .pipe(untilDestroyed(this))
       .subscribe({
         next: () => {
           this.lastSubmitted = submitted;
-          this.notificationService.success("Workflow saved. Find it under Your Work > Workflows.");
+          this.templatedWorkflowService.resetTemplatedWorkflowCache();
+          this.notificationService.success("Workflow created from template. Find it under Your Work > Workflows.");
         },
         error: err => {
-          console.warn("Failed to save the workflow", err);
-          this.notificationService.error("Failed to save the workflow.");
+          console.warn("Failed to create workflow from template", err);
+          this.notificationService.error("Failed to create workflow from template.");
         },
       });
   }

@@ -108,6 +108,7 @@ export class ListItemComponent implements OnChanges {
   isLiked: boolean = false;
   @Input() isPrivateSearch = false;
   @Input() editable = false;
+  @Input() unpublishedByReport = false;
   private _entry?: DashboardEntry;
   hovering: boolean = false;
 

@@ -73,6 +73,18 @@
           Current Version: {{ workflowVersionService.selectedDisplayedVersionId.getValue() }}
         </span>
         <span *ngIf="!displayParticularWorkflowVersion"> {{autoSaveState}} </span>
+        <button
+          *ngIf="moderationUnpublished"
+          nz-button
+          nzType="text"
+          class="moderation-warning-btn"
+          title="This workflow was unpublished from the Hub by a moderator. Click for details."
+          (click)="openModerationNotice()">
+          <i
+            nz-icon
+            nzType="warning"
+            nzTheme="outline"></i>
+        </button>
       </div>
 
       <ng-container *ngFor="let user of coeditorPresenceService.coeditors">
@@ -456,3 +468,32 @@
     </div>
   </div>
 </div>
+
+<!-- Content of the "workflow was unpublished" acknowledge dialog. -->
+<ng-template #moderationNoticeTpl>
+  <p class="moderation-dialog-text">
+    A moderator removed this workflow from the public Hub after it was reported. It is now
+    <b>private</b> and no longer visible to other users.
+  </p>
+  <div
+    *ngIf="moderationReasons.length > 0"
+    class="moderation-reasons">
+    <span class="moderation-reasons-label">Reported for</span>
+    <div class="moderation-reason-chips">
+      <span
+        *ngFor="let reason of moderationReasons"
+        class="moderation-reason-chip">
+        {{ reason }}
+      </span>
+    </div>
+  </div>
+  <p class="moderation-dialog-note">
+    You still have full access to review and edit this workflow, and can republish it once the issue is resolved. If you
+    believe this was a mistake, please contact an administrator.
+  </p>
+  <p
+    *ngIf="moderationResolvedTime"
+    class="moderation-dialog-meta">
+    Unpublished on {{ moderationResolvedTime | date: "medium" }}
+  </p>
+</ng-template>

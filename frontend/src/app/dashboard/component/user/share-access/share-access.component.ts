@@ -410,6 +410,7 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
           next: () => {
             this.isPublic = true;
             this.notificationService.success("Workflow published successfully");
+            this.refresh.emit();
           },
           error: (error: unknown) => {
             if (error instanceof HttpErrorResponse) {
@@ -429,6 +430,7 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
           next: () => {
             this.isPublic = false;
             this.notificationService.success("Workflow unpublished successfully");
+            this.refresh.emit();
           },
           error: (error: unknown) => {
             if (error instanceof HttpErrorResponse) {

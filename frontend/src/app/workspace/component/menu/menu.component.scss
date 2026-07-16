@@ -190,3 +190,56 @@ texera-coeditor-user-icon {
 ::ng-deep .layers-dropdown {
   user-select: none;
 }
+
+.moderation-warning-btn {
+  color: #faad14;
+
+  &:hover {
+    color: #d48806;
+  }
+}
+
+.moderation-dialog-text {
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+.moderation-dialog-note {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.moderation-dialog-meta {
+  margin: 8px 0 0;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.moderation-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.moderation-reasons-label {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.moderation-reason-chip {
+  display: inline-block;
+  padding: 1px 10px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #d46b08;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 10px;
+}

@@ -95,6 +95,13 @@
         class="resource-name truncate-single-line"
         *ngIf="!editingName">
         {{ entry.name }}
+        <i
+          *ngIf="unpublishedByReport"
+          nz-icon
+          nzType="warning"
+          nzTheme="outline"
+          class="moderation-flag-icon"
+          title="An admin unpublished this workflow from the Hub after it was reported. Open it for details."></i>
       </div>
       <input
         *ngIf="editingName"

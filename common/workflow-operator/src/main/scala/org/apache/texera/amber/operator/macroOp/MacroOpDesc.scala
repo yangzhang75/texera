@@ -20,7 +20,7 @@
 package org.apache.texera.amber.operator.macroOp
 
 import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty, JsonPropertyDescription}
-import com.kjetland.jackson.jsonSchema.annotations.JsonSchemaTitle
+import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.virtualidentity.{ExecutionIdentity, WorkflowIdentity}
 import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PhysicalPlan, PortIdentity}
 import org.apache.texera.amber.operator.LogicalOp
@@ -51,7 +51,11 @@ class MacroOpDesc extends LogicalOp {
 
   @JsonProperty(value = "linkMode", required = true)
   @JsonSchemaTitle("Link Mode")
-  @JsonPropertyDescription("LIVE = referenced by (macroId, macroVersion); SNAPSHOT = embedded body.")
+  @JsonPropertyDescription("Reference mode for the macro definition (LIVE = re-expanded at compile time).")
+  // Only LIVE is wired end-to-end. SNAPSHOT (embedded body) was never wired on
+  // the frontend, so it's constrained out of the property panel to avoid a
+  // dropdown option that looks selectable but does nothing.
+  @JsonSchemaInject(json = """{"enum": ["LIVE"]}""")
   var linkMode: String = MacroOpDesc.LIVE
 
   @JsonProperty(value = "snapshot")

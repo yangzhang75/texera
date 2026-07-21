@@ -38,6 +38,7 @@ object SearchQueryBuilder {
   val PROJECT_RESOURCE_TYPE = "project"
   val DATASET_RESOURCE_TYPE = "dataset"
   val TEMPLATE_RESOURCE_TYPE = "template"
+  val MACRO_RESOURCE_TYPE = "macro"
   val ALL_RESOURCE_TYPE = ""
 }
 

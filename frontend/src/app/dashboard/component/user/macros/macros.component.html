@@ -1,0 +1,35 @@
+<div class="macros-page">
+  <div class="macros-header">
+    <h2>Macros</h2>
+    <p class="macros-subtitle">
+      Reusable, encapsulated sub-workflows. Insert one into a canvas as a node (LIVE), or generate an
+      independent workflow from it. A green light means the macro is runnable on its own.
+    </p>
+  </div>
+
+  <div *ngIf="isLoading" class="macros-empty">Loading…</div>
+  <div *ngIf="!isLoading && macros.length === 0" class="macros-empty">
+    No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
+  </div>
+
+  <div class="macro-row" *ngFor="let m of macros">
+    <span
+      class="runnable-dot"
+      [class.runnable]="isRunnable(m)"
+      [title]="isRunnable(m)
+        ? 'Runnable: no unbound inputs — carries its own data source'
+        : 'Not runnable: has ' + inCount(m) + ' unbound input(s); generated workflow will be invalid until you add a source'"></span>
+
+    <span class="macro-name">{{ m.name }}</span>
+
+    <span class="macro-ports">{{ inCount(m) }} in / {{ outCount(m) }} out</span>
+
+    <span class="runnable-label" [class.runnable]="isRunnable(m)">
+      {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
+    </span>
+
+    <span class="macro-spacer"></span>
+
+    <button class="generate-btn" type="button" (click)="onGenerate(m)">Generate workflow</button>
+  </div>
+</div>

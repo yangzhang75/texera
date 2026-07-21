@@ -1,0 +1,84 @@
+.macros-page {
+  padding: 24px 32px;
+}
+
+.macros-header h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.macros-subtitle {
+  color: rgba(0, 0, 0, 0.55);
+  margin: 0 0 20px;
+  max-width: 720px;
+}
+
+.macros-empty {
+  color: rgba(0, 0, 0, 0.45);
+  padding: 24px 0;
+}
+
+.macro-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.runnable-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #bfbfbf; // gray = not runnable
+  flex: 0 0 auto;
+
+  &.runnable {
+    background: #52c41a; // green = runnable
+  }
+}
+
+.macro-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.macro-ports {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+}
+
+.runnable-label {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f0f0f0;
+  color: rgba(0, 0, 0, 0.5);
+
+  &.runnable {
+    background: #f6ffed;
+    color: #389e0d;
+  }
+}
+
+.macro-spacer {
+  flex: 1 1 auto;
+}
+
+.generate-btn {
+  border: none;
+  background: #1d6fdb;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+
+  &:hover {
+    background: #1558b0;
+  }
+}

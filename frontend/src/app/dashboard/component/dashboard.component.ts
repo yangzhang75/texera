@@ -42,6 +42,7 @@ import {
   USER_QUOTA,
   USER_WORKFLOW,
   USER_TEMPLATE,
+  USER_MACRO,
   USER_FEEDBACK,
 } from "../../app-routing.constant";
 import { Version } from "../../../environments/version";
@@ -117,6 +118,7 @@ export class DashboardComponent implements OnInit {
   protected readonly USER_QUOTA = USER_QUOTA;
   protected readonly USER_DISCUSSION = USER_DISCUSSION;
   protected readonly USER_TEMPLATE = USER_TEMPLATE;
+  protected readonly USER_MACRO = USER_MACRO;
   protected readonly USER_FEEDBACK = USER_FEEDBACK;
   protected readonly ADMIN_USER = ADMIN_USER;
   protected readonly ADMIN_GMAIL = ADMIN_GMAIL;

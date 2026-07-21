@@ -19,9 +19,13 @@
 
 import { Component, OnInit } from "@angular/core";
 import { NgFor, NgIf } from "@angular/common";
+import { Router } from "@angular/router";
+import { switchMap } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
+import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
+import { USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
  * The unified "Macros" dashboard tab. Lists every macro definition (kind=MACRO
@@ -44,9 +48,13 @@ export class MacrosComponent implements OnInit {
   macros: MacroSummary[] = [];
   isLoading = false;
 
+  generatingWid: number | null = null;
+
   constructor(
     private macroService: MacroService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private workflowPersistService: WorkflowPersistService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -83,8 +91,39 @@ export class MacrosComponent implements OnInit {
     return this.inCount(m) === 0;
   }
 
-  /** T3: generate an independent workflow from this macro via MacroExpander. */
+  /**
+   * Generate an independent workflow from this macro (= the old Template flow).
+   * Expands the macro body into a top-level graph (boundary markers stripped)
+   * and persists it as a new normal workflow, then opens it. A runnable macro
+   * yields a runnable workflow; a not-runnable one yields an Invalid Workflow
+   * (unconnected inputs) the user completes by adding a data source.
+   */
   onGenerate(m: MacroSummary): void {
-    this.notificationService.info(`Generate workflow from "${m.name}" — wiring next (T3).`);
+    if (this.generatingWid !== null) return;
+    this.generatingWid = m.wid;
+    this.macroService
+      .getMacro(m.wid)
+      .pipe(
+        switchMap(detail => {
+          const content = this.macroService.macroDetailToGeneratedContent(detail);
+          return this.workflowPersistService.createWorkflow(content, m.name);
+        }),
+        untilDestroyed(this)
+      )
+      .subscribe({
+        next: created => {
+          this.generatingWid = null;
+          const wid = created.workflow.wid;
+          if (wid) {
+            this.router.navigate([USER_WORKSPACE, wid]);
+          } else {
+            this.notificationService.error("Workflow generation failed.");
+          }
+        },
+        error: () => {
+          this.generatingWid = null;
+          this.notificationService.error("Failed to generate workflow.");
+        },
+      });
   }
 }

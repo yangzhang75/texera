@@ -1577,6 +1577,34 @@ export class MacroService {
     };
   }
 
+  /**
+   * Expand a macro definition into standalone workflow content for the
+   * "Generate workflow" flow (= the old Template). Same body layout as
+   * macroDetailToWorkflow, but the MacroInput/MacroOutput boundary markers
+   * (and links touching them) are stripped so the result is a normal
+   * top-level graph rather than a macro body:
+   *  - runnable macro (source inside, no unbound inputs): a complete,
+   *    runnable workflow.
+   *  - not-runnable macro (had MacroInput feeding an op): that op's input is
+   *    now unconnected -> the generated workflow is an Invalid Workflow the
+   *    user completes by wiring a data source.
+   */
+  public macroDetailToGeneratedContent(detail: MacroDetail): WorkflowContent {
+    const full = this.macroDetailToWorkflow(detail).content;
+    const isMarker = (t: string) => t === "MacroInput" || t === "MacroOutput";
+    const operators = full.operators.filter(o => !isMarker(o.operatorType));
+    const keptIds = new Set(operators.map(o => o.operatorID));
+    const links = full.links.filter(
+      l => keptIds.has(l.source.operatorID) && keptIds.has(l.target.operatorID)
+    );
+    const operatorPositions: Record<string, { x: number; y: number }> = {};
+    for (const o of operators) {
+      const pos = full.operatorPositions[o.operatorID];
+      if (pos) operatorPositions[o.operatorID] = pos;
+    }
+    return { operators, operatorPositions, links, commentBoxes: [], settings: full.settings };
+  }
+
   private normalizeBodyOperator(raw: unknown): OperatorPredicate {
     const r = raw as Record<string, unknown>;
     const {

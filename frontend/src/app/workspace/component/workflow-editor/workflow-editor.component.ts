@@ -38,7 +38,7 @@ import { fromJointPaperEvent, JointUIService, linkPathStrokeColor } from "../../
 import { Validation, ValidationWorkflowService } from "../../service/validation/validation-workflow.service";
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
 import { WorkflowStatusService } from "../../service/workflow-status/workflow-status.service";
-import { ExecutionState, OperatorState } from "../../types/execute-workflow.interface";
+import { ExecutionState, OperatorState, OperatorStatistics } from "../../types/execute-workflow.interface";
 import { LogicalPort, OperatorLink, OperatorPredicate } from "../../types/workflow-common.interface";
 import { auditTime, filter, map, takeUntil, withLatestFrom } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
@@ -54,6 +54,8 @@ import { GuiConfigService } from "../../../common/service/gui-config.service";
 import { line, curveCatmullRomClosed } from "d3-shape";
 import concaveman from "concaveman";
 import { OperatorResultSummary, AgentService } from "../../service/agent/agent.service";
+import { MacroService, MacroBindings } from "../../service/macro/macro.service";
+import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
 import { NzNoAnimationDirective } from "ng-zorro-antd/core/animation";
 import { ContextMenuComponent } from "./context-menu/context-menu/context-menu.component";
 import { NgClass, NgIf } from "@angular/common";
@@ -146,7 +148,9 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     public nzContextMenu: NzContextMenuService,
     private elementRef: ElementRef,
     private config: GuiConfigService,
-    private agentService: AgentService
+    private agentService: AgentService,
+    private macroService: MacroService,
+    private workflowResultService: WorkflowResultService
   ) {
     this.wrapper = this.workflowActionService.getJointGraphWrapper();
   }
@@ -164,6 +168,45 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
         this.changeDetectorRef.detectChanges();
       }
     });
+
+    // Eagerly fetch macro body bindings so port-level stat/result remap is
+    // ready by the time execution starts. Prefetch on (a) initial load —
+    // covers macros that arrive via reloadWorkflow before this subscriber is
+    // wired — (b) future add events, and (c) every time the runtime macro
+    // mapping is (re-)fetched. (c) is required because the bindings
+    // resolution walks runtimeMacroMapping to translate body-relative IDs to
+    // runtime UUIDs; if we prefetched before that cache was populated, the
+    // resulting alias (macro op → runtime UUID for its output 0 producer)
+    // wouldn't have been set — re-prefetching on the tick fills it in.
+    const graph = this.workflowActionService.getTexeraGraph();
+    this.macroService.prefetchBindingsForOperators(graph.getAllOperators());
+    graph
+      .getOperatorAddStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(op => this.macroService.prefetchBindingsForOperators([op]));
+    this.macroService
+      .getRuntimeMacroMappingTick()
+      .pipe(untilDestroyed(this))
+      .subscribe(() => this.macroService.prefetchBindingsForOperators(graph.getAllOperators()));
+
+    // Keep the result service's drill-down alias map in sync with the URL —
+    // when we're on `?instance=…`, body-relative IDs on canvas should resolve
+    // to their post-expansion runtime UUIDs so live execution results show up
+    // inside the drilled-down view. The body-to-runtime map is sourced from
+    // MacroService's runtime-mapping cache. Two emission triggers:
+    //  - URL changes (entering/leaving drill-down)
+    //  - the runtime-mapping cache itself ticks (e.g. after Run completes and
+    //    GET /api/workflow/{wid}/macro-mapping populates the cache async)
+    // combineLatest fires on either, so the alias map is always fresh.
+    combineLatest([this.route.queryParamMap, this.macroService.getRuntimeMacroMappingTick()])
+      .pipe(untilDestroyed(this))
+      .subscribe(([qp]) => {
+        const instance = qp.get("instance");
+        const aliases = instance
+          ? this.macroService.buildBodyOpIdToRuntimeUuidMap(instance)
+          : new Map<string, string>();
+        this.workflowResultService.setDrilldownAliases(aliases);
+      });
   }
 
   /**
@@ -348,24 +391,52 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
       .getStatusUpdateStream()
       .pipe(untilDestroyed(this))
       .subscribe(status => {
+        // Drill-down lookup: when the user is in `/workflow/:id/macro/:macroId?instance=...`,
+        // the canvas IDs are body-relative (from the macro definition) but the
+        // engine emits stats keyed by runtime UUIDs (assigned by MacroExpander).
+        // Use the macro-mapping side-table to translate body-relative IDs to
+        // runtime UUIDs: pick the runtime entry whose macroChain CONTAINS this
+        // macro instance AND whose bodyOpId matches the canvas op id.
+        const drilldownInstanceId = this.getDrilldownInstanceId();
+        const bodyToRuntime = drilldownInstanceId
+          ? this.macroService.buildBodyOpIdToRuntimeUuidMap(drilldownInstanceId)
+          : undefined;
+        const lookupStat = (operatorId: string): OperatorStatistics | undefined => {
+          if (bodyToRuntime) {
+            const runtimeUuid = bodyToRuntime.get(operatorId);
+            return runtimeUuid ? status[runtimeUuid] : undefined;
+          }
+          return status[operatorId];
+        };
+
         this.workflowActionService
           .getTexeraGraph()
           .getAllOperators()
           .forEach(op => {
-            if (
-              isDefined(status[op.operatorID]) &&
+            // Macro ops need port-level remap from cached bindings so the
+            // tooltip + port labels show correct external-port stats. This
+            // applies at every level of nesting — parent canvas AND inside
+            // a drill-down view (a nested macro op in the body deserves its
+            // own synthesized port view, just like the outer one does).
+            // Falls back to status[op.operatorID] (the chain-aggregated
+            // entry from withMacroAggregates) if bindings aren't loaded yet
+            // — so the macro op still shows its state + total counts while
+            // the body fetch is in flight.
+            const opStatus =
+              op.operatorType === "Macro"
+                ? this.synthesizeMacroOpStats(op, status) ?? status[op.operatorID]
+                : lookupStat(op.operatorID);
+
+            const finalStatus =
+              isDefined(opStatus) &&
               this.executeWorkflowService.getExecutionState().state === ExecutionState.Recovering
-            ) {
-              status[op.operatorID] = {
-                ...status[op.operatorID],
-                operatorState: OperatorState.Recovering,
-              };
-            }
+                ? { ...opStatus, operatorState: OperatorState.Recovering }
+                : opStatus;
 
             this.jointUIService.changeOperatorStatistics(
               this.paper,
               op.operatorID,
-              status[op.operatorID],
+              finalStatus,
               this.isSource(op.operatorID),
               this.isSink(op.operatorID)
             );
@@ -450,6 +521,95 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     } else {
       this.jointUIService.changeOperatorColor(this.paper, operatorID, true);
     }
+  }
+
+  /**
+   * If the current view is a macro drill-down (URL carries `?instance=...`
+   * alongside `/macro/:macroId`), return the parent-canvas macro instance id
+   * so we can look up its inner ops in the macro-mapping side-table.
+   * Returns `undefined` when not in drill-down mode.
+   */
+  private getDrilldownInstanceId(): string | undefined {
+    const instanceId = this.route.snapshot.queryParamMap.get("instance");
+    const macroId = this.route.snapshot.paramMap.get("macroId");
+    if (!macroId || !instanceId) return undefined;
+    return instanceId;
+  }
+
+  /**
+   * Build an `OperatorStatistics` for a macro instance by sourcing per-port
+   * data from the boundary inner ops the macro's external ports map to.
+   *
+   * Why: after `MacroExpander` inlines the body, the engine reports stats
+   * keyed by prefixed inner-op IDs (e.g. `Macro-operator-abc--Filter-uuid`).
+   * The macro op itself has no engine-side entity — so directly looking up
+   * `status[macro.operatorID]` returns either undefined or the aggregated
+   * roll-up that `WorkflowStatusService.withMacroAggregates` synthesized
+   * (which deliberately leaves port metrics empty because port-level
+   * mapping requires the body shape).
+   *
+   * Mapping rules:
+   *  - macro external input `i` shows the *input* row count of the inner op
+   *    that the corresponding `MacroInput(portIndex=i)` feeds, at the inner
+   *    port the body link targets (one or more — sum if it fans out).
+   *  - macro external output `j` shows the *output* row count of the inner
+   *    op that feeds the corresponding `MacroOutput(portIndex=j)`, at the
+   *    inner port the body link sources from.
+   *  - The overall `operatorState` and aggregated totals fall through from
+   *    the roll-up entry produced by `WorkflowStatusService`.
+   *
+   * Returns `undefined` if bindings aren't cached yet — caller falls back
+   * to the roll-up entry (so the macro still gets a state, just no port
+   * counts) and a subsequent stats event after the body fetches will
+   * refresh with the proper port metrics.
+   */
+  private synthesizeMacroOpStats(
+    macroOp: OperatorPredicate,
+    status: Record<string, OperatorStatistics>
+  ): OperatorStatistics | undefined {
+    const macroId = macroOp.operatorProperties?.["macroId"];
+    if (typeof macroId !== "string" || macroId.length === 0) return undefined;
+    const bindings: MacroBindings | undefined = this.macroService.getBindingsForInstance(
+      macroOp.operatorID,
+      macroId
+    );
+    if (!bindings) return undefined;
+
+    const base = status[macroOp.operatorID];
+    const inputPortMetrics: Record<string, number> = {};
+    const outputPortMetrics: Record<string, number> = {};
+
+    // Group bindings by external port index so a fanned-out input port sums
+    // the row counts of its multiple downstream inner consumers (rare, but
+    // possible — see spliceIntoParent's `inputConsumers` map).
+    for (const binding of bindings.inputBindings) {
+      const innerStats = status[binding.innerOpId];
+      if (!innerStats) continue;
+      const innerPortKey = String(binding.innerPortIndex);
+      const innerPortCount = innerStats.inputPortMetrics?.[innerPortKey] ?? 0;
+      const macroPortKey = String(binding.externalPortIndex);
+      inputPortMetrics[macroPortKey] = (inputPortMetrics[macroPortKey] ?? 0) + innerPortCount;
+    }
+    for (const binding of bindings.outputBindings) {
+      const innerStats = status[binding.innerOpId];
+      if (!innerStats) continue;
+      const innerPortKey = String(binding.innerPortIndex);
+      const innerPortCount = innerStats.outputPortMetrics?.[innerPortKey] ?? 0;
+      const macroPortKey = String(binding.externalPortIndex);
+      outputPortMetrics[macroPortKey] = innerPortCount;
+    }
+
+    const aggregatedInputRowCount = Object.values(inputPortMetrics).reduce((a, b) => a + b, 0);
+    const aggregatedOutputRowCount = Object.values(outputPortMetrics).reduce((a, b) => a + b, 0);
+
+    return {
+      operatorState: base?.operatorState ?? OperatorState.Uninitialized,
+      aggregatedInputRowCount,
+      inputPortMetrics,
+      aggregatedOutputRowCount,
+      outputPortMetrics,
+      numWorkers: base?.numWorkers,
+    };
   }
 
   private handleRegionEvents(): void {
@@ -678,6 +838,45 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
           if (this.workflowActionService.getTexeraGraph().hasCommentBox(elementID)) {
             this.openCommentBox(elementID);
           } else if (this.workflowActionService.getTexeraGraph().hasOperator(elementID)) {
+            // Macro nodes drill down into their body via a route change. We
+            // use `window.location.href` (hard reload) instead of
+            // `Router.navigate` because Angular reuses WorkspaceComponent
+            // across the workflow→macro route transition: SPA navigation
+            // hits a flurry of duplicate-link rejections from interleaved
+            // YJS server-side replay + local `reloadWorkflow`. The cost is
+            // losing the parent's execution websocket connection — the
+            // drill-down view stashes (parentWid, executionId) into
+            // sessionStorage so the new page can reconnect to the parent's
+            // execution context for live stats. See `WorkspaceComponent`
+            // `ngOnInit` for the rehydration logic.
+            const op = this.workflowActionService.getTexeraGraph().getOperator(elementID);
+            const macroId = op?.operatorProperties?.["macroId"];
+            if (op?.operatorType === "Macro" && macroId) {
+              const parentWid = this.route.snapshot.params.id ?? "";
+              try {
+                sessionStorage.setItem(
+                  "macroDrilldownParentContext",
+                  JSON.stringify({ parentWid, instanceId: elementID, ts: Date.now() })
+                );
+                // Push the URL we're CURRENTLY on to the drill-down
+                // breadcrumb stack so "← Back to parent" can pop one level
+                // at a time instead of always going to the root workflow.
+                // Nested macros work: drilling /workflow/:wid → /macro/A →
+                // /macro/B leaves the stack [/workflow/:wid, /macro/A] so
+                // back-from-B lands on /macro/A.
+                const stackRaw = sessionStorage.getItem("texera.macroBreadcrumbs") ?? "[]";
+                const stack: string[] = JSON.parse(stackRaw);
+                const currentUrl = window.location.pathname + window.location.search;
+                if (stack[stack.length - 1] !== currentUrl) stack.push(currentUrl);
+                while (stack.length > 16) stack.shift();
+                sessionStorage.setItem("texera.macroBreadcrumbs", JSON.stringify(stack));
+              } catch {
+                // sessionStorage can throw in private-mode; that's fine, we
+                // just won't have drill-down live stats on this navigation.
+              }
+              window.location.href = `/dashboard/user/workflow/${parentWid}/macro/${macroId}?instance=${encodeURIComponent(elementID)}`;
+              return;
+            }
             this.workflowActionService.openResultPanel();
           }
         }

@@ -86,11 +86,13 @@ DROP TABLE IF EXISTS virtual_environments CASCADE;
 DROP TYPE IF EXISTS user_role_enum CASCADE;
 DROP TYPE IF EXISTS privilege_enum CASCADE;
 DROP TYPE IF EXISTS action_enum CASCADE;
+DROP TYPE IF EXISTS workflow_kind_enum CASCADE;
 
 CREATE TYPE user_role_enum AS ENUM ('INACTIVE', 'RESTRICTED', 'REGULAR', 'ADMIN');
 CREATE TYPE action_enum AS ENUM ('like', 'unlike', 'view', 'clone');
 CREATE TYPE privilege_enum AS ENUM ('NONE', 'READ', 'WRITE');
 CREATE TYPE workflow_computing_unit_type_enum AS ENUM ('local', 'kubernetes');
+CREATE TYPE workflow_kind_enum AS ENUM ('WORKFLOW', 'MACRO');
 
 -- ============================================
 -- 5. Create tables
@@ -135,6 +137,10 @@ CREATE TABLE IF NOT EXISTS feedback
     );
 
 -- workflow
+-- `kind` discriminates top-level workflows (WORKFLOW) from reusable macros
+-- (MACRO). Macros are surfaced in the operator palette and a separate Macros
+-- tab; their `content` follows the same LogicalPlan JSON shape with the
+-- addition of MacroInputOp / MacroOutputOp boundary markers.
 CREATE TABLE IF NOT EXISTS workflow
 (
     wid                SERIAL PRIMARY KEY,
@@ -143,8 +149,11 @@ CREATE TABLE IF NOT EXISTS workflow
     content            TEXT NOT NULL,
     creation_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_modified_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_public          BOOLEAN NOT NULL DEFAULT false
+    is_public          BOOLEAN NOT NULL DEFAULT false,
+    kind               workflow_kind_enum NOT NULL DEFAULT 'WORKFLOW'
     );
+
+CREATE INDEX IF NOT EXISTS idx_workflow_kind ON workflow(kind);
 
 -- workflow_of_user
 CREATE TABLE IF NOT EXISTS workflow_of_user
@@ -562,6 +571,22 @@ CREATE TABLE IF NOT EXISTS workflow_notebook_mapping
     FOREIGN KEY (vid) REFERENCES workflow_version(vid) ON DELETE CASCADE,
     FOREIGN KEY (wid, nid) REFERENCES notebook(wid, nid) ON DELETE CASCADE
 );
+
+-- macro_metadata table
+-- Denormalized macro descriptor used by palette/listing endpoints so they do
+-- not have to parse workflow.content (a JSON-serialized LogicalPlan) per row.
+-- port_spec captures the macro's declared external inputs/outputs; param_spec
+-- captures promoted parameters (empty in v1, populated in Phase 2).
+CREATE TABLE IF NOT EXISTS macro_metadata
+(
+    wid        INT PRIMARY KEY,
+    port_spec  JSONB        NOT NULL,
+    param_spec JSONB        NOT NULL DEFAULT '[]'::JSONB,
+    category   VARCHAR(128),
+    icon       VARCHAR(64),
+    FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE
+);
+
 
 -- START Fulltext search index creation (DO NOT EDIT THIS LINE)
 CREATE EXTENSION IF NOT EXISTS pgroonga;

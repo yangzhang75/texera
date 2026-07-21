@@ -28,7 +28,7 @@ import org.apache.texera.amber.core.virtualidentity.ExecutionIdentity
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
 import org.apache.texera.dao.jooq.generated.Tables._
-import org.apache.texera.dao.jooq.generated.enums.PrivilegeEnum
+import org.apache.texera.dao.jooq.generated.enums.{PrivilegeEnum, WorkflowKindEnum}
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   WorkflowDao,
   WorkflowOfProjectDao,
@@ -43,7 +43,7 @@ import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowAccessReso
 import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowResource._
 import org.apache.texera.web.service.WorkflowPersistService
 import org.jooq.impl.DSL.{groupConcatDistinct, noCondition}
-import org.jooq.{Condition, DSLContext, Record9, Result, SelectOnConditionStep}
+import org.jooq.{Condition, DSLContext, Record9, Result, SelectConditionStep}
 
 import java.sql.Timestamp
 import java.util
@@ -192,7 +192,13 @@ object WorkflowResource {
     }
   }
 
-  def baseWorkflowSelect(): SelectOnConditionStep[Record9[
+  /**
+    * Base select used by the workflows tab, the hub, and other workflow
+    * listings. The `WORKFLOW.KIND = WORKFLOW` filter is baked in here so that
+    * macros (`KIND = MACRO`) never leak into endpoints meant for top-level
+    * workflows. Callers append their additional predicates with `.and(...)`.
+    */
+  def baseWorkflowSelect(): SelectConditionStep[Record9[
     Integer,
     String,
     String,
@@ -224,6 +230,7 @@ object WorkflowResource {
       .on(USER.UID.eq(WORKFLOW_OF_USER.UID))
       .leftJoin(WORKFLOW_OF_PROJECT)
       .on(WORKFLOW.WID.eq(WORKFLOW_OF_PROJECT.WID))
+      .where(WORKFLOW.KIND.eq(WorkflowKindEnum.WORKFLOW))
   }
 
   def mapWorkflowEntries(
@@ -347,6 +354,7 @@ class WorkflowResource extends LazyLogging {
         .where(
           orCondition
             .and(WORKFLOW_USER_ACCESS.UID.eq(user.getUid))
+            .and(WORKFLOW.KIND.eq(WorkflowKindEnum.WORKFLOW))
         )
         .fetch()
 
@@ -371,7 +379,7 @@ class WorkflowResource extends LazyLogging {
   ): List[DashboardWorkflow] = {
     val user = sessionUser.getUser
     val workflowEntries = baseWorkflowSelect()
-      .where(WORKFLOW_USER_ACCESS.UID.eq(user.getUid))
+      .and(WORKFLOW_USER_ACCESS.UID.eq(user.getUid))
       .groupBy(
         WORKFLOW.WID,
         WORKFLOW.NAME,
@@ -401,7 +409,58 @@ class WorkflowResource extends LazyLogging {
       @PathParam("wid") wid: Integer,
       @Auth user: SessionUser
   ): WorkflowWithPrivilege = {
-    this.workflowPersistService.retrieveWorkflow(wid, user);
+    // Macros share the workflow table but their `content` is a MacroBody, not
+    // a LogicalPlanPojo — loading one via the normal workflow editor would
+    // crash the canvas (see workflow-check.ts). Fail fast; macro definitions
+    // are opened via the macro editor route instead.
+    val existing = workflowDao.fetchOneByWid(wid)
+    if (existing != null && existing.getKind == WorkflowKindEnum.MACRO) {
+      throw new NotFoundException(
+        s"Workflow $wid is a macro definition; use the macro editor route instead."
+      )
+    }
+    this.workflowPersistService.retrieveWorkflow(wid, user)
+  }
+
+  /**
+    * Return the macro-instance-provenance mapping captured by MacroExpander
+    * during the most recent compile of this workflow. The mapping is keyed by
+    * runtime op IDs (the fresh UUIDs the expander assigned to inner ops) and
+    * each entry holds:
+    *   - `macroChain`: ordered list of macro instance IDs from outermost
+    *     (parent canvas) to innermost (immediate enclosing macro)
+    *   - `bodyOpId`: the original definition-time op ID inside the innermost
+    *     macro's body, used to render stats at the right canvas position when
+    *     the user drills into a macro
+    *
+    * The frontend reads this to (1) aggregate inner-op stats up to the macro
+    * op on the canvas and (2) display per-op stats in the macro drill-down
+    * view. Empty map if no compile has happened yet — the caller should poll
+    * shortly after starting execution.
+    */
+  @GET
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/macro-mapping")
+  def getMacroMapping(
+      @PathParam("wid") wid: Integer,
+      @Auth user: SessionUser
+  ): java.util.Map[String, java.util.Map[String, Any]] = {
+    if (!WorkflowAccessResource.hasReadAccess(wid, user.getUid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val mapping = org.apache.texera.workflow.macroOp.MacroMappingCache
+      .getLatestForWorkflow(
+        org.apache.texera.amber.core.virtualidentity.WorkflowIdentity(wid.longValue())
+      )
+    val result = new java.util.HashMap[String, java.util.Map[String, Any]]()
+    mapping.foreach {
+      case (runtimeOpId, prov) =>
+        val entry = new java.util.HashMap[String, Any]()
+        entry.put("macroChain", java.util.Arrays.asList(prov.macroChain: _*))
+        entry.put("bodyOpId", prov.bodyOpId)
+        result.put(runtimeOpId, entry)
+    }
+    result
   }
 
   /**
@@ -459,7 +518,8 @@ class WorkflowResource extends LazyLogging {
               assignNewOperatorIds(oldWorkflow.getContent),
               null,
               null,
-              false
+              false,
+              WorkflowKindEnum.WORKFLOW
             ),
             sessionUser
           )
@@ -506,7 +566,8 @@ class WorkflowResource extends LazyLogging {
         assignNewOperatorIds(oldWorkflow.getContent),
         null,
         null,
-        false
+        false,
+        WorkflowKindEnum.WORKFLOW
       ),
       sessionUser
     )

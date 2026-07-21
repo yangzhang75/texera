@@ -47,6 +47,7 @@ import org.apache.texera.web.resource.dashboard.user.project.{
 }
 import org.apache.texera.web.resource.dashboard.user.quota.UserQuotaResource
 import org.apache.texera.web.resource.dashboard.user.workflow.{
+  MacroResource,
   WorkflowAccessResource,
   WorkflowExecutionsResource,
   WorkflowResource,
@@ -155,6 +156,7 @@ class TexeraWebApplication
     environment.jersey.register(classOf[TemplateResource])
     environment.jersey.register(classOf[TemplateAccessResource])
     environment.jersey.register(classOf[TemplatedWorkflowResource])
+    environment.jersey.register(classOf[MacroResource])
     environment.jersey.register(classOf[HubResource])
     environment.jersey.register(classOf[UserResource])
     environment.jersey.register(classOf[WorkflowVersionResource])

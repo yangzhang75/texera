@@ -25,6 +25,7 @@ import org.apache.texera.amber.compiler.WorkflowCompiler.{
   collectOutputSchemaFromPhysicalPlan,
   convertErrorListToWorkflowFatalErrorMap
 }
+import org.apache.texera.amber.compiler.macroOp.{MacroExpander, MacroRegistry}
 import org.apache.texera.amber.compiler.model.{LogicalPlan, LogicalPlanPojo}
 import org.apache.texera.amber.core.tuple.Schema
 import org.apache.texera.amber.core.virtualidentity.OperatorIdentity
@@ -36,6 +37,7 @@ import org.apache.texera.amber.core.workflow.{
 }
 import org.apache.texera.amber.core.workflowruntimestate.FatalErrorType.COMPILATION_ERROR
 import org.apache.texera.amber.core.workflowruntimestate.WorkflowFatalError
+import org.apache.texera.amber.operator.macroOp.{MacroInputOp, MacroOpDesc, MacroOutputOp}
 
 import java.time.Instant
 import scala.collection.mutable
@@ -58,23 +60,40 @@ object WorkflowCompiler {
     }
   }
 
+  // After MacroExpander runs, inner-body operator IDs carry a "${macroInstanceId}--..."
+  // prefix (nested macros stack more "--" segments). The macro instance is the only
+  // operator the user sees on the parent canvas, so any compilation error from an
+  // inlined inner op must be re-attributed to that visible ID — otherwise the frontend
+  // looks up errors by canvas IDs and finds nothing for the failed macro.
+  private def visibleOperatorId(opId: OperatorIdentity): OperatorIdentity = {
+    val sep = opId.id.indexOf("--")
+    if (sep < 0) opId else OperatorIdentity(opId.id.substring(0, sep))
+  }
+
   // util function for convert the error list to error map, and report the error in log
   private def convertErrorListToWorkflowFatalErrorMap(
       logger: Logger,
       errorList: List[(OperatorIdentity, Throwable)]
   ): Map[OperatorIdentity, WorkflowFatalError] = {
     val opIdToError = mutable.Map[OperatorIdentity, WorkflowFatalError]()
-    errorList.map {
+    errorList.foreach {
       case (opId, err) =>
-        // map each error to WorkflowFatalError, and report them in the log
+        val visibleId = visibleOperatorId(opId)
+        // Log with the *inner* opId so developers can find which inner op failed.
         logger.error(s"Error occurred in logical plan compilation for opId: $opId", err)
-        opIdToError += (opId -> WorkflowFatalError(
-          COMPILATION_ERROR,
-          Timestamp(Instant.now),
-          err.toString,
-          getStackTraceWithAllCauses(err),
-          opId.id
-        ))
+        // Skip if we already recorded an error for this visible op — keep the first one.
+        if (!opIdToError.contains(visibleId)) {
+          val message =
+            if (visibleId == opId) err.toString
+            else s"In macro inner op '${opId.id}': ${err.toString}"
+          opIdToError += (visibleId -> WorkflowFatalError(
+            COMPILATION_ERROR,
+            Timestamp(Instant.now),
+            message,
+            getStackTraceWithAllCauses(err),
+            visibleId.id
+          ))
+        }
     }
     opIdToError.toMap
   }
@@ -122,8 +141,22 @@ case class WorkflowCompilationResult(
 )
 
 class WorkflowCompiler(
-    context: WorkflowContext
+    context: WorkflowContext,
+    macroRegistry: MacroRegistry = MacroRegistry.Empty
 ) extends LazyLogging {
+
+  // A plan is a "standalone macro body" if it contains marker ops but no
+  // MacroOpDesc instance to wrap them. That shape is what the drill-down editor
+  // sends when the user is editing a macro body directly; it has no real
+  // upstream/downstream context, so we skip physical compilation.
+  private def isStandaloneMacroBody(plan: LogicalPlan): Boolean = {
+    val hasMarker = plan.operators.exists {
+      case _: MacroInputOp | _: MacroOutputOp => true
+      case _                                  => false
+    }
+    val hasMacroInstance = plan.operators.exists(_.isInstanceOf[MacroOpDesc])
+    hasMarker && !hasMacroInstance
+  }
 
   // function to expand logical plan to physical plan
   private def expandLogicalPlan(
@@ -205,19 +238,55 @@ class WorkflowCompiler(
     val errorList = new ArrayBuffer[(OperatorIdentity, Throwable)]()
     var opIdToOutputSchema: Map[OperatorIdentity, Map[PortIdentity, Option[Schema]]] = Map()
     // 1. convert the pojo to logical plan
-    val logicalPlan: LogicalPlan = LogicalPlan(logicalPlanPojo)
+    val rawLogicalPlan: LogicalPlan = LogicalPlan(logicalPlanPojo)
 
-    // 2. resolve the file name in each scan source operator
+    // 1a. Standalone macro-body plans (the drill-down editor view) contain
+    // MacroInput/MacroOutput markers but no MacroOpDesc to inline them — so
+    // calling `getPhysicalPlan` on a marker would throw, and every inner op
+    // downstream would fail schema propagation. The body is only meant for
+    // structural editing in this view; the real compile happens when a parent
+    // instantiates the macro and MacroExpander strips the markers. Returning
+    // success here keeps the body view clean and prevents the singleton
+    // frontend compile-state from carrying marker errors across to the
+    // parent canvas on drill-down navigation.
+    if (isStandaloneMacroBody(rawLogicalPlan)) {
+      return WorkflowCompilationResult(
+        physicalPlan = Some(PhysicalPlan(operators = Set.empty, links = Set.empty)),
+        operatorIdToOutputSchemas = Map.empty,
+        operatorIdToError = Map.empty
+      )
+    }
+
+    // 2. expand any macro operators into a flat logical plan. Macros are a purely
+    // logical-plan-level abstraction; after this pass the rest of the pipeline never
+    // sees a MacroOpDesc / MacroInputOp / MacroOutputOp.
+    val logicalPlan: LogicalPlan =
+      try {
+        MacroExpander.expand(rawLogicalPlan, macroRegistry)
+      } catch {
+        case e: Throwable =>
+          errorList.append((OperatorIdentity("__macro_expander__"), e))
+          rawLogicalPlan
+      }
+
+    // 3. resolve the file name in each scan source operator
     logicalPlan.resolveScanSourceOpFileName(Some(errorList))
 
-    // 3. expand the logical plan to the physical plan
+    // 4. expand the logical plan to the physical plan
     val physicalPlan = expandLogicalPlan(logicalPlan, Some(errorList))
 
     // 4. collect the output schema for each logical op
     // even if error is encountered when logical => physical, we still want to get the input schemas for rest no-error operators
     opIdToOutputSchema = collectOutputSchemaFromPhysicalPlan(physicalPlan, errorList)
+
+    // Only block the physical plan for errors on outer canvas operators. Errors that
+    // originated inside a macro body carry a "/" in their ID (e.g. "Macro-xxx/SleepOp")
+    // and are already attributed to the macro instance on the canvas — the outer
+    // workflow is structurally valid and can still be submitted; the broken macro will
+    // fail at execution time without blocking unrelated operators.
+    val outerErrorList = errorList.filter { case (opId, _) => !opId.id.contains("--") }
     WorkflowCompilationResult(
-      physicalPlan = if (errorList.nonEmpty) None else Some(physicalPlan),
+      physicalPlan = if (outerErrorList.nonEmpty) None else Some(physicalPlan),
       operatorIdToOutputSchemas = opIdToOutputSchema,
       // map each error from OpId to WorkflowFatalError, and report them via logger
       operatorIdToError = convertErrorListToWorkflowFatalErrorMap(logger, errorList.toList)

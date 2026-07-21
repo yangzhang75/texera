@@ -40,7 +40,157 @@
 
 <div id="spacer"></div>
 
+<!-- "Suggest Macros (AI)" panel — heuristic v1 (no LLM call). Shows ranked
+     candidate sub-DAGs to encapsulate, with a one-line rationale each. -->
+<div class="suggest-macros">
+  <button
+    class="suggest-macros__trigger"
+    [disabled]="!canModify || isSuggesting"
+    (click)="onSuggestMacros()">
+    <span class="suggest-macros__icon">✨</span>
+    <span *ngIf="!isSuggesting">Suggest Macros (AI)</span>
+    <span *ngIf="isSuggesting">Analyzing workflow…</span>
+    <span
+      *ngIf="!isSuggesting && availableCandidateCount > 0"
+      class="suggest-macros__count-badge"
+      [title]="availableCandidateCount + ' candidate macro(s) detected in your workflow'">
+      {{ availableCandidateCount }}
+    </span>
+  </button>
+  <div *ngIf="suggestions.length > 0" class="suggest-macros__panel">
+    <div class="suggest-macros__header">
+      <span>{{ suggestions.length }} candidate{{ suggestions.length === 1 ? '' : 's' }}</span>
+      <button
+        class="suggest-macros__close"
+        (click)="dismissSuggestions()"
+        title="dismiss">
+        ×
+      </button>
+    </div>
+    <div
+      *ngFor="let suggestion of suggestions"
+      class="suggest-macros__item"
+      [class.suggest-macros__item--pattern]="suggestion.id.startsWith('pattern-')"
+      (click)="onMaterializeSuggestion(suggestion)"
+      (mouseenter)="onSuggestionHover(suggestion)"
+      (mouseleave)="onSuggestionUnhover()"
+      [title]="suggestion.rationale">
+      <div class="suggest-macros__name">
+        <span *ngIf="suggestion.id.startsWith('pattern-')" class="suggest-macros__pattern-tag">⟲ pattern</span>
+        {{ suggestion.suggestedName }}
+      </div>
+      <div class="suggest-macros__rationale">{{ suggestion.rationale }}</div>
+      <div class="suggest-macros__meta">
+        <span
+          class="suggest-macros__confidence"
+          [class.suggest-macros__confidence--recommended]="suggestion.confidence === 'recommended'"
+          [class.suggest-macros__confidence--strong]="suggestion.confidence === 'strong'"
+          [class.suggest-macros__confidence--good]="suggestion.confidence === 'good'">
+          {{ suggestion.confidence === 'recommended' ? '✓ recommended'
+             : suggestion.confidence === 'strong' ? 'strong fit' : 'good fit' }}
+        </span>
+        <span class="suggest-macros__meta-sep">·</span>
+        <span class="suggest-macros__op-count">{{ suggestion.operatorIds.length }} ops</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Auto-optimize / Fuse-all buttons disabled until the template-based fuse
+     codegen produces a backend-compilable PythonUDFOpDescV2 on arbitrary
+     macros. The current codegen only handles a narrow op subset and
+     auto-fuse on real workflows fails the compile step. Per-macro fuse is
+     still reachable via the right-click context menu so the manual path
+     stays available for testing. -->
+<!--
+<button
+  *ngIf="canModify && (unfusedMacroCountOnCanvas() > 0 || availableCandidateCount > 0)"
+  class="auto-optimize-trigger"
+  [disabled]="autoOptimizeInProgress || fuseAllInProgress"
+  (click)="onAutoOptimizeWorkflow()"
+  [title]="'Detect patterns, extract macros, and fuse everything for max performance.'">
+  <span class="auto-optimize-trigger__icon">🚀</span>
+  <span *ngIf="!autoOptimizeInProgress">Auto-optimize workflow</span>
+  <span *ngIf="autoOptimizeInProgress">Optimizing…</span>
+</button>
+<button
+  *ngIf="unfusedMacroCountOnCanvas() > 0 && canModify"
+  class="fuse-all-trigger"
+  [disabled]="fuseAllInProgress || autoOptimizeInProgress"
+  (click)="onFuseAllMacros()"
+  [title]="'Generate + verify fusion for every unfused Macro op on the canvas'">
+  <span class="fuse-all-trigger__icon">⚡</span>
+  <span *ngIf="!fuseAllInProgress">Fuse all macros ({{ unfusedMacroCountOnCanvas() }})</span>
+  <span *ngIf="fuseAllInProgress">Fusing…</span>
+</button>
+-->
+
+
 <ng-container *ngTemplateOutlet="menuTemplate; context: { $implicit: groupNames, depth: 0 }"></ng-container>
+
+<!-- "Your Macros" section — user's saved macros. Clicking adds the macro
+     instance to the canvas; drag-from-here would require special-casing the
+     drag-drop service, so v1 is click-to-add. Each item has a tiny "⤓"
+     export button (downloads JSON portable across instances) and the section
+     header carries an "Import" affordance for the reverse direction. -->
+<div class="your-macros-toolbar" *ngIf="canModify">
+  <button
+    class="your-macros-toolbar__import"
+    title="Import macro definition from a JSON file"
+    (click)="onTriggerImportMacro()">⤒ Import macro</button>
+  <input
+    #macroImportFile
+    type="file"
+    accept=".json,application/json"
+    class="your-macros-toolbar__file"
+    (change)="onImportMacroFile($event)" />
+</div>
+
+<nz-collapse
+  *ngIf="macroList.length > 0"
+  nzBordered="false"
+  nzExpandIconPosition="end">
+  <nz-collapse-panel
+    [nzHeader]="'Your Macros (' + macroList.length + ')'"
+    nzActive="true"
+    class="operator-group your-macros"
+    [attr.data-depth]="0">
+    <div class="indent">
+      <input
+        *ngIf="macroList.length > 3"
+        type="text"
+        placeholder="Filter macros…"
+        class="your-macros-filter"
+        [(ngModel)]="macroFilterText" />
+      <div
+        *ngFor="let macroSchema of filteredMacroList"
+        class="operator-label macro-palette-item"
+        [class.disabled]="!canModify"
+        [title]="macroSchema.additionalMetadata.operatorDescription">
+        <span class="macro-palette-item__icon" (click)="canModify && onAddMacro(macroSchema)">▦</span>
+        <span class="macro-palette-item__name" (click)="canModify && onAddMacro(macroSchema)">
+          {{ macroSchema.additionalMetadata.userFriendlyName }}
+        </span>
+        <span
+          *ngIf="(macroSchema.__macroSummary?.usageCount ?? 0) > 0"
+          class="macro-palette-item__usage"
+          (click)="canModify && onAddMacro(macroSchema)"
+          [title]="'Used in ' + macroSchema.__macroSummary!.usageCount + ' workflow(s)'">
+          {{ macroSchema.__macroSummary!.usageCount }}× used
+        </span>
+        <span class="macro-palette-item__ports" (click)="canModify && onAddMacro(macroSchema)">
+          {{ macroSchema.additionalMetadata.inputPorts.length }} in /
+          {{ macroSchema.additionalMetadata.outputPorts.length }} out
+        </span>
+        <button
+          *ngIf="macroSchema.__macroSummary"
+          class="macro-palette-item__export"
+          title="Export macro as JSON"
+          (click)="onExportMacro(macroSchema.__macroSummary); $event.stopPropagation()">⤓</button>
+      </div>
+    </div>
+  </nz-collapse-panel>
+</nz-collapse>
 
 <ng-template
   #menuTemplate

@@ -31,7 +31,7 @@ import {
   ViewChild,
   ViewContainerRef,
 } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { UserService } from "../../common/service/user/user.service";
 import { WorkflowPersistService } from "../../common/service/workflow-persist/workflow-persist.service";
 import { Workflow } from "../../common/type/workflow";
@@ -39,7 +39,7 @@ import { OperatorMetadataService } from "../service/operator-metadata/operator-m
 import { UndoRedoService } from "../service/undo-redo/undo-redo.service";
 import { WorkflowActionService } from "../service/workflow-graph/model/workflow-action.service";
 import { NzMessageService } from "ng-zorro-antd/message";
-import { debounceTime, distinctUntilChanged, filter, switchMap, throttleTime } from "rxjs/operators";
+import { catchError, debounceTime, distinctUntilChanged, filter, switchMap, throttleTime } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { combineLatest, forkJoin, map, Observable, of } from "rxjs";
 import { isDefined } from "../../common/util/predicate";
@@ -57,6 +57,7 @@ import { ComputingUnitStatusService } from "../../common/service/computing-unit/
 import { ExecuteWorkflowService } from "../service/execute-workflow/execute-workflow.service";
 import { WorkflowResultService } from "../service/workflow-result/workflow-result.service";
 import { checkIfGraphBroken } from "../../common/util/graph-check";
+import { MacroService } from "../service/macro/macro.service";
 import { NzSpinComponent } from "ng-zorro-antd/spin";
 import { ResultPanelComponent } from "./result-panel/result-panel.component";
 import { WorkflowEditorComponent } from "./workflow-editor/workflow-editor.component";
@@ -98,6 +99,8 @@ interface WorkspaceContext {
     NgIf,
     AgentPanelComponent,
     PropertyEditorComponent,
+    FormlyRepeatDndComponent,
+    RouterLink,
   ],
 })
 export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -109,6 +112,11 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   @Input() mode?: "workflow" | "template";
   @Input() isEmbedded: boolean = false;
   @Output() workspaceReady = new EventEmitter<number | undefined>();
+  // Macro drill-down state — drives the banner above the canvas so users know
+  // they're editing a macro body rather than a normal workflow.
+  public macroEditMode: boolean = false;
+  public macroEditName: string = "";
+  public parentWorkflowId?: string;
   @ViewChild("codeEditor", { read: ViewContainerRef }) codeEditorViewRef!: ViewContainerRef;
 
   /**
@@ -157,7 +165,8 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     private changeDetectorRef: ChangeDetectorRef,
     private computingUnitStatusService: ComputingUnitStatusService,
     private executeWorkflowService: ExecuteWorkflowService,
-    private workflowResultService: WorkflowResultService
+    private workflowResultService: WorkflowResultService,
+    private macroService: MacroService
   ) {}
 
   private reloadWorkspace(context: WorkspaceContext): void {
@@ -317,12 +326,50 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     this.workflowActionService.disableWorkflowModification();
     forkJoin({
       operatorMetadata: this.operatorMetadataService.getOperatorMetadata(),
-      workflow: this.workflowPersistService.retrieveWorkflow(wid),
+      // Catch 404/403 from retrieveWorkflow so we can detect "this wid is
+      // actually a macro" (the backend's WorkflowResource explicitly 404s
+      // MACRO-kind rows) and redirect to the macro drill-down editor route
+      // instead of surfacing a confusing "no access" toast. The catch
+      // returns a sentinel `null` workflow that the success handler peeks at.
+      workflow: this.workflowPersistService.retrieveWorkflow(wid).pipe(
+        catchError(() => of(null as unknown as Workflow))
+      ),
     })
       .pipe(untilDestroyed(this))
       .subscribe(
-        ({ workflow }) => {
+        async ({ workflow }) => {
+          if (!workflow) {
+            // retrieveWorkflow 404s on MACRO-kind rows. Probe whether this wid
+            // is a macro definition; if so, redirect to the macro drill-down
+            // editor route instead of showing a confusing access error.
+            try {
+              const detail = await this.macroService.getMacro(wid).toPromise();
+              if (detail) {
+                window.location.href = `/dashboard/user/workflow/${wid}/macro/${wid}`;
+                return;
+              }
+            } catch {
+              /* not a macro either; fall through to the original error handler */
+            }
+            this.workflowActionService.resetAsNewWorkflow();
+            this.workflowActionService.enableWorkflowModification();
+            this.undoRedoService.clearUndoStack();
+            this.undoRedoService.clearRedoStack();
+            this.message.error("Couldn't load workflow — it may have been deleted or you don't have access.");
+            this.setLoadingState(false);
+            return;
+          }
+          // Delegate the happy path to loadWorkflowIntoWorkspace (handles
+          // broken-check, shared model, readonly/embedded/template modes,
+          // fragment highlighting, auto-persist, centering, workspaceReady).
           this.loadWorkflowIntoWorkspace(workflow);
+          // Restore the runtime-macro-mapping from disk so that if a prior
+          // run's stats arrive (e.g. user is reconnecting to a still-running
+          // execution) the macro op on canvas can aggregate them correctly.
+          // No-op if the workflow has never been run with macros.
+          this.macroService.refreshRuntimeMacroMapping(wid).subscribe({
+            error: () => undefined,
+          });
         },
         () => {
           this.workflowActionService.resetAsNewWorkflow();
@@ -356,6 +403,128 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
           this.undoRedoService.clearUndoStack();
           this.undoRedoService.clearRedoStack();
           this.message.error("You don't have access to this template, please log in with an appropriate account");
+          this.setLoadingState(false);
+        }
+      );
+  }
+
+  /** sessionStorage key for the per-tab drill-down breadcrumb stack. */
+  private static readonly MACRO_BREADCRUMB_KEY = "texera.macroBreadcrumbs";
+
+  /**
+   * Push the URL we're CURRENTLY at to the breadcrumb stack, then accept the
+   * incoming drill-down. The stack records every step the user took to get
+   * to this nested macro view so "Back to parent" can pop one step at a time
+   * rather than always jumping to the root workflow.
+   *
+   * Stored as a JSON array of URL paths in sessionStorage (per-tab) so the
+   * stack survives the hard-reload navigations we use for drill-down +
+   * back-out (those can't safely share in-memory state with the new view).
+   */
+  private pushDrillDownBreadcrumb(currentUrl: string): void {
+    try {
+      const raw = sessionStorage.getItem(WorkspaceComponent.MACRO_BREADCRUMB_KEY) ?? "[]";
+      const stack: string[] = JSON.parse(raw);
+      // Don't push the same URL twice in a row (refresh case).
+      if (stack[stack.length - 1] !== currentUrl) stack.push(currentUrl);
+      // Cap to a sane size to defend against pathological loops.
+      while (stack.length > 16) stack.shift();
+      sessionStorage.setItem(WorkspaceComponent.MACRO_BREADCRUMB_KEY, JSON.stringify(stack));
+    } catch {
+      /* sessionStorage may be unavailable in some hosts; ignore */
+    }
+  }
+
+  /**
+   * Pop the most recent URL off the breadcrumb stack and return it. Returns
+   * undefined if the stack is empty.
+   */
+  private popDrillDownBreadcrumb(): string | undefined {
+    try {
+      const raw = sessionStorage.getItem(WorkspaceComponent.MACRO_BREADCRUMB_KEY) ?? "[]";
+      const stack: string[] = JSON.parse(raw);
+      const top = stack.pop();
+      sessionStorage.setItem(WorkspaceComponent.MACRO_BREADCRUMB_KEY, JSON.stringify(stack));
+      return top;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * "← Back to parent" click handler. Honors the drill-down breadcrumb stack
+   * so nested macros pop back to their DIRECT parent (not the root) and uses
+   * a hard reload so the parent's canvas is reinitialized cleanly (SPA
+   * navigation between macro view and workflow view has historically left
+   * stale canvas state).
+   */
+  public onBackToParent(): void {
+    const target = this.popDrillDownBreadcrumb() ?? `/dashboard/user/workflow/${this.parentWorkflowId}`;
+    window.location.href = target;
+  }
+
+  loadMacroWithId(macroId: number): void {
+    this.isLoading = true;
+    this.workflowActionService.disableWorkflowModification();
+    forkJoin({
+      operatorMetadata: this.operatorMetadataService.getOperatorMetadata(),
+      detail: this.macroService.getMacro(macroId),
+    })
+      .pipe(untilDestroyed(this))
+      .subscribe(
+        ({ detail }) => {
+          this.macroEditMode = true;
+          this.macroEditName = detail.name;
+          this.parentWorkflowId = this.route.snapshot.params.id ?? "";
+          // Eagerly populate the runtime macro-mapping cache from the parent
+          // workflow's most recent compile (read from MacroMappingCache on
+          // disk). Drill-down ops use body-relative IDs and the stats handler
+          // looks them up via this mapping — without the refresh, stats are
+          // empty on drill-down because the in-memory cache was wiped by the
+          // hard-reload navigation into this view.
+          const parentWidForMapping = Number(this.parentWorkflowId);
+          if (Number.isFinite(parentWidForMapping)) {
+            this.macroService.refreshRuntimeMacroMapping(parentWidForMapping).subscribe({
+              error: () => undefined,
+            });
+          }
+          // Override the workflow metadata's wid to the parent's wid (not the
+          // macro definition's). This is what `ComputingUnitSelectionComponent`
+          // reads when deciding which workflow id to open the execution
+          // websocket against; we want it on the parent so live execution
+          // stats from the parent's run still flow into this drilled-down
+          // view (via the `?instance=...` prefix machinery in
+          // `WorkflowEditorComponent`). Caveat: persisting workflow changes
+          // is disabled in drill-down anyway, so the spoofed wid is safe.
+          const macroWorkflowRaw = this.macroService.macroDetailToWorkflow(detail);
+          const parentWidNum = Number(this.parentWorkflowId);
+          const macroWorkflow = Number.isFinite(parentWidNum)
+            ? { ...macroWorkflowRaw, wid: parentWidNum }
+            : macroWorkflowRaw;
+          // Joining the macro definition's YJS room replays every historical
+          // operator/link the room ever held, dueling with `reloadWorkflow`'s
+          // own pushes and triggering cascading duplicate-link rejections
+          // that wipe the canvas. Use an anonymous (uuid-suffix) shared model
+          // so the drill-down starts clean. Collaboration on the body via
+          // this view is therefore *local-only* for now; persistent
+          // collaborative editing of macros is deferred.
+          this.workflowActionService.resetAsNewWorkflow();
+          this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
+          this.workflowActionService.reloadWorkflow(macroWorkflow);
+          // Allow visual editing on the canvas, but persistWorkflow is already
+          // disabled above so changes won't accidentally land on /workflow/persist.
+          this.workflowActionService.enableWorkflowModification();
+          this.undoRedoService.clearUndoStack();
+          this.undoRedoService.clearRedoStack();
+          this.setLoadingState(false);
+          this.triggerCenter();
+        },
+        () => {
+          this.workflowActionService.resetAsNewWorkflow();
+          this.workflowActionService.enableWorkflowModification();
+          this.undoRedoService.clearUndoStack();
+          this.undoRedoService.clearRedoStack();
+          this.message.error("Couldn't load macro definition.");
           this.setLoadingState(false);
         }
       );
@@ -453,8 +622,26 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   registerLoadOperatorMetadata() {
+    // Macro drill-down route (workflow/:id/macro/:macroId): edit a macro body.
+    // context$ in ngOnInit already re-runs this on every in-tab route change,
+    // so no dedicated paramMap subscription is needed here.
+    const macroId = this.route.snapshot.params.macroId;
+    if (macroId) {
+      this.isLoading = true;
+      this.workflowActionService.disableWorkflowModification();
+      this.workflowPersistService.setWorkflowPersistFlag(false);
+      this.loadMacroWithId(Number(macroId));
+      return;
+    }
+    // Not (or no longer) a macro drill-down: re-enable persist and clear the
+    // macro banner in case we just navigated back from one.
+    this.workflowPersistService.setWorkflowPersistFlag(true);
+    this.macroEditMode = false;
+    this.macroEditName = "";
+    this.parentWorkflowId = undefined;
+
     const id = Number(this.wid ?? this.route.snapshot.params.id);
-    // load workflow with id if presented in the URL
+    // load workflow/template with id if presented in the URL
     if (id) {
       // show loading spinner right away while waiting for workflow to load
       this.isLoading = true;

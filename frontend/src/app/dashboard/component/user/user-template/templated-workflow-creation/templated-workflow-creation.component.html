@@ -22,6 +22,17 @@
     <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow. Runnable or not, you can always generate — a non-runnable one opens as an Invalid Workflow to complete.</p>
   </header>
 
+  <div class="tw-basic-info" *ngIf="macroId">
+    <label class="tw-field">
+      <span class="tw-field-label">Name</span>
+      <input class="tw-input" [value]="genName" (input)="genName = $any($event.target).value" placeholder="Workflow name" />
+    </label>
+    <label class="tw-field">
+      <span class="tw-field-label">Description</span>
+      <textarea class="tw-input tw-textarea" [value]="genDescription" (input)="genDescription = $any($event.target).value" rows="2" placeholder="Description (optional)"></textarea>
+    </label>
+  </div>
+
   <div *ngIf="sections.length === 0" class="empty-state">
     No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
   </div>
@@ -39,13 +50,21 @@
 
   <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
     <button
+      *ngIf="macroId"
+      nz-button
+      class="tw-submit"
+      [disabled]="submitDisabled"
+      (click)="onUpdateMacro()">
+      Update Macro
+    </button>
+    <button
       nz-button
       nzType="primary"
       class="tw-submit"
       [class.tw-submit-idle]="submitIdle"
       [disabled]="submitDisabled"
-      (click)="onJobFormSubmitted()">
-      Submit
+      (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
+      {{ macroId ? "Create Workflow" : "Submit" }}
     </button>
   </div>
 </div>

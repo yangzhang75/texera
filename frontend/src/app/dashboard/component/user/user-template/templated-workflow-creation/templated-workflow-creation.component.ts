@@ -84,6 +84,9 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
+  // Basic info for the workflow that "Create Workflow" will produce (macro mode).
+  public genName = "";
+  public genDescription = "";
   public wid: number | undefined;
   public template: WorkflowContent | undefined;
 
@@ -205,34 +208,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       return;
     }
 
-    // Macro mode: patch the form values into the expanded content and generate
-    // an independent workflow (T3a engine). Each submit = a new workflow (1-to-n).
-    if (this.macroId) {
-      const payload = this.getConfigurablePropertyUpdatePayload();
-      const name = this.workflowActionService.getWorkflowMetadata().name;
-      const content = cloneDeep(this.template!);
-      for (const [opId, props] of Object.entries(payload.operatorProperties)) {
-        const op = content.operators.find(o => o.operatorID === opId);
-        if (op) {
-          (op as { operatorProperties: Record<string, unknown> }).operatorProperties = {
-            ...op.operatorProperties,
-            ...props,
-          };
-        }
-      }
-      this.macroService
-        .generateWorkflowFromMacro(this.macroId, content, name)
-        .pipe(untilDestroyed(this))
-        .subscribe({
-          next: newWid => {
-            this.notificationService.success("Workflow generated. Find it under Your Work > Workflows.");
-            this.router.navigate([USER_WORKSPACE, newWid]);
-          },
-          error: () => this.notificationService.error("Failed to generate workflow."),
-        });
-      return;
-    }
-
     if (!this.tid) {
       this.notificationService.error("Missing template ID.");
       return;
@@ -268,6 +243,52 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
           console.warn("Failed to instantiate templated workflow", err);
           this.notificationService.error("Failed to create workflow.");
         },
+      });
+  }
+
+  /** The macro's expanded body content with the current form values applied. */
+  private buildMacroContentWithParams(): WorkflowContent {
+    const payload = this.getConfigurablePropertyUpdatePayload();
+    const content = cloneDeep(this.template!);
+    for (const [opId, props] of Object.entries(payload.operatorProperties)) {
+      const op = content.operators.find(o => o.operatorID === opId);
+      if (op) {
+        (op as { operatorProperties: Record<string, unknown> }).operatorProperties = {
+          ...op.operatorProperties,
+          ...props,
+        };
+      }
+    }
+    return content;
+  }
+
+  /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
+  public onCreateWorkflowFromMacro(): void {
+    if (!this.macroId || !this.workflowReady) return;
+    const content = this.buildMacroContentWithParams();
+    const name = this.genName?.trim() || "Generated workflow";
+    this.macroService
+      .generateWorkflowFromMacro(this.macroId, content, name)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: newWid => {
+          this.notificationService.success("Workflow generated. Find it under Your Work > Workflows.");
+          this.router.navigate([USER_WORKSPACE, newWid]);
+        },
+        error: () => this.notificationService.error("Failed to generate workflow."),
+      });
+  }
+
+  /** "Update Macro": save the current parameter values back to the macro definition. */
+  public onUpdateMacro(): void {
+    if (!this.macroId || !this.workflowReady) return;
+    const payload = this.getConfigurablePropertyUpdatePayload();
+    this.macroService
+      .updateMacroProperties(this.macroId, payload.operatorProperties, this.genName?.trim(), this.genDescription)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => this.notificationService.success("Macro updated."),
+        error: () => this.notificationService.error("Failed to update macro."),
       });
   }
 
@@ -457,7 +478,19 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     })
       .pipe(untilDestroyed(this))
       .subscribe(({ detail }) => {
+        this.genName = detail.name;
+        this.genDescription = detail.description ?? "";
         const content = this.macroService.macroDetailToGeneratedContent(detail);
+        // Unified Macro: every operator property is configurable by default --
+        // macros don't need to pre-declare configurableProperties. So the
+        // parameter form exposes all properties of every operator.
+        content.operators.forEach(op => {
+          if (!op.configurableProperties || op.configurableProperties.length === 0) {
+            (op as { configurableProperties?: string[] }).configurableProperties = Object.keys(
+              op.operatorProperties ?? {}
+            );
+          }
+        });
         this.template = content;
         this.templatedWorkflowDraftService.initialize(content);
 

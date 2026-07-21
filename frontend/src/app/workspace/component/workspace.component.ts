@@ -639,7 +639,11 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     // Macro drill-down route (workflow/:id/macro/:macroId): edit a macro body.
     // context$ in ngOnInit already re-runs this on every in-tab route change,
     // so no dedicated paramMap subscription is needed here.
-    const macroId = this.route.snapshot.params.macroId;
+    // An embedded workspace (macro Generate preview) shares the page route,
+    // which carries :macroId. It must NOT drill into the macro editor — it just
+    // renders the read-only preview workflow passed via [wid]. Only the
+    // top-level (non-embedded) workspace reacts to the macro drill-down route.
+    const macroId = this.isEmbedded ? undefined : this.route.snapshot.params.macroId;
     if (macroId) {
       this.isLoading = true;
       // Set macroEditMode NOW (before the async getMacro in loadMacroWithId)

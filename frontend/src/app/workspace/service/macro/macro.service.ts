@@ -969,6 +969,22 @@ export class MacroService {
     );
   }
 
+  /**
+   * Save parameter values (and optional name/description) back onto the macro
+   * definition itself ("Update Macro").
+   */
+  public updateMacroProperties(
+    macroId: number,
+    operatorProperties: Record<string, Record<string, unknown>>,
+    name?: string,
+    description?: string
+  ): Observable<void> {
+    return this.http.post<void>(
+      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/update-properties`,
+      { operatorProperties, name, description }
+    );
+  }
+
   public listMacros(): Observable<MacroSummary[]> {
     return this.http
       .get<MacroSummary[]>(`${AppSettings.getApiEndpoint()}/${MACRO_LIST_URL}`)

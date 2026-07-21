@@ -261,3 +261,32 @@ texera-workspace {
   overflow: hidden;
   pointer-events: none;
 }
+
+/* Unified Macro: basic-info (name/description) fields */
+.tw-basic-info {
+  display: flex;
+  gap: 16px;
+  margin: 12px 0 16px;
+  flex-wrap: wrap;
+}
+.tw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 280px;
+}
+.tw-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.6);
+}
+.tw-input {
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  &:focus { outline: none; border-color: #1d6fdb; }
+}
+.tw-textarea { resize: vertical; min-height: 38px; }

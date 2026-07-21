@@ -20,6 +20,7 @@
 package org.apache.texera.web.resource.dashboard.user.workflow
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
@@ -101,6 +102,17 @@ object MacroResource {
     * on the frontend (macroDetailToGeneratedContent + form overlay).
     */
   case class GenerateWorkflowRequest(name: String, content: String, preview: Boolean = false)
+
+  /**
+    * Request body for `POST /macro/{wid}/update-properties`. Saves parameter
+    * values back onto the macro definition's body operators (properties are
+    * top-level fields on each LogicalOp), plus optional name/description.
+    */
+  case class UpdateMacroPropertiesRequest(
+      operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty,
+      name: Option[String] = None,
+      description: Option[String] = None
+  )
 
   /** Full response for `POST /macro/create` and `GET /macro/{wid}`. */
   case class MacroDetail(
@@ -255,6 +267,43 @@ class MacroResource extends LazyLogging {
     )
 
     newWid
+  }
+
+  /**
+    * Save parameter values (and optional name/description) back onto the macro
+    * definition. Body operators are LogicalOps, so properties are top-level
+    * fields on each op node -- merge the submitted values in place.
+    */
+  @POST
+  @Consumes(Array(MediaType.APPLICATION_JSON))
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/update-properties")
+  def updateMacroProperties(
+      @PathParam("wid") wid: Integer,
+      req: UpdateMacroPropertiesRequest,
+      @Auth sessionUser: SessionUser
+  ): Unit = {
+    val user = sessionUser.getUser
+    if (!hasWriteAccess(wid, user.getUid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val workflow = workflowDao.fetchOneByWid(wid)
+    val root = mapper.readTree(workflow.getContent).asInstanceOf[ObjectNode]
+    val operators = root.get("operators")
+    if (operators != null && operators.isArray) {
+      operators.elements().asScala.foreach { opNode =>
+        val on = opNode.asInstanceOf[ObjectNode]
+        val opId = Option(on.get("operatorID")).map(_.asText).getOrElse("")
+        req.operatorProperties.get(opId).foreach { props =>
+          props.foreach { case (k, v) => on.set(k, v) }
+        }
+      }
+    }
+    workflow.setContent(mapper.writeValueAsString(root))
+    req.name.filter(_.trim.nonEmpty).foreach(n => workflow.setName(n.trim))
+    req.description.foreach(d => workflow.setDescription(d))
+    workflowDao.update(workflow)
+    WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
   }
 
   @GET

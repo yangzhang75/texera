@@ -39,6 +39,7 @@ import javax.ws.rs.{
 }
 import org.apache.texera.web.service.{TemplateService, WorkflowPersistService}
 import org.apache.texera.dao.jooq.generated.Tables.{WORKFLOW, WORKFLOW_OF_TEMPLATE}
+import org.apache.texera.dao.jooq.generated.enums.WorkflowKindEnum
 import org.apache.texera.dao.jooq.generated.tables.pojos._
 import org.apache.texera.web.resource.dashboard.user.templated_workflow.TemplatedWorkflowResource._
 import org.apache.texera.web.resource.dashboard.user.template.TemplateAccessResource
@@ -195,7 +196,8 @@ class TemplatedWorkflowResource extends LazyLogging {
           template.content, // content
           null, // creationTime
           null, // lastModifiedTime
-          false // isPublic
+          false, // isPublic
+          WorkflowKindEnum.WORKFLOW // kind
         )
         val workflow = workflowPersistService.createWorkflow(templatedWorkflow, user)
         val newWid = workflow.workflow.getWid
@@ -358,7 +360,8 @@ class TemplatedWorkflowResource extends LazyLogging {
       template.content, // content
       null, // creationTime
       null, // lastModifiedTime
-      false // isPublic
+      false, // isPublic
+      WorkflowKindEnum.WORKFLOW // kind
     )
     val created = workflowPersistService.createWorkflow(newWorkflow, sessionUser)
     val newWid = created.workflow.getWid

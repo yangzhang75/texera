@@ -31,7 +31,7 @@ import {
   ViewChild,
   ViewContainerRef,
 } from "@angular/core";
-import { ActivatedRoute, Router, RouterLink } from "@angular/router";
+import { ActivatedRoute, Router } from "@angular/router";
 import { UserService } from "../../common/service/user/user.service";
 import { WorkflowPersistService } from "../../common/service/workflow-persist/workflow-persist.service";
 import { Workflow } from "../../common/type/workflow";
@@ -66,7 +66,6 @@ import { MiniMapComponent } from "./workflow-editor/mini-map/mini-map.component"
 import { LeftPanelComponent } from "./left-panel/left-panel.component";
 import { AgentPanelComponent } from "./agent/agent-panel/agent-panel.component";
 import { PropertyEditorComponent } from "./property-editor/property-editor.component";
-import { FormlyRepeatDndComponent } from "../../common/formly/repeat-dnd/repeat-dnd.component";
 import { TemplateService } from "../../dashboard/service/user/template/template.service";
 import { Template } from "../../common/type/template";
 
@@ -99,8 +98,6 @@ interface WorkspaceContext {
     NgIf,
     AgentPanelComponent,
     PropertyEditorComponent,
-    FormlyRepeatDndComponent,
-    RouterLink,
   ],
 })
 export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {

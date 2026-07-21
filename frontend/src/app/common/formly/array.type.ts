@@ -32,7 +32,7 @@ import { NzIconDirective } from "ng-zorro-antd/icon";
         [nzShape]="'circle'"
         nzDanger
         type="button"
-        [disabled]="formControl?.disabled"
+        [disabled]="formControl.disabled"
         (click)="remove(i)">
         <span
           nz-icon
@@ -47,7 +47,7 @@ import { NzIconDirective } from "ng-zorro-antd/icon";
       [nzType]="'primary'"
       [nzShape]="'circle'"
       type="button"
-      [disabled]="formControl?.disabled"
+      [disabled]="formControl.disabled"
       (click)="add()"
       style="display:inline-block;vertical-align: baseline;float: right;">
       <span

@@ -48,8 +48,8 @@
   <texera-result-panel></texera-result-panel>
 </div>
 <texera-workflow-editor
-  *ngIf="mode"
-  [mode]="mode">
+  *ngIf="mode || macroEditMode"
+  [mode]="mode || 'workflow'">
 </texera-workflow-editor>
 <texera-menu
   *ngIf="mode"
@@ -63,5 +63,5 @@
 <texera-agent-panel
   *ngIf="copilotEnabled"
   [agentIdToActivate]="agentIdToActivate"></texera-agent-panel>
-<texera-property-editor *ngIf="mode" [mode]="mode"></texera-property-editor>
+<texera-property-editor *ngIf="mode || macroEditMode" [mode]="mode || 'workflow'"></texera-property-editor>
 <ng-template #codeEditor></ng-template>

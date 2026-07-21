@@ -76,6 +76,7 @@ type WorkspaceMode = "workflow" | "template";
 interface WorkspaceContext {
   mode: WorkspaceMode;
   id: number;
+  macroId?: string;
   pid?: number;
 }
 
@@ -127,8 +128,17 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     map(([params, queryParams]) => ({
       mode: params.get("mode") as WorkspaceMode,
       id: Number(params.get("id")),
+      macroId: params.get("macroId") ?? undefined,
       pid: queryParams.get("pid") ? Number(queryParams.get("pid")) || undefined : undefined,
-    }))
+    })),
+    // Collapse duplicate emissions for the SAME route. combineLatest re-fires
+    // when either paramMap or queryParamMap emits (e.g. the macro drill-down
+    // URL carries a `?instance=...` query param), which would otherwise re-run
+    // reloadWorkspace → cleanupWorkspaceState (clearWorkflow) AFTER the body
+    // was loaded, wiping the drill-down canvas. Only reload on a real change.
+    distinctUntilChanged(
+      (a, b) => a.mode === b.mode && a.id === b.id && a.macroId === b.macroId && a.pid === b.pid
+    )
   );
 
   /**
@@ -515,6 +525,13 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
           this.undoRedoService.clearRedoStack();
           this.setLoadingState(false);
           this.triggerCenter();
+          // `reloadWorkflow` populates the shared graph asynchronously (YJS
+          // observers fire after this synchronous block), and the paper is
+          // freshly mounted after the hard-reload navigation into the macro
+          // view. So the immediate triggerCenter above centers on an empty
+          // canvas and the body ops end up rendered off-viewport. Re-center
+          // once the ops are in the model and the paper container is measured.
+          setTimeout(() => this.triggerCenter(), 400);
         },
         () => {
           this.workflowActionService.resetAsNewWorkflow();
@@ -625,6 +642,11 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     const macroId = this.route.snapshot.params.macroId;
     if (macroId) {
       this.isLoading = true;
+      // Set macroEditMode NOW (before the async getMacro in loadMacroWithId)
+      // so the *ngIf="mode || macroEditMode" workflow-editor mounts immediately.
+      // Otherwise the macro route has no `mode` param, the editor never renders,
+      // and reloadWorkflow paints into a non-existent paper (blank canvas).
+      this.macroEditMode = true;
       this.workflowActionService.disableWorkflowModification();
       this.workflowPersistService.setWorkflowPersistFlag(false);
       this.loadMacroWithId(Number(macroId));

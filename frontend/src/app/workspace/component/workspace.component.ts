@@ -342,7 +342,7 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
             try {
               const detail = await this.macroService.getMacro(wid).toPromise();
               if (detail) {
-                window.location.href = `/dashboard/user/workflow/${wid}/macro/${wid}`;
+                window.location.href = `/user/workflow/${wid}/macro/${wid}`;
                 return;
               }
             } catch {
@@ -456,7 +456,7 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
    * stale canvas state).
    */
   public onBackToParent(): void {
-    const target = this.popDrillDownBreadcrumb() ?? `/dashboard/user/workflow/${this.parentWorkflowId}`;
+    const target = this.popDrillDownBreadcrumb() ?? `/user/workflow/${this.parentWorkflowId}`;
     window.location.href = target;
   }
 

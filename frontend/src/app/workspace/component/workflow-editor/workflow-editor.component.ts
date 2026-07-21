@@ -874,7 +874,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
                 // sessionStorage can throw in private-mode; that's fine, we
                 // just won't have drill-down live stats on this navigation.
               }
-              window.location.href = `/dashboard/user/workflow/${parentWid}/macro/${macroId}?instance=${encodeURIComponent(elementID)}`;
+              window.location.href = `/user/workflow/${parentWid}/macro/${macroId}?instance=${encodeURIComponent(elementID)}`;
               return;
             }
             this.workflowActionService.openResultPanel();

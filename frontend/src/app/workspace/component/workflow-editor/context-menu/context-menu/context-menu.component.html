@@ -144,27 +144,8 @@
       nzTheme="outline"></span
     >expand macro
   </li>
-  <li
-    nz-menu-item
-    *ngIf="canFuseMacro()"
-    (click)="onFuseMacro()">
-    <span
-      nz-icon
-      nzType="thunderbolt"
-      nzTheme="twotone"
-      nzTwotoneColor="#1d6fdb"></span
-    >fuse for performance (AI)
-  </li>
-  <li
-    nz-menu-item
-    *ngIf="canUnfuseMacro()"
-    (click)="onUnfuseMacro()">
-    <span
-      nz-icon
-      nzType="rollback"
-      nzTheme="outline"></span
-    >unfuse (restore body)
-  </li>
+  <!-- "fuse for performance (AI)" / "unfuse" removed per unified-macro scope
+       (basic functionality only; no AI surfaces). -->
   <li
     nz-menu-item
     *ngIf="canRefreshMacroInstance()"

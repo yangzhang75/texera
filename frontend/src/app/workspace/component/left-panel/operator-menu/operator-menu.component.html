@@ -40,61 +40,8 @@
 
 <div id="spacer"></div>
 
-<!-- "Suggest Macros (AI)" panel — heuristic v1 (no LLM call). Shows ranked
-     candidate sub-DAGs to encapsulate, with a one-line rationale each. -->
-<div class="suggest-macros">
-  <button
-    class="suggest-macros__trigger"
-    [disabled]="!canModify || isSuggesting"
-    (click)="onSuggestMacros()">
-    <span class="suggest-macros__icon">✨</span>
-    <span *ngIf="!isSuggesting">Suggest Macros (AI)</span>
-    <span *ngIf="isSuggesting">Analyzing workflow…</span>
-    <span
-      *ngIf="!isSuggesting && availableCandidateCount > 0"
-      class="suggest-macros__count-badge"
-      [title]="availableCandidateCount + ' candidate macro(s) detected in your workflow'">
-      {{ availableCandidateCount }}
-    </span>
-  </button>
-  <div *ngIf="suggestions.length > 0" class="suggest-macros__panel">
-    <div class="suggest-macros__header">
-      <span>{{ suggestions.length }} candidate{{ suggestions.length === 1 ? '' : 's' }}</span>
-      <button
-        class="suggest-macros__close"
-        (click)="dismissSuggestions()"
-        title="dismiss">
-        ×
-      </button>
-    </div>
-    <div
-      *ngFor="let suggestion of suggestions"
-      class="suggest-macros__item"
-      [class.suggest-macros__item--pattern]="suggestion.id.startsWith('pattern-')"
-      (click)="onMaterializeSuggestion(suggestion)"
-      (mouseenter)="onSuggestionHover(suggestion)"
-      (mouseleave)="onSuggestionUnhover()"
-      [title]="suggestion.rationale">
-      <div class="suggest-macros__name">
-        <span *ngIf="suggestion.id.startsWith('pattern-')" class="suggest-macros__pattern-tag">⟲ pattern</span>
-        {{ suggestion.suggestedName }}
-      </div>
-      <div class="suggest-macros__rationale">{{ suggestion.rationale }}</div>
-      <div class="suggest-macros__meta">
-        <span
-          class="suggest-macros__confidence"
-          [class.suggest-macros__confidence--recommended]="suggestion.confidence === 'recommended'"
-          [class.suggest-macros__confidence--strong]="suggestion.confidence === 'strong'"
-          [class.suggest-macros__confidence--good]="suggestion.confidence === 'good'">
-          {{ suggestion.confidence === 'recommended' ? '✓ recommended'
-             : suggestion.confidence === 'strong' ? 'strong fit' : 'good fit' }}
-        </span>
-        <span class="suggest-macros__meta-sep">·</span>
-        <span class="suggest-macros__op-count">{{ suggestion.operatorIds.length }} ops</span>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- "Suggest Macros (AI)" panel removed per unified-macro scope (basic
+     functionality only; no AI surfaces). -->
 
 <!-- Auto-optimize / Fuse-all buttons disabled until the template-based fuse
      codegen produces a backend-compilable PythonUDFOpDescV2 on arbitrary

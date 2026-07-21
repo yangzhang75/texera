@@ -20,6 +20,7 @@
 package org.apache.texera.web.resource.dashboard
 
 import org.apache.texera.dao.jooq.generated.Tables._
+import org.apache.texera.dao.jooq.generated.enums.WorkflowKindEnum
 import org.apache.texera.dao.jooq.generated.tables.pojos.Workflow
 import org.apache.texera.web.resource.dashboard.DashboardResource.DashboardClickableFileEntry
 import org.apache.texera.web.resource.dashboard.FulltextSearchQueryUtils._
@@ -98,6 +99,12 @@ object WorkflowSearchQueryBuilder extends SearchQueryBuilder {
           .where(WORKFLOW_OF_TEMPLATE.PARAMETERS.eq("preview"))
       )
     )
+
+    // Hide macro definitions (kind = MACRO). Macros share the workflow table but
+    // belong in the Macros tab, not the Workflows list. (WorkflowResource's own
+    // baseWorkflowSelect already filters these; the dashboard search grid needs
+    // the same exclusion.)
+    condition = condition.and(WORKFLOW.KIND.eq(WorkflowKindEnum.WORKFLOW))
 
     baseQuery.where(condition)
   }

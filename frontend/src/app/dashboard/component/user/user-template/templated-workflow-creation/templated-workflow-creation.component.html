@@ -18,12 +18,12 @@
 -->
 <div class="tw-form">
   <header class="tw-header">
-    <h2 class="job-title">Build Workflow from Template</h2>
-    <p class="tw-subtitle">Set the parameters below, then apply them to your workflow. The preview updates after you submit.</p>
+    <h2 class="job-title">{{ macroId ? "Generate Workflow from Macro" : "Build Workflow from Template" }}</h2>
+    <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow. Runnable or not, you can always generate — a non-runnable one opens as an Invalid Workflow to complete.</p>
   </header>
 
   <div *ngIf="sections.length === 0" class="empty-state">
-    No configurable parameters in this template.
+    No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
   </div>
 
   <div *ngFor="let section of sections" class="template-section">
@@ -37,7 +37,7 @@
     </form>
   </div>
 
-  <div class="tw-actionbar" *ngIf="sections.length > 0">
+  <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
     <button
       nz-button
       nzType="primary"

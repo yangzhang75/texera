@@ -158,6 +158,10 @@ routes.push({
           component: MacrosComponent,
         },
         {
+          path: "macros/generate/:macroId",
+          component: TemplatedWorkflowCreationComponent,
+        },
+        {
           path: "template/create-workflow/:tid",
           component: TemplatedWorkflowCreationComponent,
         },

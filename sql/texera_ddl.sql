@@ -216,7 +216,10 @@ CREATE TABLE IF NOT EXISTS workflow_of_template
     tid         INT NOT NULL,
     wid         INT PRIMARY KEY,
     parameters  TEXT,
-    FOREIGN KEY (tid) REFERENCES template(tid) ON DELETE CASCADE,
+    -- `tid` references the definition this workflow was generated from. Unified
+    -- Macro reuses this table to track macro -> generated-workflow (tid = the
+    -- macro's kind=MACRO workflow wid), so tid is NOT FK-constrained to the
+    -- template table (a macro is not a template row).
     FOREIGN KEY (wid) REFERENCES workflow(wid) ON DELETE CASCADE
     );
 

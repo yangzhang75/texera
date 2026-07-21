@@ -41,6 +41,7 @@ export const USER_DISCUSSION = `${USER}/discussion`;
 export const USER_TEMPLATE = `${USER}/template`;
 export const USER_TEMPLATED_WORKFLOW = `${USER}/template/create-workflow`;
 export const USER_MACRO = `${USER}/macros`;
+export const USER_MACRO_GENERATE = `${USER}/macros/generate`;
 export const USER_FEEDBACK = `${USER}/feedback`;
 
 export const ADMIN = "/admin";

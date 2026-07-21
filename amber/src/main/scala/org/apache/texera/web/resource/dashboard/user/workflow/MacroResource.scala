@@ -31,12 +31,14 @@ import org.apache.texera.dao.jooq.generated.enums.{PrivilegeEnum, WorkflowKindEn
 import org.apache.texera.dao.jooq.generated.tables.daos.{
   MacroMetadataDao,
   WorkflowDao,
+  WorkflowOfTemplateDao,
   WorkflowOfUserDao,
   WorkflowUserAccessDao
 }
 import org.apache.texera.dao.jooq.generated.tables.pojos.{
   MacroMetadata,
   Workflow,
+  WorkflowOfTemplate,
   WorkflowOfUser,
   WorkflowUserAccess
 }
@@ -67,6 +69,7 @@ object MacroResource {
   private def context: DSLContext = SqlServer.getInstance().createDSLContext()
   private def workflowDao = new WorkflowDao(context.configuration)
   private def workflowOfUserDao = new WorkflowOfUserDao(context.configuration)
+  private def workflowOfTemplateDao = new WorkflowOfTemplateDao(context.configuration)
   private def workflowUserAccessDao = new WorkflowUserAccessDao(context.configuration)
   private def macroMetadataDao = new MacroMetadataDao(context.configuration)
 
@@ -91,6 +94,13 @@ object MacroResource {
       inputs: List[MacroPortSpec] = Nil,
       outputs: List[MacroPortSpec] = Nil
   )
+
+  /**
+    * Request body for `POST /macro/{wid}/generate-workflow`. `content` is the
+    * already-expanded, marker-stripped, param-patched workflow content produced
+    * on the frontend (macroDetailToGeneratedContent + form overlay).
+    */
+  case class GenerateWorkflowRequest(name: String, content: String, preview: Boolean = false)
 
   /** Full response for `POST /macro/create` and `GET /macro/{wid}`. */
   case class MacroDetail(
@@ -198,6 +208,53 @@ class MacroResource extends LazyLogging {
       isOwner = true,
       readonly = false
     )
+  }
+
+  /**
+    * Generate an independent, normal (kind=WORKFLOW) workflow from a macro
+    * definition (= the unified "Template" flow). The caller sends the already
+    * expanded + param-patched content; this persists it as a new workflow the
+    * user owns and records the 1-to-n macro->workflow relation in
+    * workflow_of_template (tid = source macro wid). No runnable gate: a
+    * not-runnable macro yields a workflow with unconnected inputs (Invalid
+    * Workflow) the user completes by adding a data source.
+    */
+  @POST
+  @Consumes(Array(MediaType.APPLICATION_JSON))
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/generate-workflow")
+  def generateWorkflow(
+      @PathParam("wid") wid: Integer,
+      req: GenerateWorkflowRequest,
+      @Auth sessionUser: SessionUser
+  ): Integer = {
+    val user = sessionUser.getUser
+    if (!hasReadAccess(wid, user.getUid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val name =
+      if (req.name != null && req.name.trim.nonEmpty) req.name.trim else "Generated workflow"
+
+    val workflow = new Workflow()
+    workflow.setName(name)
+    workflow.setContent(req.content)
+    workflow.setIsPublic(false)
+    workflow.setKind(WorkflowKindEnum.WORKFLOW)
+    workflowDao.insert(workflow)
+    val newWid = workflow.getWid
+
+    workflowOfUserDao.insert(new WorkflowOfUser(user.getUid, newWid))
+    workflowUserAccessDao.insert(new WorkflowUserAccess(user.getUid, newWid, PrivilegeEnum.WRITE))
+    WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = true)
+
+    // 1-to-n: record source macro (tid) -> generated workflow (wid). A preview
+    // is the throwaway workflow backing the Generate page's embedded canvas;
+    // marked "preview" so it's filtered out of the Workflows list.
+    workflowOfTemplateDao.insert(
+      new WorkflowOfTemplate(wid, newWid, if (req.preview) "preview" else "")
+    )
+
+    newWid
   }
 
   @GET

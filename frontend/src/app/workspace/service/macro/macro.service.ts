@@ -951,6 +951,24 @@ export class MacroService {
     });
   }
 
+  /**
+   * Generate an independent workflow from a macro definition (= the "Template"
+   * flow). `content` is the already-expanded (marker-stripped) + param-patched
+   * workflow content; the backend persists it as a new kind=WORKFLOW workflow
+   * and records the macro->workflow 1-to-n relation. Returns the new wid.
+   */
+  public generateWorkflowFromMacro(
+    macroId: number,
+    content: WorkflowContent,
+    name: string,
+    preview: boolean = false
+  ): Observable<number> {
+    return this.http.post<number>(
+      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/generate-workflow`,
+      { name, content: JSON.stringify(content), preview }
+    );
+  }
+
   public listMacros(): Observable<MacroSummary[]> {
     return this.http
       .get<MacroSummary[]>(`${AppSettings.getApiEndpoint()}/${MACRO_LIST_URL}`)

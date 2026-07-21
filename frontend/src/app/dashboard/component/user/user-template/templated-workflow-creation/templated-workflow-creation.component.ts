@@ -32,7 +32,9 @@ import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
-import {ActivatedRoute} from "@angular/router";
+import {ActivatedRoute, Router} from "@angular/router";
+import {MacroService} from "../../../../../workspace/service/macro/macro.service";
+import {USER_WORKSPACE} from "../../../../../app-routing.constant";
 import {TemplateService} from "../../../../service/user/template/template.service";
 import {OperatorMetadataService} from "../../../../../workspace/service/operator-metadata/operator-metadata.service";
 import {OperatorPredicate} from "../../../../../workspace/types/workflow-common.interface";
@@ -79,6 +81,9 @@ interface ConfigurableSection {
 })
 export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   public tid: number | undefined;
+  // When set, this page generates a workflow from a MACRO definition instead of
+  // a template. Same preview + Formly form + submit UI; data source is the macro.
+  public macroId: number | undefined;
   public wid: number | undefined;
   public template: WorkflowContent | undefined;
 
@@ -117,7 +122,9 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     private workflowCompilingService: WorkflowCompilingService,
     private formlyJsonschema: FormlyJsonschema,
     private route: ActivatedRoute,
-    private http: HttpClient
+    private http: HttpClient,
+    private macroService: MacroService,
+    private router: Router
   ) {
     this.userService
       .userChanged()
@@ -195,6 +202,34 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       // so required-but-empty fields turn red, and tell the user to fill them in.
       this.sections.forEach(section => section.form.markAllAsTouched());
       this.notificationService.warning("Please fill in the required fields highlighted in red before submitting.");
+      return;
+    }
+
+    // Macro mode: patch the form values into the expanded content and generate
+    // an independent workflow (T3a engine). Each submit = a new workflow (1-to-n).
+    if (this.macroId) {
+      const payload = this.getConfigurablePropertyUpdatePayload();
+      const name = this.workflowActionService.getWorkflowMetadata().name;
+      const content = cloneDeep(this.template!);
+      for (const [opId, props] of Object.entries(payload.operatorProperties)) {
+        const op = content.operators.find(o => o.operatorID === opId);
+        if (op) {
+          (op as { operatorProperties: Record<string, unknown> }).operatorProperties = {
+            ...op.operatorProperties,
+            ...props,
+          };
+        }
+      }
+      this.macroService
+        .generateWorkflowFromMacro(this.macroId, content, name)
+        .pipe(untilDestroyed(this))
+        .subscribe({
+          next: newWid => {
+            this.notificationService.success("Workflow generated. Find it under Your Work > Workflows.");
+            this.router.navigate([USER_WORKSPACE, newWid]);
+          },
+          error: () => this.notificationService.error("Failed to generate workflow."),
+        });
       return;
     }
 
@@ -331,6 +366,14 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
 
   ngAfterViewInit(): void {
     this.workflowReady = false;
+    // Macro mode: generate a workflow from a macro definition (reuses this
+    // whole preview + Formly + submit UI, data source swapped to the macro).
+    const macroParam = this.route.snapshot.params.macroId;
+    if (macroParam) {
+      this.macroId = Number(macroParam);
+      this.initFromMacro(this.macroId);
+      return;
+    }
     this.tid = this.route.snapshot.params.tid;
     if (!this.tid) return;
 
@@ -394,6 +437,60 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
 
         // Do not suppress this stream. Texera's existing schema propagation may still
         // populate/enrich DynamicSchemaService, especially during initial template loading.
+        this.dynamicSchemaService
+          .getOperatorDynamicSchemaChangedStream()
+          .pipe(debounceTime(50), untilDestroyed(this))
+          .subscribe(() => this.rebuildSectionsFromDynamicSchemas());
+      });
+  }
+
+  /**
+   * Macro-mode init: load the macro definition, expand its body into standalone
+   * workflow content (markers stripped, via T3a's converter), show it in the
+   * embedded preview, and build the Formly form from the operators'
+   * configurableProperties (empty form if none are declared).
+   */
+  private initFromMacro(macroId: number): void {
+    forkJoin({
+      detail: this.macroService.getMacro(macroId),
+      metadata: this.operatorMetadataService.getOperatorMetadata(),
+    })
+      .pipe(untilDestroyed(this))
+      .subscribe(({ detail }) => {
+        const content = this.macroService.macroDetailToGeneratedContent(detail);
+        this.template = content;
+        this.templatedWorkflowDraftService.initialize(content);
+
+        // Create a throwaway 'preview' workflow (filtered from the Workflows
+        // list) so the embedded canvas can render the expanded body -- the
+        // embedded WorkspaceComponent loads its content via [wid]. Mirrors the
+        // template flow's /build step.
+        this.macroService
+          .generateWorkflowFromMacro(detail.wid, content, detail.name, true)
+          .pipe(
+            switchMap(previewWid => {
+              this.wid = previewWid;
+              this.workflowActionService.destroySharedModel();
+              this.workflowActionService.setNewSharedModel(undefined, this.userService.getCurrentUser());
+              return this.workflowPersistService.retrieveWorkflow(previewWid);
+            }),
+            untilDestroyed(this)
+          )
+          .subscribe({
+            next: workflow => {
+              this.workflowActionService.reloadWorkflow(workflow);
+              if (workflow.content) {
+                this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
+                this.lastEnrichedSignature = "";
+                this.rebuildSectionsFromDynamicSchemas();
+              }
+              this.workflowReady = true;
+              this.showEmbeddedWorkspace = true;
+            },
+            error: () => this.notificationService.error("Failed to load macro preview."),
+          });
+
+        this.rebuildSectionsFromDynamicSchemas();
         this.dynamicSchemaService
           .getOperatorDynamicSchemaChangedStream()
           .pipe(debounceTime(50), untilDestroyed(this))

@@ -87,6 +87,11 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   // Basic info for the workflow that "Create Workflow" will produce (macro mode).
   public genName = "";
   public genDescription = "";
+  // Runnable gate (macro mode): only a runnable macro can be generated (D3).
+  // The Macros list already blocks opening a not-runnable macro; this is the
+  // defensive gate for direct-URL access -- Create Workflow is disabled and a
+  // reason is shown. Defaults true so template mode is never gated.
+  public macroRunnable = true;
   public wid: number | undefined;
   public template: WorkflowContent | undefined;
 
@@ -264,11 +269,12 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
 
   /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
   public onCreateWorkflowFromMacro(): void {
-    if (!this.macroId || !this.workflowReady) return;
+    if (!this.macroId || !this.workflowReady || !this.macroRunnable) return;
     const content = this.buildMacroContentWithParams();
     const name = this.genName?.trim() || "Generated workflow";
+    const description = this.genDescription?.trim() || undefined;
     this.macroService
-      .generateWorkflowFromMacro(this.macroId, content, name)
+      .generateWorkflowFromMacro(this.macroId, content, name, false, description)
       .pipe(untilDestroyed(this))
       .subscribe({
         next: newWid => {
@@ -276,19 +282,6 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
           this.router.navigate([USER_WORKSPACE, newWid]);
         },
         error: () => this.notificationService.error("Failed to generate workflow."),
-      });
-  }
-
-  /** "Update Macro": save the current parameter values back to the macro definition. */
-  public onUpdateMacro(): void {
-    if (!this.macroId || !this.workflowReady) return;
-    const payload = this.getConfigurablePropertyUpdatePayload();
-    this.macroService
-      .updateMacroProperties(this.macroId, payload.operatorProperties, this.genName?.trim(), this.genDescription)
-      .pipe(untilDestroyed(this))
-      .subscribe({
-        next: () => this.notificationService.success("Macro updated."),
-        error: () => this.notificationService.error("Failed to update macro."),
       });
   }
 
@@ -481,6 +474,12 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
         this.genName = detail.name;
         this.genDescription = detail.description ?? "";
         const content = this.macroService.macroDetailToGeneratedContent(detail);
+        // Runnable gate: 0 external inputs AND a body source op. Metadata is
+        // loaded above (forkJoin), so the source lookup is ready here.
+        this.macroRunnable = this.macroService.isMacroRunnable(
+          detail.portSpec?.inputs?.length ?? 0,
+          content.operators.map(o => o.operatorType)
+        );
         // Unified Macro: every operator property is configurable by default --
         // macros don't need to pre-declare configurableProperties. So the
         // parameter form exposes all properties of every operator.

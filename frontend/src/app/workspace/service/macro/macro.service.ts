@@ -34,6 +34,7 @@ import { PortIdentity } from "../../types/execute-workflow.interface";
 import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
 import { WorkflowResultService } from "../workflow-result/workflow-result.service";
 import { WorkflowUtilService } from "../workflow-graph/util/workflow-util.service";
+import { OperatorMetadataService } from "../operator-metadata/operator-metadata.service";
 import { v4 as uuid } from "uuid";
 
 // Per-instance runtime mapping from the macro's external ports back to the
@@ -118,10 +119,20 @@ export interface MacroSummary {
   wid: number;
   name: string;
   description: string;
+  creationTime: string;
   lastModifiedTime: string;
   portSpec: PortSpec;
   category?: string;
   icon?: string;
+  // Whether the requesting user owns this macro definition, and the owner's
+  // display name — surfaced in the Macros list the same way the Workflows list
+  // shows owner + shared-by. Optional so older backends still parse.
+  isOwner?: boolean;
+  ownerName?: string;
+  // Operator types in the macro body (markers included). Fed to
+  // MacroService.isMacroRunnable to decide the runnable gate without shipping
+  // the full body content. Optional so older backends still parse.
+  bodyOperatorTypes?: string[];
   // Number of distinct non-macro workflows that reference this macro. Surfaced
   // in the "Your Macros" palette as a small reuse-count chip. Optional so
   // older backend builds (without the usageCount field) still work — frontend
@@ -152,8 +163,45 @@ export class MacroService {
   constructor(
     private http: HttpClient,
     private workflowResultService: WorkflowResultService,
-    private workflowUtilService: WorkflowUtilService
+    private workflowUtilService: WorkflowUtilService,
+    private operatorMetadataService: OperatorMetadataService
   ) {}
+
+  /**
+   * Runnable gate for the unified Macro flow. A macro can be generated into a
+   * standalone workflow only if it can run on its own, i.e.:
+   *   1. it has no unbound external input ports (carries its own data), AND
+   *   2. its body contains at least one source operator (0 input ports) that
+   *      actually produces data.
+   *
+   * Both halves are required: a 0-input macro whose body still needs an
+   * upstream feed (no source op) is NOT runnable, and gating on inputs alone
+   * would let it through. Source detection reuses the already-loaded operator
+   * metadata (`inputPorts.length === 0`, the same signal the canvas uses); the
+   * MacroInput/MacroOutput boundary markers are never counted as sources.
+   *
+   * Callers must ensure operator metadata is loaded first (the palette/list
+   * views load it up front); until then this conservatively returns false.
+   */
+  public isMacroRunnable(externalInputCount: number, bodyOperatorTypes: readonly string[]): boolean {
+    if (externalInputCount !== 0) {
+      return false;
+    }
+    return bodyOperatorTypes.some(t => this.isSourceOperatorType(t));
+  }
+
+  private isSourceOperatorType(operatorType: string): boolean {
+    if (operatorType === "MacroInput" || operatorType === "MacroOutput") {
+      return false;
+    }
+    try {
+      const schema = this.operatorMetadataService.getOperatorSchema(operatorType);
+      return (schema?.additionalMetadata?.inputPorts?.length ?? 1) === 0;
+    } catch {
+      // Unknown operator type / metadata not loaded yet: treat as non-source.
+      return false;
+    }
+  }
 
   /**
    * Convenience: take a selection of operators, build a macro definition
@@ -961,27 +1009,12 @@ export class MacroService {
     macroId: number,
     content: WorkflowContent,
     name: string,
-    preview: boolean = false
+    preview: boolean = false,
+    description?: string
   ): Observable<number> {
     return this.http.post<number>(
       `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/generate-workflow`,
-      { name, content: JSON.stringify(content), preview }
-    );
-  }
-
-  /**
-   * Save parameter values (and optional name/description) back onto the macro
-   * definition itself ("Update Macro").
-   */
-  public updateMacroProperties(
-    macroId: number,
-    operatorProperties: Record<string, Record<string, unknown>>,
-    name?: string,
-    description?: string
-  ): Observable<void> {
-    return this.http.post<void>(
-      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/update-properties`,
-      { operatorProperties, name, description }
+      { name, content: JSON.stringify(content), description, preview }
     );
   }
 

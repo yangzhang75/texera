@@ -22,12 +22,38 @@
 .macro-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 14px;
+  padding: 12px 16px;
   border: 1px solid #eee;
   border-radius: 8px;
   margin-bottom: 10px;
   background: #fff;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  // Clickable affordance: whole row lifts + tints on hover, like a list item.
+  &:hover {
+    background: #f5f9ff;
+    border-color: #91caff;
+    box-shadow: 0 1px 6px rgba(29, 111, 219, 0.12);
+  }
+
+  // Not-runnable macros can't be generated (D3): greyed + not-clickable, but
+  // still visible (never hidden). Editing the name/description stays allowed
+  // (those controls stopPropagation and set their own cursor).
+  &.not-runnable {
+    cursor: not-allowed;
+    opacity: 0.6;
+
+    &:hover {
+      background: #fff;
+      border-color: #eee;
+      box-shadow: none;
+    }
+  }
 }
 
 .runnable-dot {
@@ -42,14 +68,50 @@
   }
 }
 
+.macro-avatar {
+  flex: 0 0 auto;
+}
+
+.macro-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.macro-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .macro-name {
   font-weight: 600;
   font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.macro-inline-input {
+  font-size: 14px;
+  padding: 2px 6px;
+  border: 1px solid #91caff;
+  border-radius: 4px;
+  min-width: 220px;
+}
+
+.macro-owner-icon {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+}
+
+.macro-spacer {
+  flex: 1 1 auto;
 }
 
 .macro-ports {
   color: rgba(0, 0, 0, 0.55);
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .runnable-label {
@@ -58,6 +120,7 @@
   border-radius: 10px;
   background: #f0f0f0;
   color: rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
 
   &.runnable {
     background: #f6ffed;
@@ -65,20 +128,20 @@
   }
 }
 
-.macro-spacer {
-  flex: 1 1 auto;
+.macro-desc-line {
+  margin-top: 2px;
+  min-height: 18px;
+
+  .macro-desc {
+    color: rgba(0, 0, 0, 0.55);
+    font-size: 13px;
+  }
 }
 
-.generate-btn {
-  border: none;
-  background: #1d6fdb;
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-
-  &:hover {
-    background: #1558b0;
-  }
+.macro-meta-line {
+  margin-top: 4px;
+  display: flex;
+  gap: 18px;
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 12px;
 }

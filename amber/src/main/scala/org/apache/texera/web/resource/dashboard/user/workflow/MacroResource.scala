@@ -20,7 +20,6 @@
 package org.apache.texera.web.resource.dashboard.user.workflow
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
-import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
@@ -101,17 +100,11 @@ object MacroResource {
     * already-expanded, marker-stripped, param-patched workflow content produced
     * on the frontend (macroDetailToGeneratedContent + form overlay).
     */
-  case class GenerateWorkflowRequest(name: String, content: String, preview: Boolean = false)
-
-  /**
-    * Request body for `POST /macro/{wid}/update-properties`. Saves parameter
-    * values back onto the macro definition's body operators (properties are
-    * top-level fields on each LogicalOp), plus optional name/description.
-    */
-  case class UpdateMacroPropertiesRequest(
-      operatorProperties: Map[String, Map[String, JsonNode]] = Map.empty,
-      name: Option[String] = None,
-      description: Option[String] = None
+  case class GenerateWorkflowRequest(
+      name: String,
+      content: String,
+      description: Option[String] = None,
+      preview: Boolean = false
   )
 
   /** Full response for `POST /macro/create` and `GET /macro/{wid}`. */
@@ -143,11 +136,20 @@ object MacroResource {
       wid: Integer,
       name: String,
       description: String,
+      creationTime: Timestamp,
       lastModifiedTime: Timestamp,
       portSpec: PortSpec,
       category: Option[String],
       icon: Option[String],
-      usageCount: Int
+      usageCount: Int,
+      isOwner: Boolean,
+      ownerName: String,
+      // Operator types present in the macro body (markers included). The
+      // frontend maps these to input-port counts via its already-loaded
+      // OperatorMetadataService to decide "runnable" (0 external inputs AND a
+      // body source op). Kept as bare type strings so the list stays light and
+      // the backend needs no per-operator port metadata of its own.
+      bodyOperatorTypes: List[String]
   )
 
   /**
@@ -176,6 +178,25 @@ object MacroResource {
     Option(jsonb)
       .map(j => mapper.readTree(j.data()))
       .getOrElse(mapper.createArrayNode())
+
+  /**
+    * Pull the operator types out of a macro body's JSON (`operators[].operatorType`).
+    * Best-effort: malformed / null content yields Nil. This is all the runnable
+    * check needs from the backend -- the frontend does the port-count lookup.
+    */
+  private def bodyOperatorTypesOf(content: String): List[String] =
+    Option(content)
+      .flatMap(c =>
+        scala.util
+          .Try {
+            val ops = mapper.readTree(c).get("operators")
+            if (ops != null && ops.isArray)
+              ops.elements().asScala.flatMap(n => Option(n.get("operatorType")).map(_.asText)).toList
+            else Nil
+          }
+          .toOption
+      )
+      .getOrElse(Nil)
 }
 
 @Produces(Array(MediaType.APPLICATION_JSON))
@@ -244,11 +265,19 @@ class MacroResource extends LazyLogging {
     if (!hasReadAccess(wid, user.getUid)) {
       throw new ForbiddenException("No sufficient access privilege.")
     }
+    // By design this endpoint does NOT validate "runnable". The runnable gate
+    // (a macro must have no unbound inputs AND a body source op before it can
+    // be generated) lives on the frontend -- it is a product guardrail, not a
+    // security boundary. Bypassing it (e.g. a hand-crafted POST) only yields a
+    // workflow with unconnected inputs, i.e. a harmless Invalid Workflow the
+    // user must complete before running. Access control IS still enforced
+    // (hasReadAccess above). Intentional -- not a missing check.
     val name =
       if (req.name != null && req.name.trim.nonEmpty) req.name.trim else "Generated workflow"
 
     val workflow = new Workflow()
     workflow.setName(name)
+    req.description.filter(_.trim.nonEmpty).foreach(d => workflow.setDescription(d))
     workflow.setContent(req.content)
     workflow.setIsPublic(false)
     workflow.setKind(WorkflowKindEnum.WORKFLOW)
@@ -269,42 +298,6 @@ class MacroResource extends LazyLogging {
     newWid
   }
 
-  /**
-    * Save parameter values (and optional name/description) back onto the macro
-    * definition. Body operators are LogicalOps, so properties are top-level
-    * fields on each op node -- merge the submitted values in place.
-    */
-  @POST
-  @Consumes(Array(MediaType.APPLICATION_JSON))
-  @RolesAllowed(Array("REGULAR", "ADMIN"))
-  @Path("/{wid}/update-properties")
-  def updateMacroProperties(
-      @PathParam("wid") wid: Integer,
-      req: UpdateMacroPropertiesRequest,
-      @Auth sessionUser: SessionUser
-  ): Unit = {
-    val user = sessionUser.getUser
-    if (!hasWriteAccess(wid, user.getUid)) {
-      throw new ForbiddenException("No sufficient access privilege.")
-    }
-    val workflow = workflowDao.fetchOneByWid(wid)
-    val root = mapper.readTree(workflow.getContent).asInstanceOf[ObjectNode]
-    val operators = root.get("operators")
-    if (operators != null && operators.isArray) {
-      operators.elements().asScala.foreach { opNode =>
-        val on = opNode.asInstanceOf[ObjectNode]
-        val opId = Option(on.get("operatorID")).map(_.asText).getOrElse("")
-        req.operatorProperties.get(opId).foreach { props =>
-          props.foreach { case (k, v) => on.set(k, v) }
-        }
-      }
-    }
-    workflow.setContent(mapper.writeValueAsString(root))
-    req.name.filter(_.trim.nonEmpty).foreach(n => workflow.setName(n.trim))
-    req.description.foreach(d => workflow.setDescription(d))
-    workflowDao.update(workflow)
-    WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
-  }
 
   @GET
   @RolesAllowed(Array("REGULAR", "ADMIN"))
@@ -316,16 +309,24 @@ class MacroResource extends LazyLogging {
         WORKFLOW.WID,
         WORKFLOW.NAME,
         WORKFLOW.DESCRIPTION,
+        WORKFLOW.CREATION_TIME,
         WORKFLOW.LAST_MODIFIED_TIME,
         MACRO_METADATA.PORT_SPEC,
         MACRO_METADATA.CATEGORY,
-        MACRO_METADATA.ICON
+        MACRO_METADATA.ICON,
+        WORKFLOW_OF_USER.UID,
+        USER.NAME,
+        WORKFLOW.CONTENT
       )
       .from(WORKFLOW)
       .join(WORKFLOW_USER_ACCESS)
       .on(WORKFLOW_USER_ACCESS.WID.eq(WORKFLOW.WID))
       .leftJoin(MACRO_METADATA)
       .on(MACRO_METADATA.WID.eq(WORKFLOW.WID))
+      .leftJoin(WORKFLOW_OF_USER)
+      .on(WORKFLOW_OF_USER.WID.eq(WORKFLOW.WID))
+      .leftJoin(USER)
+      .on(USER.UID.eq(WORKFLOW_OF_USER.UID))
       .where(WORKFLOW.KIND.eq(WorkflowKindEnum.MACRO))
       .and(WORKFLOW_USER_ACCESS.UID.eq(uid))
       .fetch()
@@ -337,10 +338,14 @@ class MacroResource extends LazyLogging {
         r.value2(),
         r.value3(),
         r.value4(),
-        parsePortSpec(r.value5()),
-        Option(r.value6()),
+        r.value5(),
+        parsePortSpec(r.value6()),
         Option(r.value7()),
-        usageMap.getOrElse(r.value1().intValue(), 0)
+        Option(r.value8()),
+        usageMap.getOrElse(r.value1().intValue(), 0),
+        isOwner = r.value9() != null && r.value9() == uid,
+        ownerName = Option(r.value10()).getOrElse(""),
+        bodyOperatorTypes = bodyOperatorTypesOf(r.value11())
       )
     }.toList
   }

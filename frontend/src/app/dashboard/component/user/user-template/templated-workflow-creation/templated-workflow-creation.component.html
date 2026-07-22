@@ -49,23 +49,25 @@
   </div>
 
   <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
-    <button
-      *ngIf="macroId"
-      nz-button
-      class="tw-submit"
-      [disabled]="submitDisabled"
-      (click)="onUpdateMacro()">
-      Update Macro
-    </button>
-    <button
-      nz-button
-      nzType="primary"
-      class="tw-submit"
-      [class.tw-submit-idle]="submitIdle"
-      [disabled]="submitDisabled"
-      (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
-      {{ macroId ? "Create Workflow" : "Submit" }}
-    </button>
+    <p *ngIf="macroId && !macroRunnable" class="tw-gate-note">
+      This macro isn't runnable on its own (no data source in its body, or it has unbound inputs), so it
+      can't be generated into a workflow. Add a source operator to the macro first.
+    </p>
+    <span
+      nz-tooltip
+      [nzTooltipTitle]="macroId && !macroRunnable
+        ? 'Not runnable: the macro can\'t run standalone, so it can\'t be generated.'
+        : ''">
+      <button
+        nz-button
+        nzType="primary"
+        class="tw-submit"
+        [class.tw-submit-idle]="submitIdle"
+        [disabled]="submitDisabled || (!!macroId && !macroRunnable)"
+        (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
+        {{ macroId ? "Create Workflow" : "Submit" }}
+      </button>
+    </span>
   </div>
 </div>
 

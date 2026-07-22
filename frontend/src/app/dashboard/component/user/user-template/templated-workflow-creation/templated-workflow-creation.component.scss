@@ -290,3 +290,14 @@ texera-workspace {
   &:focus { outline: none; border-color: #1d6fdb; }
 }
 .tw-textarea { resize: vertical; min-height: 38px; }
+
+.tw-gate-note {
+  color: #d46b08;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  max-width: 640px;
+}

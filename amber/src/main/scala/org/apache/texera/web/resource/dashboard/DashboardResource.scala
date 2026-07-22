@@ -104,8 +104,6 @@ object DashboardResource {
         DatasetSearchQueryBuilder.constructQuery(uid, params, includePublic)
       case SearchQueryBuilder.TEMPLATE_RESOURCE_TYPE =>
         TemplateSearchQueryBuilder.constructQuery(uid, params, includePublic)
-      case SearchQueryBuilder.MACRO_RESOURCE_TYPE =>
-        MacroSearchQueryBuilder.constructQuery(uid, params, includePublic)
       case SearchQueryBuilder.ALL_RESOURCE_TYPE =>
         val q1 = WorkflowSearchQueryBuilder.constructQuery(uid, params, includePublic)
         val q3 = ProjectSearchQueryBuilder.constructQuery(uid, params, includePublic)

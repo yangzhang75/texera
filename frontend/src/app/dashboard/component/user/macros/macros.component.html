@@ -12,7 +12,12 @@
     No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
   </div>
 
-  <div class="macro-row" *ngFor="let m of macros" (click)="onGenerate(m)" title="Open to configure & generate a workflow">
+  <div
+    class="macro-row"
+    *ngFor="let m of macros"
+    [class.not-runnable]="!isRunnable(m)"
+    (click)="onGenerate(m)"
+    [title]="runnableTooltip(m)">
     <span
       class="runnable-dot"
       [class.runnable]="isRunnable(m)"
@@ -20,12 +25,90 @@
         ? 'Runnable: no unbound inputs — carries its own data source'
         : 'Not runnable: has ' + inCount(m) + ' unbound input(s); generated workflow will be invalid until you add a source'"></span>
 
-    <span class="macro-name">{{ m.name }}</span>
+    <nz-avatar
+      class="macro-avatar"
+      [ngStyle]="{ 'background-color': 'grey', 'vertical-align': 'middle' }"
+      [nzGap]="4"
+      [nzText]="'' + m.wid"
+      nzSize="default"></nz-avatar>
 
-    <span class="macro-ports">{{ inCount(m) }} in / {{ outCount(m) }} out</span>
+    <div class="macro-main">
+      <div class="macro-title-line">
+        <span *ngIf="editingNameWid !== m.wid" class="macro-name">{{ m.name }}</span>
+        <input
+          *ngIf="editingNameWid === m.wid"
+          #nameInput
+          class="macro-inline-input"
+          (click)="$event.stopPropagation()"
+          (focusout)="confirmRename(m, nameInput.value)"
+          (keyup.enter)="confirmRename(m, nameInput.value)"
+          value="{{ m.name }}"
+          placeholder="{{ m.name }}" />
 
-    <span class="runnable-label" [class.runnable]="isRunnable(m)">
-      {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
-    </span>
+        <button
+          nz-button
+          nzType="text"
+          nzSize="small"
+          nz-tooltip="Rename macro"
+          nzTooltipPlacement="bottom"
+          (click)="$event.stopPropagation(); editingNameWid = m.wid">
+          <i nz-icon nzType="edit" nzTheme="outline"></i>
+        </button>
+        <button
+          nz-button
+          nzType="text"
+          nzSize="small"
+          nz-tooltip="Edit description"
+          nzTooltipPlacement="bottom"
+          (click)="$event.stopPropagation(); editingDescriptionWid = m.wid">
+          <i nz-icon nzType="plus-square" nzTheme="outline"></i>
+        </button>
+
+        <i
+          *ngIf="m.isOwner"
+          class="macro-owner-icon"
+          nz-icon
+          nzType="user"
+          nzTheme="outline"
+          nz-tooltip="You are the owner"
+          nzTooltipPlacement="bottom"></i>
+        <i
+          *ngIf="m.isOwner === false"
+          class="macro-owner-icon"
+          nz-icon
+          nzType="team"
+          nzTheme="outline"
+          nz-tooltip="Shared by {{ m.ownerName }}"
+          nzTooltipPlacement="bottom"></i>
+
+        <span class="macro-spacer"></span>
+
+        <span class="macro-ports">{{ inCount(m) }} in / {{ outCount(m) }} out</span>
+        <span class="runnable-label" [class.runnable]="isRunnable(m)">
+          {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
+        </span>
+      </div>
+
+      <div class="macro-desc-line">
+        <span *ngIf="editingDescriptionWid !== m.wid" class="macro-desc">
+          {{ m.description || "No description" }}
+        </span>
+        <input
+          *ngIf="editingDescriptionWid === m.wid"
+          #descInput
+          class="macro-inline-input"
+          title="Description"
+          (click)="$event.stopPropagation()"
+          (focusout)="confirmDescription(m, descInput.value)"
+          (keyup.enter)="confirmDescription(m, descInput.value)"
+          value="{{ m.description }}"
+          maxlength="500" />
+      </div>
+
+      <div class="macro-meta-line">
+        <span>Last Modified: {{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
+        <span>Created: {{ m.creationTime | date: "yyyy-MM-dd HH:mm" }}</span>
+      </div>
+    </div>
   </div>
 </div>

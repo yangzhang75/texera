@@ -39,7 +39,7 @@
   </a>
   <!-- Jump to the Generate (fill) page for this macro. -->
   <a
-    *ngIf="isStandaloneMacroEdit"
+    *ngIf="isStandaloneMacroEdit && macroEditRunnable"
     class="macro-edit-banner__action"
     (click)="openGenerateFromMacro()"
     title="Generate an independent workflow from this macro">

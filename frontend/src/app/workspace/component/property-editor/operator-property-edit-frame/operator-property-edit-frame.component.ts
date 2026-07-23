@@ -602,9 +602,16 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
         const configurableSet = new Set(operator.configurableProperties ?? []);
 
+        // MacroInput/MacroOutput are boundary markers, not real operators; they
+        // are stripped when a macro is generated, so a "configurable" checkbox on
+        // them does nothing (checking it yields an empty Generate form). Only
+        // offer the checkbox on real operators.
+        const isMacroMarker =
+          operator.operatorType === "MacroInput" || operator.operatorType === "MacroOutput";
+
         ConfigurablePropertyWrapperComponent.setupFieldConfig(
           mappedField,
-          this.isTemplateMode(),
+          this.isTemplateMode() && !isMacroMarker,
           configurableSet.has(mappedField.key),
           (event: Event) => {
             const checked = (event.target as HTMLInputElement).checked;

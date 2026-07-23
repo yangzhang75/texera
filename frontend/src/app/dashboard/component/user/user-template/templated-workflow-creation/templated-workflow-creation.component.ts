@@ -84,10 +84,6 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
-  // Whitelist (opId -> configurable prop names) loaded from the macro's
-  // param_spec. Edited in the Edit-macro view; here it is read-only and only
-  // drives which fields the fill form renders.
-  public whitelist: Record<string, string[]> = {};
   // Basic info for the workflow that "Create Workflow" will produce.
   public genName = "";
   public genDescription = "";
@@ -267,19 +263,6 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       }
     }
     return content;
-  }
-
-  /**
-   * Apply the stored whitelist (param_spec, loaded in initFromMacro) onto each
-   * operator's configurableProperties, so the Generate form renders exactly the
-   * properties the macro author marked configurable in the Edit-macro view.
-   * (Whitelist EDITING lives in Edit-macro now; this page only fills values.)
-   */
-  private applyWhitelistToTemplate(): void {
-    if (!this.template) return;
-    this.template.operators.forEach(op => {
-      (op as { configurableProperties?: string[] }).configurableProperties = this.whitelist[op.operatorID] ?? [];
-    });
   }
 
   /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
@@ -519,16 +502,11 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
           detail.portSpec?.inputs?.length ?? 0,
           content.operators.map(o => o.operatorType)
         );
-        // Load the stored Template-mode whitelist from the macro's param_spec.
-        // Default (never configured, or param_spec is the initial []) = nothing
-        // configurable -> empty form until the user checks properties.
-        const rawSpec = detail.paramSpec;
-        this.whitelist =
-          rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)
-            ? (rawSpec as Record<string, string[]>)
-            : {};
+        // The configurable-property whitelist now travels ON the body operators
+        // (op.configurableProperties, set via the property-editor checkboxes in
+        // Edit macro and preserved through the macro body). The fill form is
+        // built straight from those — no separate whitelist source.
         this.template = content;
-        this.applyWhitelistToTemplate();
         this.templatedWorkflowDraftService.initialize(content);
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows

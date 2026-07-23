@@ -130,37 +130,6 @@ describe("MacroService.isMacroRunnable", () => {
   });
 });
 
-describe("MacroService.configurableCandidates", () => {
-  const service = makeService();
-
-  it("offers only simple scalar properties (string/number/integer/boolean)", () => {
-    expect(service.configurableCandidates("MixedOp")).toEqual(["condition", "limit", "keep"]);
-  });
-
-  it("excludes complex (object/array) and upstream-dependent (autofill) properties", () => {
-    const c = service.configurableCandidates("MixedOp");
-    expect(c).not.toContain("cfg");
-    expect(c).not.toContain("tags");
-    expect(c).not.toContain("attr");
-  });
-
-  it("returns [] for an unknown operator type (metadata not loaded)", () => {
-    expect(service.configurableCandidates("Nope")).toEqual([]);
-  });
-});
-
-describe("MacroService.updateMacroConfigurableProperties", () => {
-  it("POSTs the whitelist to the macro's configurable-properties endpoint", () => {
-    const post = vi.fn().mockReturnValue({ subscribe: () => ({}) });
-    const service = makeService({ post });
-    service.updateMacroConfigurableProperties(7, { "Filter-op": ["condition"] });
-    expect(post).toHaveBeenCalledTimes(1);
-    const [url, body] = post.mock.calls[0];
-    expect(url).toContain("/macro/7/configurable-properties");
-    expect(body).toEqual({ configurableProperties: { "Filter-op": ["condition"] } });
-  });
-});
-
 describe("MacroService.workflowContentToMacroBody", () => {
   const service = makeService();
   const content: any = {
@@ -176,6 +145,7 @@ describe("MacroService.workflowContentToMacroBody", () => {
         operatorID: "Filter-1",
         operatorType: "Filter",
         operatorProperties: { condition: "x" },
+        configurableProperties: ["condition"],
         inputPorts: [{ portID: "input-0" }],
         outputPorts: [{ portID: "output-0" }],
       },
@@ -202,6 +172,12 @@ describe("MacroService.workflowContentToMacroBody", () => {
     const filter = body.operators.find((o: any) => o.operatorID === "Filter-1") as any;
     expect(filter.condition).toBe("x"); // flattened out of operatorProperties
     expect(filter.operatorType).toBe("Filter");
+  });
+
+  it("preserves the configurableProperties whitelist as a top-level body field", () => {
+    const body = service.workflowContentToMacroBody(content);
+    const filter = body.operators.find((o: any) => o.operatorID === "Filter-1") as any;
+    expect(filter.configurableProperties).toEqual(["condition"]);
   });
 
   it("maps links to MacroLinks with port ordinals parsed from portIDs", () => {

@@ -108,16 +108,6 @@ object MacroResource {
   )
 
   /**
-    * Request body for `POST /macro/{wid}/configurable-properties`. Maps each
-    * body operator id to the list of its property names that are exposed as
-    * configurable in Template mode (the whitelist). Stored in
-    * `macro_metadata.param_spec` -- the macro body content is never touched.
-    */
-  case class UpdateConfigurablePropertiesRequest(
-      configurableProperties: Map[String, List[String]] = Map.empty
-  )
-
-  /**
     * Request body for `POST /macro/{wid}/body`. `content` is the edited macro
     * body serialized as a MacroBody JSON string (operators incl. MacroInput/
     * MacroOutput markers, links, inputs, outputs) -- the same shape the macro's
@@ -459,33 +449,6 @@ class MacroResource extends LazyLogging {
       .filter(_.getKind == WorkflowKindEnum.MACRO)
       .map(_.getContent)
       .getOrElse(throw new NotFoundException(s"Macro $wid not found"))
-  }
-
-  /**
-    * Save the Template-mode configurable-property whitelist for this macro.
-    * The whitelist (opId -> configurable prop names) is stored in
-    * `macro_metadata.param_spec` ONLY -- the macro body content is untouched,
-    * so no workflow version is created and LIVE instances are unaffected. This
-    * is a macro-definition write (write access required); it changes what
-    * future Template-mode generations expose, nothing else.
-    */
-  @POST
-  @Consumes(Array(MediaType.APPLICATION_JSON))
-  @RolesAllowed(Array("REGULAR", "ADMIN"))
-  @Path("/{wid}/configurable-properties")
-  def updateConfigurableProperties(
-      @PathParam("wid") wid: Integer,
-      req: UpdateConfigurablePropertiesRequest,
-      @Auth sessionUser: SessionUser
-  ): Unit = {
-    val uid = sessionUser.getUser.getUid
-    if (!hasWriteAccess(wid, uid)) {
-      throw new ForbiddenException("No sufficient access privilege.")
-    }
-    val metadata = Option(macroMetadataDao.fetchOneByWid(wid))
-      .getOrElse(throw new NotFoundException(s"Macro $wid metadata missing"))
-    metadata.setParamSpec(jsonbOfNode(mapper.valueToTree[JsonNode](req.configurableProperties)))
-    macroMetadataDao.update(metadata)
   }
 
   /**

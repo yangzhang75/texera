@@ -39,7 +39,6 @@ import org.apache.texera.dao.jooq.generated.tables.pojos.{
 }
 import org.apache.texera.web.resource.dashboard.user.workflow.MacroResource.{
   GenerateWorkflowRequest,
-  UpdateConfigurablePropertiesRequest,
   UpdateMacroBodyRequest
 }
 import org.jooq.JSONB
@@ -234,47 +233,6 @@ class MacroResourceSpec
     summary should be(defined)
     summary.get.bodyOperatorTypes should contain allOf ("CSVFileScan", "Filter", "PythonUDFV2")
     summary.get.isOwner shouldBe true
-  }
-
-  "updateConfigurableProperties" should "persist the Template-mode whitelist into param_spec (read back via get)" in {
-    val macroWid = createTestMacro(macroBody("Filter", "CSVFileScan"))
-
-    resource.updateConfigurableProperties(
-      macroWid,
-      UpdateConfigurablePropertiesRequest(Map("Filter-op-0" -> List("condition", "keepValue"))),
-      sessionUser(testUid)
-    )
-
-    val paramSpec = resource.get(macroWid, sessionUser(testUid)).paramSpec
-    val stored = paramSpec.get("Filter-op-0")
-    stored should not be null
-    stored.asScala.map(_.asText).toList should contain allOf ("condition", "keepValue")
-  }
-
-  it should "leave the macro body content untouched (whitelist lives only in param_spec)" in {
-    val body = macroBody("Filter", "CSVFileScan")
-    val macroWid = createTestMacro(body)
-
-    resource.updateConfigurableProperties(
-      macroWid,
-      UpdateConfigurablePropertiesRequest(Map("Filter-op-0" -> List("condition"))),
-      sessionUser(testUid)
-    )
-
-    // The stored macro content is byte-for-byte what we created it with.
-    workflowDao.fetchOneByWid(macroWid).getContent shouldBe body
-  }
-
-  it should "reject a caller without write access to the macro" in {
-    val macroWid = createTestMacro(macroBody("Filter", "CSVFileScan"))
-
-    assertThrows[ForbiddenException] {
-      resource.updateConfigurableProperties(
-        macroWid,
-        UpdateConfigurablePropertiesRequest(Map("Filter-op-0" -> List("condition"))),
-        sessionUser(otherUid)
-      )
-    }
   }
 
   "updateMacroBody" should "overwrite the body content and refresh port_spec from the markers" in {

@@ -66,7 +66,6 @@ import { MiniMapComponent } from "./workflow-editor/mini-map/mini-map.component"
 import { LeftPanelComponent } from "./left-panel/left-panel.component";
 import { AgentPanelComponent } from "./agent/agent-panel/agent-panel.component";
 import { PropertyEditorComponent } from "./property-editor/property-editor.component";
-import { MacroConfigurablePropertiesComponent } from "./macro-configurable-properties/macro-configurable-properties.component";
 import { TemplateService } from "../../dashboard/service/user/template/template.service";
 import { Template } from "../../common/type/template";
 
@@ -100,7 +99,6 @@ interface WorkspaceContext {
     NgIf,
     AgentPanelComponent,
     PropertyEditorComponent,
-    MacroConfigurablePropertiesComponent,
   ],
 })
 export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -127,9 +125,6 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.macroEditMode && this.macroEditWid !== undefined && String(this.macroEditWid) === this.parentWorkflowId;
   }
   public macroSaving = false;
-  // Collapse state of the right-docked Configurable-properties panel (open by
-  // default; collapse to free the right edge for the property editor).
-  public configDockCollapsed = false;
   // Whether the macro being edited is runnable on its own (0 unbound inputs +
   // a body source op). Gates the "Generate workflow" entry — not-runnable
   // macros can be edited but offer no Generate action (no dead end).

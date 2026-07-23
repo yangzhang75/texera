@@ -364,6 +364,11 @@ export class SharedModelChangeHandler {
             this.handlePortEvent(event, operatorID, true);
           } else if (event.path.includes("outputPorts")) {
             this.handlePortEvent(event, operatorID, false);
+          } else if (event.path.includes("configurableProperties")) {
+            // The configurable-property whitelist (set via the property-editor
+            // checkboxes) is metadata attached to the operator; it doesn't
+            // affect the rendered graph, so there's no canvas reaction to
+            // dispatch. It's persisted with the workflow / macro body content.
           } else {
             throw new Error(`undefined operation on shared type: .${event}`);
           }

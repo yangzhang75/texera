@@ -19,7 +19,7 @@
 
 import { MacrosComponent } from "./macros.component";
 import { MacroSummary } from "../../../../workspace/service/macro/macro.service";
-import { USER_WORKSPACE } from "../../../../app-routing.constant";
+import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   return {
@@ -34,7 +34,7 @@ function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   } as MacroSummary;
 }
 
-describe("MacrosComponent row open (Phase 2 C4: gate relocated to the page toggle)", () => {
+describe("MacrosComponent", () => {
   let runnable: boolean;
   let navigate: ReturnType<typeof vi.fn>;
   let component: MacrosComponent;
@@ -42,39 +42,62 @@ describe("MacrosComponent row open (Phase 2 C4: gate relocated to the page toggl
   beforeEach(() => {
     runnable = true;
     navigate = vi.fn();
-    const macroServiceStub = {
-      isMacroRunnable: () => runnable,
-    } as any;
-    const routerStub = { navigate } as any;
-    component = new MacrosComponent(macroServiceStub, {} as any, {} as any, {} as any, routerStub);
+    const macroServiceStub = { isMacroRunnable: () => runnable } as any;
+    // constructor: (macroService, notificationService, operatorMetadataService, router)
+    component = new MacrosComponent(macroServiceStub, {} as any, {} as any, { navigate } as any);
   });
 
-  it("opens the editable macro editor (drill-down route) for a runnable macro", () => {
+  it("runnable macro opens the Generate (fill) page by default", () => {
     runnable = true;
     const m = macro();
     component.onOpen(m);
-    expect(navigate).toHaveBeenCalledWith([USER_WORKSPACE, m.wid, "macro", m.wid]);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
   });
 
-  it("STILL opens the editor for a not-runnable macro (editing is always allowed)", () => {
+  it("not-runnable macro opens the Edit editor by default", () => {
     runnable = false;
     const m = macro({ portSpec: { inputs: [{ index: 0 }], outputs: [] } });
     component.onOpen(m);
     expect(navigate).toHaveBeenCalledWith([USER_WORKSPACE, m.wid, "macro", m.wid]);
   });
 
-  it("does not navigate while an inline name edit is in progress on the row", () => {
-    runnable = true;
+  it("explicit row actions always route the same way regardless of runnability", () => {
     const m = macro();
-    component.editingNameWid = m.wid;
-    component.onOpen(m);
-    expect(navigate).not.toHaveBeenCalled();
+    component.onGenerate(m);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
+    component.onEditMacro(m);
+    expect(navigate).toHaveBeenCalledWith([USER_WORKSPACE, m.wid, "macro", m.wid]);
   });
 
-  it("isRunnable delegates to the shared MacroService criterion (informational label)", () => {
+  it("isRunnable delegates to the shared MacroService criterion", () => {
     runnable = false;
     expect(component.isRunnable(macro())).toBe(false);
     runnable = true;
     expect(component.isRunnable(macro())).toBe(true);
+  });
+
+  it("filteredMacros applies the name search and the Runnable filter", () => {
+    component.macros = [macro({ wid: 1, name: "alpha" }), macro({ wid: 2, name: "beta" })];
+
+    component.filterMode = "all";
+    component.searchText = "";
+    expect(component.filteredMacros.length).toBe(2);
+
+    component.searchText = "alph";
+    expect(component.filteredMacros.map(x => x.wid)).toEqual([1]);
+
+    component.searchText = "";
+    component.filterMode = "runnable";
+    runnable = true;
+    expect(component.filteredMacros.length).toBe(2);
+    runnable = false;
+    expect(component.filteredMacros.length).toBe(0);
+  });
+
+  it("metaLine folds the op chain, op count, and edited time into one line", () => {
+    const line = component.metaLine(macro({ bodyOperatorTypes: ["CSVFileScan", "Filter", "MacroOutput"] }));
+    expect(line).toContain("CSVFileScan → Filter"); // markers dropped
+    expect(line).toContain("2 ops");
+    expect(line).toContain("edited");
   });
 });

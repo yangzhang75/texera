@@ -9,131 +9,191 @@
 }
 
 .macros-subtitle {
-  color: rgba(0, 0, 0, 0.55);
-  margin: 0 0 20px;
+  color: rgba(0, 0, 0, 0.45);
+  margin: 0 0 16px;
   max-width: 720px;
+  font-size: 13px;
+}
+
+/* --------------------------------------------------------------------------
+ * Toolbar: search + All / Runnable segmented filter. Tokens mirror the
+ * Workflows list (greys, radii, font sizes) so both pages read as one system.
+ * ------------------------------------------------------------------------ */
+.macros-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.macros-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.45);
+
+  &:focus-within {
+    border-color: #1890ff;
+  }
+
+  input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.88);
+
+    &::placeholder {
+      color: rgba(0, 0, 0, 0.35);
+    }
+  }
+}
+
+.macros-filter {
+  display: inline-flex;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+
+  button {
+    border: none;
+    background: #fff;
+    height: 34px;
+    padding: 0 16px;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+
+    & + button {
+      border-left: 1px solid #e8e8e8;
+    }
+
+    &.active {
+      background: #e6f4ff;
+      color: #1890ff;
+      font-weight: 500;
+    }
+  }
 }
 
 .macros-empty {
   color: rgba(0, 0, 0, 0.45);
   padding: 24px 0;
+  font-size: 14px;
 }
 
 /* --------------------------------------------------------------------------
- * Row visuals mirror the Workflows list (`list-item.component`) design tokens
- * so the two pages read as one system (same row height, icon size, greys,
- * truncation, hover-reveal edit buttons). Class names match `list-item` on
- * purpose; Angular view-encapsulation scopes them, so the values are mirrored
- * here rather than importing the other component's scoped stylesheet.
+ * The list is ONE bordered, rounded container; rows are split by thin
+ * dividers rather than a stack of separate cards.
  * ------------------------------------------------------------------------ */
-.list-item-card {
-  width: 100%;
-  background-color: white;
-  position: relative;
-  min-height: 65px;
-  height: auto;
+.macros-list {
+  border: 1px solid #ebebeb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.macro-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #f0f0f0;
+  }
 
   &:hover {
-    background-color: #f0f0f0;
+    background: #fafafa;
+  }
 
-    .edit-button {
-      display: flex;
+  &__icon {
+    font-size: 22px;
+    color: rgba(0, 0, 0, 0.45);
+    flex: 0 0 auto;
+  }
+
+  &__main {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__titleline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__name {
+    font-size: 15px;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.88);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60vh;
+  }
+
+  &__meta {
+    margin-top: 2px;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.45);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__avatar {
+    flex: 0 0 auto;
+    opacity: 0.85;
+  }
+
+  &__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  // Quiet ghost Edit button.
+  &__edit {
+    color: rgba(0, 0, 0, 0.6);
+
+    &:hover {
+      color: #1890ff;
+    }
+  }
+
+  // Not-runnable Generate: weakened grey so colour alone signals "can't
+  // generate cleanly" (runnable stays the accent-blue nzType=primary).
+  &__generate.weak {
+    background: #f5f5f5;
+    border-color: #ebebeb;
+    color: rgba(0, 0, 0, 0.4);
+    box-shadow: none;
+
+    &:hover {
+      background: #eee;
+      border-color: #e0e0e0;
+      color: rgba(0, 0, 0, 0.55);
     }
   }
 }
 
-.macro-row-card {
-  cursor: pointer;
-  margin-bottom: 6px;
-}
-
-:host ::ng-deep nz-card.list-item-card.ant-card:hover .ant-card-body {
-  cursor: pointer;
-}
-
-.type-icon {
-  font-size: 26px;
-  color: rgba(0, 0, 0, 0.55);
-  padding: 0 4px;
-}
-
-/* ID: lowest visual weight — small italic grey, no circle. */
-.workflow-id {
-  padding: 6px;
-
-  i {
-    font-size: 13px;
-    font-style: italic;
-    color: rgba(0, 0, 0, 0.4);
-  }
-}
-
-.edit-button {
-  display: none;
-
-  button {
-    height: 25px;
-  }
-}
-
-.resource-name-group {
-  min-width: 0;
-}
-
-.truncate-single-line {
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-  max-width: 80vh;
-}
-
-.resource-name {
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.resource-description {
-  font-size: 14px;
-  font-weight: 400;
-  color: #333333;
-  transition: all 0.2s ease;
-}
-
-.list-item-card:hover .resource-description {
-  color: #1e90ff;
-}
-
-.resource-info {
-  font-size: 13px;
-  color: grey;
-}
-
-.resource-name-edit-input {
-  font-size: 17px;
-  font-weight: 600;
-  padding: 0;
-  margin: 4px 0;
-  outline: none;
-  height: 23px;
-  border: 1px solid #d9d9d9;
-}
-
-/* two explicit row actions (Edit macro / Generate), right-aligned. */
-.macro-row-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-  padding: 0 4px;
-
-  button {
-    height: 26px;
-  }
-}
-
-/* runnable state — the single expression of runnability (no separate dot). */
+/* runnable state — one pill spec, colour-only difference (green vs grey). */
 .runnable-label {
+  flex: 0 0 auto;
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 1px 8px;
   border-radius: 10px;
   background: #f0f0f0;
   color: rgba(0, 0, 0, 0.5);

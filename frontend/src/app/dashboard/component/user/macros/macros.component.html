@@ -3,122 +3,83 @@
     <h2>Macros</h2>
     <p class="macros-subtitle">
       Reusable, encapsulated sub-workflows. Generate an independent workflow from a runnable one, or use Edit macro
-      to change its body and configurable properties. The label shows whether a macro can run on its own.
+      to change its body and configurable properties.
     </p>
+  </div>
+
+  <!-- search + All / Runnable filter (client-side view only) -->
+  <div class="macros-toolbar">
+    <span class="macros-search">
+      <i nz-icon nzType="search" nzTheme="outline"></i>
+      <input [(ngModel)]="searchText" placeholder="Search macros" />
+    </span>
+    <span class="macros-filter">
+      <button [class.active]="filterMode === 'all'" (click)="filterMode = 'all'">All</button>
+      <button [class.active]="filterMode === 'runnable'" (click)="filterMode = 'runnable'">Runnable</button>
+    </span>
   </div>
 
   <div *ngIf="isLoading" class="macros-empty">Loading…</div>
   <div *ngIf="!isLoading && macros.length === 0" class="macros-empty">
     No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
   </div>
+  <div *ngIf="!isLoading && macros.length > 0 && filteredMacros.length === 0" class="macros-empty">
+    No macros match your search.
+  </div>
 
-  <nz-card
-    *ngFor="let m of macros"
-    class="list-item-card macro-row-card"
-    [nzBodyStyle]="{ padding: '3px' }"
-    (click)="onOpen(m)"
-    [title]="runnableTooltip(m)">
-    <div nz-row nzAlign="middle">
-      <!-- type icon -->
-      <div nz-col nzFlex="0" class="type-icon">
-        <i nz-icon nzType="experiment" nzTheme="outline"></i>
-      </div>
+  <!-- one bordered container; rows split by thin dividers (not separate cards) -->
+  <div class="macros-list" *ngIf="!isLoading && filteredMacros.length > 0">
+    <div
+      *ngFor="let m of filteredMacros"
+      class="macro-row"
+      (click)="onOpen(m)"
+      [title]="runnableTooltip(m)">
+      <!-- flask icon (matches the left-nav Macros icon) -->
+      <i class="macro-row__icon" nz-icon nzType="experiment" nzTheme="outline"></i>
 
-      <!-- id: small italic grey, lowest visual weight -->
-      <div nz-col nzFlex="0" class="workflow-id"><i>#{{ m.wid }}</i></div>
-
-      <!-- inline-edit actions: hidden until row hover -->
-      <div nz-col nzFlex="30px">
-        <div class="edit-button">
-          <button
-            nz-button
-            nzType="text"
-            title="Rename"
-            (click)="editingNameWid = m.wid; $event.stopPropagation()">
-            <i nz-icon nzType="edit"></i>
-          </button>
+      <!-- main: name + runnable pill, then one muted meta line -->
+      <div class="macro-row__main">
+        <div class="macro-row__titleline">
+          <span class="macro-row__name">{{ m.name }}</span>
+          <span class="runnable-label" [class.runnable]="isRunnable(m)">
+            {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
+          </span>
         </div>
-        <div class="edit-button">
-          <button
-            nz-button
-            nzType="text"
-            title="Edit description"
-            (click)="editingDescriptionWid = m.wid; $event.stopPropagation()">
-            <i nz-icon nzType="form"></i>
-          </button>
-        </div>
+        <div class="macro-row__meta">{{ metaLine(m) }}</div>
       </div>
 
-      <!-- name + one-line description/subtitle -->
-      <div nz-col nzFlex="1" class="resource-name-group">
-        <div class="resource-name truncate-single-line" *ngIf="editingNameWid !== m.wid">{{ m.name }}</div>
-        <input
-          *ngIf="editingNameWid === m.wid"
-          #nameInput
-          class="resource-name-edit-input"
-          value="{{ m.name }}"
-          (click)="$event.stopPropagation()"
-          (blur)="confirmRename(m, nameInput.value)"
-          (keydown.enter)="confirmRename(m, nameInput.value)" />
-        <div class="resource-description truncate-single-line" *ngIf="editingDescriptionWid !== m.wid">
-          {{ descriptionOrSubtitle(m) }}
-        </div>
-        <input
-          *ngIf="editingDescriptionWid === m.wid"
-          #descInput
-          class="resource-name-edit-input"
-          value="{{ m.description }}"
-          maxlength="500"
-          (click)="$event.stopPropagation()"
-          (blur)="confirmDescription(m, descInput.value)"
-          (keydown.enter)="confirmDescription(m, descInput.value)" />
-      </div>
+      <!-- owner avatar (carries the owner star), de-emphasized -->
+      <texera-user-avatar
+        class="macro-row__avatar"
+        userColor="#1E90FF"
+        [userName]="m.ownerName || 'User'"
+        [isOwner]="!!m.isOwner">
+      </texera-user-avatar>
 
-      <!-- owner avatar (same component the Workflows list uses) -->
-      <div nz-col nzFlex="50px" class="resource-info">
-        <texera-user-avatar
-          userColor="#1E90FF"
-          [userName]="m.ownerName || 'User'"
-          [isOwner]="!!m.isOwner">
-        </texera-user-avatar>
-      </div>
-
-      <!-- ports -->
-      <div nz-col nzFlex="70px" class="resource-info">
-        Ports:<br />{{ inCount(m) }} in / {{ outCount(m) }} out
-      </div>
-
-      <!-- runnable label (single expression of runnability) -->
-      <div nz-col nzFlex="95px" class="resource-info">
-        <span class="runnable-label" [class.runnable]="isRunnable(m)">
-          {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
-        </span>
-      </div>
-
-      <!-- compact created / edited, relative time, matching the Workflows list -->
-      <div nz-col nzFlex="90px" class="resource-info">Created:<br />{{ formatRelativeTime(epoch(m.creationTime)) }}</div>
-      <div nz-col nzFlex="90px" class="resource-info">Edited:<br />{{ formatRelativeTime(epoch(m.lastModifiedTime)) }}</div>
-
-      <!-- two explicit actions per row, for every macro: Edit macro / Generate workflow.
-           Both stopPropagation so they don't also fire the card's default open. -->
-      <div nz-col nzFlex="180px" class="macro-row-actions">
+      <!-- Edit (ghost) + Generate (blue when runnable, grey/weak when not) -->
+      <div class="macro-row__actions">
         <button
           nz-button
-          nzType="default"
-          nzSize="small"
+          nzType="text"
+          class="macro-row__edit"
           title="Edit macro — edit its body and configurable properties"
           (click)="onEditMacro(m); $event.stopPropagation()">
-          <i nz-icon nzType="experiment" nzTheme="outline"></i> Edit macro
+          <i nz-icon nzType="edit" nzTheme="outline"></i> Edit
         </button>
         <button
           nz-button
-          nzType="primary"
-          nzSize="small"
-          title="Generate a workflow from this macro"
+          [nzType]="isRunnable(m) ? 'primary' : 'default'"
+          class="macro-row__generate"
+          [class.weak]="!isRunnable(m)"
+          [title]="
+            isRunnable(m)
+              ? 'Generate a workflow from this macro'
+              : 'Generate — not runnable, so it produces an Invalid Workflow you complete by adding a source'
+          "
           (click)="onGenerate(m); $event.stopPropagation()">
           <i nz-icon nzType="thunderbolt" nzTheme="outline"></i> Generate
         </button>
       </div>
     </div>
-  </nz-card>
+  </div>
 </div>

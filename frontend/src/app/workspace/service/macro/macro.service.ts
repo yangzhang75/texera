@@ -295,7 +295,9 @@ export class MacroService {
       operatorProperties: {
         macroId: detail.wid.toString(),
         macroVersion: 1,
-        linkMode: "LIVE",
+        // Default SNAPSHOT (a self-contained copy — safest). The editor's
+        // reconcileMacroSnapshot embeds the body right after the node is added.
+        linkMode: "SNAPSHOT",
         inputPortCount: built.inputPortCount,
         outputPortCount: built.outputPortCount,
         displayName: detail.name,
@@ -1030,6 +1032,19 @@ export class MacroService {
     return this.http.post<void>(
       `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/configurable-properties`,
       { configurableProperties }
+    );
+  }
+
+  /**
+   * Fetch the macro definition's body (MacroBody JSON string) for embedding into
+   * a SNAPSHOT macro-node instance. Backend returns the raw content as a JSON
+   * string; callers JSON.parse it into a MacroBody object for the node's
+   * `snapshot` property.
+   */
+  public snapshotIntoInstance(macroId: number | string): Observable<string> {
+    return this.http.post<string>(
+      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/snapshot-into-instance`,
+      {}
     );
   }
 

@@ -189,6 +189,22 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
       .pipe(untilDestroyed(this))
       .subscribe(() => this.macroService.prefetchBindingsForOperators(graph.getAllOperators()));
 
+    // Keep each Macro node's `snapshot` consistent with its linkMode:
+    //   SNAPSHOT + no body → embed the macro body (freeze a copy);
+    //   LIVE + body present → drop the body (reference the definition).
+    // Runs on insert, on any property change (e.g. switching Link Mode in the
+    // property panel), and for existing ops on load. Guarded to editable
+    // canvases only (skips read-only previews).
+    graph.getAllOperators().forEach(op => this.reconcileMacroSnapshot(op));
+    graph
+      .getOperatorAddStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(op => this.reconcileMacroSnapshot(op));
+    graph
+      .getOperatorPropertyChangeStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(({ operator }) => this.reconcileMacroSnapshot(operator));
+
     // Keep the result service's drill-down alias map in sync with the URL —
     // when we're on `?instance=…`, body-relative IDs on canvas should resolve
     // to their post-expansion runtime UUIDs so live execution results show up
@@ -534,6 +550,51 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     const macroId = this.route.snapshot.paramMap.get("macroId");
     if (!macroId || !instanceId) return undefined;
     return instanceId;
+  }
+
+  /**
+   * Keep a Macro node's embedded `snapshot` consistent with its `linkMode`:
+   *   SNAPSHOT + no snapshot → fetch + embed the macro body (freeze a copy);
+   *   LIVE + snapshot present → drop the embedded body (reference the definition).
+   * No-op otherwise, so it converges after the single corrective setOperatorProperty.
+   * Skipped on read-only canvases (previews) — only editable instances mutate.
+   */
+  private reconcileMacroSnapshot(op: OperatorPredicate): void {
+    if (op?.operatorType !== "Macro") return;
+    if (!this.workflowActionService.checkWorkflowModificationEnabled()) return;
+    const props = op.operatorProperties ?? {};
+    const macroId = props["macroId"];
+    if (!macroId) return;
+    const linkMode = props["linkMode"];
+    if (linkMode === "SNAPSHOT" && !props["snapshot"]) {
+      this.macroService
+        .snapshotIntoInstance(macroId as string)
+        .pipe(untilDestroyed(this))
+        .subscribe({
+          next: content => {
+            try {
+              const body = JSON.parse(content);
+              const cur = this.workflowActionService.getTexeraGraph().getOperator(op.operatorID);
+              if (!cur) return;
+              this.workflowActionService.setOperatorProperty(op.operatorID, {
+                ...cur.operatorProperties,
+                snapshot: body,
+              });
+            } catch {
+              /* malformed body — leave the node as-is */
+            }
+          },
+          error: () => {
+            /* couldn't fetch (no access / deleted) — leave the node as-is */
+          },
+        });
+    } else if (linkMode === "LIVE" && props["snapshot"]) {
+      const cur = this.workflowActionService.getTexeraGraph().getOperator(op.operatorID);
+      if (!cur) return;
+      const next = { ...cur.operatorProperties };
+      delete next["snapshot"];
+      this.workflowActionService.setOperatorProperty(op.operatorID, next);
+    }
   }
 
   /**

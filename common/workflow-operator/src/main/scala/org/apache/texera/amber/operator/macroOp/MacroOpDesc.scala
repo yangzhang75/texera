@@ -51,12 +51,16 @@ class MacroOpDesc extends LogicalOp {
 
   @JsonProperty(value = "linkMode", required = true)
   @JsonSchemaTitle("Link Mode")
-  @JsonPropertyDescription("Reference mode for the macro definition (LIVE = re-expanded at compile time).")
-  // Only LIVE is wired end-to-end. SNAPSHOT (embedded body) was never wired on
-  // the frontend, so it's constrained out of the property panel to avoid a
-  // dropdown option that looks selectable but does nothing.
-  @JsonSchemaInject(json = """{"enum": ["LIVE"]}""")
-  var linkMode: String = MacroOpDesc.LIVE
+  @JsonPropertyDescription(
+    "SNAPSHOT = freeze a copy of the macro body into this node (edits to the " +
+      "definition never affect it). LIVE = reference the definition at a pinned " +
+      "version (you're prompted before adopting a newer version)."
+  )
+  // Both modes are wired: SNAPSHOT embeds the body (the frontend fills
+  // `snapshot` on insert / when switched here); LIVE re-expands from the
+  // registry at the pinned version. Default SNAPSHOT — a self-contained copy.
+  @JsonSchemaInject(json = """{"enum": ["SNAPSHOT", "LIVE"]}""")
+  var linkMode: String = MacroOpDesc.SNAPSHOT
 
   @JsonProperty(value = "snapshot")
   @JsonSchemaTitle("Snapshot")

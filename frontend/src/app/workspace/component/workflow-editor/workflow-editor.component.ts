@@ -853,6 +853,16 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
             const macroId = op?.operatorProperties?.["macroId"];
             if (op?.operatorType === "Macro" && macroId) {
               const parentWid = this.route.snapshot.params.id ?? "";
+              // Drill-down needs a parent workflow wid in the URL. An embedded
+              // preview (e.g. the macro Generate page at /user/macros/:macroId)
+              // has no `:id`, so navigating would go to `/user/workflow//macro/...`
+              // -> a blank page (and tears down this embedded graph mid-stream,
+              // triggering "operator ... does not exist" from stale listeners).
+              // In that context, drilling into a nested macro isn't supported
+              // yet -- just don't navigate.
+              if (!parentWid) {
+                return;
+              }
               try {
                 sessionStorage.setItem(
                   "macroDrilldownParentContext",

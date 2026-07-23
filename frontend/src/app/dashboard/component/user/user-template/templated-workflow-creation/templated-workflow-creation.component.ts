@@ -20,7 +20,7 @@
 import {FormlyFieldConfig, FormlyModule} from "@ngx-formly/core";
 import {FormlyJsonschema} from "@ngx-formly/core/json-schema";
 import {FormGroup, ReactiveFormsModule} from "@angular/forms";
-import {AfterViewInit, Component} from "@angular/core";
+import {AfterViewInit, Component, OnInit} from "@angular/core";
 import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
@@ -79,7 +79,7 @@ interface ConfigurableSection {
     WorkspaceComponent,
   ],
 })
-export class TemplatedWorkflowCreationComponent implements AfterViewInit {
+export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit {
   public tid: number | undefined;
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
@@ -361,7 +361,9 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   public onCreateWorkflowFromMacro(): void {
     if (!this.macroId || !this.workflowReady || !this.macroRunnable) return;
     const content = this.buildMacroContentWithParams();
-    const name = this.genName?.trim() || "Generated workflow";
+    // Clean default name: the "New workflow name" field, else the macro's own
+    // name (never a placeholder / timestamp).
+    const name = this.genName?.trim() || this.macroName?.trim() || "Generated workflow";
     const description = this.genDescription?.trim() || undefined;
     this.macroService
       .generateWorkflowFromMacro(this.macroId, content, name, false, description)
@@ -369,7 +371,13 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       .subscribe({
         next: newWid => {
           this.notificationService.success("Workflow generated. Find it under Your Work > Workflows.");
-          this.router.navigate([USER_WORKSPACE, newWid]);
+          // Hard navigation (not router.navigate): this page embeds a
+          // WorkspaceComponent that shares the singleton WorkflowActionService
+          // with the target workspace. An SPA transition reuses that state and
+          // races YJS replay vs reloadWorkflow, leaving the new canvas
+          // transiently blank. A full reload gives the target a clean slate --
+          // same reason the macro drill-down uses window.location.href.
+          window.location.href = `${USER_WORKSPACE}/${newWid}`;
         },
         error: () => this.notificationService.error("Failed to generate workflow."),
       });
@@ -466,6 +474,22 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     });
 
     return sections;
+  }
+
+  ngOnInit(): void {
+    // Resolve macroId/tid + the initial page mode SYNCHRONOUSLY, before the
+    // first change-detection pass. The heavy data load stays in ngAfterViewInit
+    // (needs the embedded workspace ViewChild). Setting macroId here keeps the
+    // header title stable from the first render -- otherwise it flips from
+    // "Build workflow from template" to "Edit macro" after the view is checked,
+    // which is the NG0100 ExpressionChangedAfterItHasBeenChecked error.
+    const macroParam = this.route.snapshot.params.macroId;
+    if (macroParam) {
+      this.macroId = Number(macroParam);
+      this.pageMode = "macro";
+    } else {
+      this.tid = this.route.snapshot.params.tid;
+    }
   }
 
   ngAfterViewInit(): void {

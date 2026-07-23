@@ -86,6 +86,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
+  // When this Generate page was reached by drilling into a NESTED macro from an
+  // outer macro's preview, `ret` is the outer page's full URL to return to. It
+  // chains: the outer URL itself carries its own `ret`, so multi-level back works.
+  public returnUrl: string | undefined;
   // Basic info for the workflow that "Create Workflow" will produce.
   public genName = "";
   public genDescription = "";
@@ -416,6 +420,13 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     } else {
       this.tid = this.route.snapshot.params.tid;
     }
+    const ret = this.route.snapshot.queryParams["ret"];
+    if (ret) this.returnUrl = ret;
+  }
+
+  /** Return to the outer macro's page (set only when drilled into from a preview). */
+  public onBackToOuter(): void {
+    if (this.returnUrl) window.location.href = this.returnUrl;
   }
 
   ngAfterViewInit(): void {

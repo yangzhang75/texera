@@ -914,14 +914,17 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
             const macroId = op?.operatorProperties?.["macroId"];
             if (op?.operatorType === "Macro" && macroId) {
               const parentWid = this.route.snapshot.params.id ?? "";
-              // Drill-down needs a parent workflow wid in the URL. An embedded
-              // preview (e.g. the macro Generate page at /user/macros/:macroId)
-              // has no `:id`, so navigating would go to `/user/workflow//macro/...`
-              // -> a blank page (and tears down this embedded graph mid-stream,
-              // triggering "operator ... does not exist" from stale listeners).
-              // In that context, drilling into a nested macro isn't supported
-              // yet -- just don't navigate.
+              // No parent workflow wid in the URL means we're in an embedded
+              // preview (the macro Generate page at /user/macros/:macroId, which
+              // has no `:id`). There's no editable parent canvas to drill the
+              // node into; instead jump to the NESTED macro's own fill page, and
+              // pass the current URL as `ret` so it can return to the outer macro
+              // (ret chains, so multi-level back works). This round: correct
+              // navigation + return only -- the nested params actually feeding
+              // the expansion is a later round.
               if (!parentWid) {
+                const currentUrl = window.location.pathname + window.location.search;
+                window.location.href = `/user/macros/${macroId}?ret=${encodeURIComponent(currentUrl)}`;
                 return;
               }
               try {

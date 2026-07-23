@@ -63,7 +63,9 @@ class DbMacroRegistry extends MacroRegistry with LazyLogging {
         } else {
           Option(record.value1())
             .filter(_.nonEmpty)
-            .map(mapper.readValue(_, classOf[MacroBody]))
+            // Drop the frontend-only configurableProperties whitelist -- the
+            // marker ops don't declare it and this strict mapper would throw.
+            .map(c => mapper.readValue(MacroBody.stripConfigurableProperties(c), classOf[MacroBody]))
         }
       } catch {
         case NonFatal(e) =>

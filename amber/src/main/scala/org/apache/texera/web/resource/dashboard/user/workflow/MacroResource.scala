@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.scalalogging.LazyLogging
 import io.dropwizard.auth.Auth
-import org.apache.texera.amber.operator.macroOp.MacroPortSpec
+import org.apache.texera.amber.operator.macroOp.{MacroBody, MacroPortSpec}
 import org.apache.texera.auth.SessionUser
 import org.apache.texera.dao.SqlServer
 import org.apache.texera.dao.jooq.generated.Tables._
@@ -447,7 +447,9 @@ class MacroResource extends LazyLogging {
     }
     Option(workflowDao.fetchOneByWid(wid))
       .filter(_.getKind == WorkflowKindEnum.MACRO)
-      .map(_.getContent)
+      // Strip the frontend-only configurableProperties whitelist so the embedded
+      // SNAPSHOT body parses under the strict workflow deserializer at run time.
+      .map(w => MacroBody.stripConfigurableProperties(w.getContent))
       .getOrElse(throw new NotFoundException(s"Macro $wid not found"))
   }
 

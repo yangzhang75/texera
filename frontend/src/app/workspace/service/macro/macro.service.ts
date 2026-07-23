@@ -1018,6 +1018,45 @@ export class MacroService {
     );
   }
 
+  /**
+   * Persist the Template-mode whitelist (opId -> configurable prop names) onto
+   * the macro definition. Stored in macro_metadata.param_spec by the backend;
+   * the macro body content is never touched. One selection is long-lived.
+   */
+  public updateMacroConfigurableProperties(
+    macroId: number,
+    configurableProperties: Record<string, string[]>
+  ): Observable<void> {
+    return this.http.post<void>(
+      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/configurable-properties`,
+      { configurableProperties }
+    );
+  }
+
+  /**
+   * The properties of an operator type that are safe to expose as configurable
+   * in Template mode: simple scalars (string / number / integer / boolean) that
+   * do NOT depend on upstream columns (no `autofill`). Complex structures,
+   * ports, schema, and attribute-selector fields are skipped so a user can't
+   * fill in a value that breaks the graph. Reuses the already-loaded operator
+   * metadata; no backend involvement.
+   */
+  public configurableCandidates(operatorType: string): string[] {
+    try {
+      const schema = this.operatorMetadataService.getOperatorSchema(operatorType);
+      const props = ((schema?.jsonSchema as any)?.properties ?? {}) as Record<string, any>;
+      return Object.keys(props).filter(key => {
+        const p = props[key] ?? {};
+        const t = p.type;
+        const isScalar = t === "string" || t === "number" || t === "integer" || t === "boolean";
+        const upstreamDependent = p.autofill !== undefined; // attribute-name selectors
+        return isScalar && !upstreamDependent;
+      });
+    } catch {
+      return [];
+    }
+  }
+
   public listMacros(): Observable<MacroSummary[]> {
     return this.http
       .get<MacroSummary[]>(`${AppSettings.getApiEndpoint()}/${MACRO_LIST_URL}`)

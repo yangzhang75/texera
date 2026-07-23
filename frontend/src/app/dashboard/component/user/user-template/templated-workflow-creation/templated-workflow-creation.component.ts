@@ -84,6 +84,20 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
+  // Dual-mode page (macro only): "macro" edits the definition (read-only body
+  // view + editable name/description this round); "template" fills params and
+  // generates a workflow. Default macro. The tid (template) flow ignores this.
+  public pageMode: "macro" | "template" = "macro";
+  // The macro definition's own name/description (Macro mode edits these and
+  // saves them back to the macro). Distinct from genName/genDescription, which
+  // name the NEW workflow produced in Template mode.
+  public macroName = "";
+  public macroDescription = "";
+  // Template-mode whitelist: opId -> the prop names currently exposed as
+  // configurable. Loaded from the macro's param_spec, persisted on toggle.
+  public whitelist: Record<string, string[]> = {};
+  // Per-operator candidate scalar properties for the whitelist checkboxes.
+  public whitelistOps: { operatorID: string; label: string; candidates: string[] }[] = [];
   // Basic info for the workflow that "Create Workflow" will produce (macro mode).
   public genName = "";
   public genDescription = "";
@@ -265,6 +279,82 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
       }
     }
     return content;
+  }
+
+  /** Template mode is reachable only for a runnable macro (D3 gate on the toggle). */
+  public canUseTemplateMode(): boolean {
+    return !!this.macroId && this.macroRunnable;
+  }
+
+  /** Switch page mode; refuse to enter Template mode when the macro isn't runnable. */
+  public switchMode(mode: "macro" | "template"): void {
+    if (mode === "template" && !this.canUseTemplateMode()) {
+      return;
+    }
+    this.pageMode = mode;
+  }
+
+  public isWhitelisted(operatorID: string, prop: string): boolean {
+    return (this.whitelist[operatorID] ?? []).includes(prop);
+  }
+
+  /**
+   * Toggle one property in/out of the Template-mode whitelist, persist the
+   * whole whitelist back to the macro definition (param_spec), then rebuild the
+   * parameter form so it renders exactly the checked properties.
+   */
+  public toggleWhitelist(operatorID: string, prop: string): void {
+    if (!this.macroId) return;
+    const current = new Set(this.whitelist[operatorID] ?? []);
+    if (current.has(prop)) {
+      current.delete(prop);
+    } else {
+      current.add(prop);
+    }
+    const next: Record<string, string[]> = { ...this.whitelist };
+    if (current.size === 0) {
+      delete next[operatorID];
+    } else {
+      next[operatorID] = Array.from(current);
+    }
+    this.whitelist = next;
+    this.applyWhitelistToTemplate();
+    this.lastEnrichedSignature = "";
+    this.rebuildSectionsFromDynamicSchemas();
+    this.macroService
+      .updateMacroConfigurableProperties(this.macroId, this.whitelist)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        error: () => this.notificationService.error("Failed to save configurable properties."),
+      });
+  }
+
+  /** Push the current whitelist onto each template operator's configurableProperties. */
+  private applyWhitelistToTemplate(): void {
+    if (!this.template) return;
+    this.template.operators.forEach(op => {
+      (op as { configurableProperties?: string[] }).configurableProperties = this.whitelist[op.operatorID] ?? [];
+    });
+  }
+
+  /** Save the macro definition's name (Macro mode). Reuses the workflow name endpoint. */
+  public saveMacroName(): void {
+    if (!this.macroId) return;
+    const name = this.macroName.trim();
+    if (!name) return;
+    this.workflowPersistService
+      .updateWorkflowName(this.macroId, name)
+      .pipe(untilDestroyed(this))
+      .subscribe({ error: () => this.notificationService.error("Failed to rename macro.") });
+  }
+
+  /** Save the macro definition's description (Macro mode). */
+  public saveMacroDescription(): void {
+    if (!this.macroId) return;
+    this.workflowPersistService
+      .updateWorkflowDescription(this.macroId, this.macroDescription)
+      .pipe(untilDestroyed(this))
+      .subscribe({ error: () => this.notificationService.error("Failed to update description.") });
   }
 
   /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
@@ -471,6 +561,10 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
     })
       .pipe(untilDestroyed(this))
       .subscribe(({ detail }) => {
+        // Macro-mode name/description edit the macro definition itself.
+        this.macroName = detail.name;
+        this.macroDescription = detail.description ?? "";
+        // Template-mode "new workflow" defaults (name/description of the workflow to generate).
         this.genName = detail.name;
         this.genDescription = detail.description ?? "";
         const content = this.macroService.macroDetailToGeneratedContent(detail);
@@ -480,17 +574,22 @@ export class TemplatedWorkflowCreationComponent implements AfterViewInit {
           detail.portSpec?.inputs?.length ?? 0,
           content.operators.map(o => o.operatorType)
         );
-        // Unified Macro: every operator property is configurable by default --
-        // macros don't need to pre-declare configurableProperties. So the
-        // parameter form exposes all properties of every operator.
-        content.operators.forEach(op => {
-          if (!op.configurableProperties || op.configurableProperties.length === 0) {
-            (op as { configurableProperties?: string[] }).configurableProperties = Object.keys(
-              op.operatorProperties ?? {}
-            );
-          }
-        });
+        // Load the stored Template-mode whitelist from the macro's param_spec.
+        // Default (never configured, or param_spec is the initial []) = nothing
+        // configurable -> empty form until the user checks properties.
+        const rawSpec = detail.paramSpec;
+        this.whitelist =
+          rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)
+            ? (rawSpec as Record<string, string[]>)
+            : {};
         this.template = content;
+        this.applyWhitelistToTemplate();
+        // Candidate scalar properties per operator for the whitelist checkboxes.
+        this.whitelistOps = content.operators.map(op => ({
+          operatorID: op.operatorID,
+          label: op.customDisplayName?.trim() ? op.customDisplayName : op.operatorType,
+          candidates: this.macroService.configurableCandidates(op.operatorType),
+        }));
         this.templatedWorkflowDraftService.initialize(content);
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows

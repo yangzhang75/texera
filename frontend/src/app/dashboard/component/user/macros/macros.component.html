@@ -15,8 +15,7 @@
   <div
     class="macro-row"
     *ngFor="let m of macros"
-    [class.not-runnable]="!isRunnable(m)"
-    (click)="onGenerate(m)"
+    (click)="onOpen(m)"
     [title]="runnableTooltip(m)">
     <span
       class="runnable-dot"

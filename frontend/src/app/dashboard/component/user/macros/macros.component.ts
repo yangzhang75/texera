@@ -34,7 +34,7 @@ import {
   DEFAULT_WORKFLOW_NAME,
   WorkflowPersistService,
 } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { USER_MACRO_GENERATE } from "../../../../app-routing.constant";
+import { USER_MACRO_OPEN } from "../../../../app-routing.constant";
 
 /**
  * The unified "Macros" dashboard tab. Lists every macro definition (kind=MACRO
@@ -123,36 +123,25 @@ export class MacrosComponent implements OnInit {
     return this.macroService.isMacroRunnable(this.inCount(m), m.bodyOperatorTypes ?? []);
   }
 
-  /** Tooltip explaining why a not-runnable macro can't be generated. */
+  /** Row tooltip: every macro opens (Edit macro); only runnable ones can also generate. */
   runnableTooltip(m: MacroSummary): string {
-    if (this.isRunnable(m)) {
-      return "Generate an independent workflow from this macro";
-    }
-    if (this.inCount(m) > 0) {
-      return `Not runnable: has ${this.inCount(m)} unbound input port(s), so it can't run on its own. Generate is disabled.`;
-    }
-    return "Not runnable: the macro body has no data source operator, so it can't run on its own. Generate is disabled.";
+    return this.isRunnable(m)
+      ? "Open — edit the macro, or generate a workflow from it"
+      : "Open — edit the macro. Not runnable on its own (no data source), so it can't be generated into a workflow yet.";
   }
 
   /**
-   * Open the "Generate workflow" page for this macro (= the old Template
-   * create flow, data source swapped to the macro): embedded preview of the
-   * expanded body + Formly parameter form + Submit. Submit materializes an
-   * independent workflow via the T3a engine.
-   *
-   * Gated: only runnable macros can be generated (D3). Not-runnable rows are
-   * rendered disabled, but we also guard here defensively.
+   * Open the dual-mode macro page (Edit macro by default; Generate workflow is
+   * a toggle inside, gated on runnable). Every macro can be opened -- the
+   * runnable gate lives on the toggle, not on the row (Phase 2 D3 relocation).
    */
-  onGenerate(m: MacroSummary): void {
-    // Don't open the Generate page while an inline edit is in progress on this
-    // row (clicking the input bubbles to the row).
+  onOpen(m: MacroSummary): void {
+    // Don't navigate while an inline edit is in progress on this row (the input
+    // click bubbles to the row).
     if (this.editingNameWid === m.wid || this.editingDescriptionWid === m.wid) {
       return;
     }
-    if (!this.isRunnable(m)) {
-      return;
-    }
-    this.router.navigate([USER_MACRO_GENERATE, m.wid]);
+    this.router.navigate([USER_MACRO_OPEN, m.wid]);
   }
 
   /**

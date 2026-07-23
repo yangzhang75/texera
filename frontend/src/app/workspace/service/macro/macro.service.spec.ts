@@ -22,16 +22,30 @@ import { MacroService, MacroDetail } from "./macro.service";
 // Operator types treated as sources (0 input ports) by the stub metadata.
 const SOURCE_TYPES = new Set(["CSVFileScan", "Source"]);
 
+// jsonSchema.properties per known type, for configurableCandidates filtering.
+const SCHEMA_PROPS: Record<string, any> = {
+  MixedOp: {
+    condition: { type: "string" },
+    limit: { type: "integer" },
+    keep: { type: "boolean" },
+    attr: { type: "string", autofill: "attributeName" }, // upstream-dependent -> excluded
+    cfg: { type: "object" }, // complex -> excluded
+    tags: { type: "array" }, // complex -> excluded
+  },
+  Filter: { condition: { type: "string" } },
+  Projection: {},
+};
+
 // Minimal OperatorMetadataService stub: a source op has 0 input ports, every
 // other known op has 1; unknown types throw (mirrors the real getOperatorSchema).
 const metadataStub = {
   getOperatorSchema: (operatorType: string) => {
-    if (operatorType !== "Filter" && operatorType !== "Projection" && !SOURCE_TYPES.has(operatorType)) {
+    if (!(operatorType in SCHEMA_PROPS) && !SOURCE_TYPES.has(operatorType)) {
       throw new Error(`unknown operator ${operatorType}`);
     }
     return {
       operatorType,
-      jsonSchema: {},
+      jsonSchema: { properties: SCHEMA_PROPS[operatorType] ?? {} },
       operatorVersion: "",
       additionalMetadata: {
         userFriendlyName: operatorType,
@@ -43,10 +57,11 @@ const metadataStub = {
   },
 } as any;
 
-function makeService(): MacroService {
-  // isMacroRunnable + macroDetailToGeneratedContent only touch `this` methods
-  // and the injected OperatorMetadataService, so the other deps can be stubs.
-  return new MacroService({} as any, {} as any, {} as any, metadataStub);
+function makeService(http: any = {}): MacroService {
+  // isMacroRunnable + macroDetailToGeneratedContent + configurableCandidates only
+  // touch `this` methods and the injected OperatorMetadataService, so the other
+  // deps can be stubs.
+  return new MacroService(http, {} as any, {} as any, metadataStub);
 }
 
 // A MacroBody with input marker -> Filter -> Projection -> output marker.
@@ -112,6 +127,37 @@ describe("MacroService.isMacroRunnable", () => {
 
   it("treats unknown operator types (metadata not loaded) as non-source", () => {
     expect(service.isMacroRunnable(0, ["TotallyUnknownOp"])).toBe(false);
+  });
+});
+
+describe("MacroService.configurableCandidates", () => {
+  const service = makeService();
+
+  it("offers only simple scalar properties (string/number/integer/boolean)", () => {
+    expect(service.configurableCandidates("MixedOp")).toEqual(["condition", "limit", "keep"]);
+  });
+
+  it("excludes complex (object/array) and upstream-dependent (autofill) properties", () => {
+    const c = service.configurableCandidates("MixedOp");
+    expect(c).not.toContain("cfg");
+    expect(c).not.toContain("tags");
+    expect(c).not.toContain("attr");
+  });
+
+  it("returns [] for an unknown operator type (metadata not loaded)", () => {
+    expect(service.configurableCandidates("Nope")).toEqual([]);
+  });
+});
+
+describe("MacroService.updateMacroConfigurableProperties", () => {
+  it("POSTs the whitelist to the macro's configurable-properties endpoint", () => {
+    const post = vi.fn().mockReturnValue({ subscribe: () => ({}) });
+    const service = makeService({ post });
+    service.updateMacroConfigurableProperties(7, { "Filter-op": ["condition"] });
+    expect(post).toHaveBeenCalledTimes(1);
+    const [url, body] = post.mock.calls[0];
+    expect(url).toContain("/macro/7/configurable-properties");
+    expect(body).toEqual({ configurableProperties: { "Filter-op": ["condition"] } });
   });
 });
 

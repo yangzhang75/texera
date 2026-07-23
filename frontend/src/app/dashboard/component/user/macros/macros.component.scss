@@ -35,24 +35,12 @@
     box-shadow 0.15s ease;
 
   // Clickable affordance: whole row lifts + tints on hover, like a list item.
+  // Every macro row opens (Edit macro); the runnable dot/label is informational
+  // only -- the Generate gate lives on the page's mode toggle, not the row.
   &:hover {
     background: #f5f9ff;
     border-color: #91caff;
     box-shadow: 0 1px 6px rgba(29, 111, 219, 0.12);
-  }
-
-  // Not-runnable macros can't be generated (D3): greyed + not-clickable, but
-  // still visible (never hidden). Editing the name/description stays allowed
-  // (those controls stopPropagation and set their own cursor).
-  &.not-runnable {
-    cursor: not-allowed;
-    opacity: 0.6;
-
-    &:hover {
-      background: #fff;
-      border-color: #eee;
-      box-shadow: none;
-    }
   }
 }
 

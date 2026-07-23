@@ -19,7 +19,7 @@
 
 import { MacrosComponent } from "./macros.component";
 import { MacroSummary } from "../../../../workspace/service/macro/macro.service";
-import { USER_MACRO_GENERATE } from "../../../../app-routing.constant";
+import { USER_MACRO_OPEN } from "../../../../app-routing.constant";
 
 function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   return {
@@ -34,7 +34,7 @@ function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   } as MacroSummary;
 }
 
-describe("MacrosComponent Generate gate (D3)", () => {
+describe("MacrosComponent row open (Phase 2 C4: gate relocated to the page toggle)", () => {
   let runnable: boolean;
   let navigate: ReturnType<typeof vi.fn>;
   let component: MacrosComponent;
@@ -49,28 +49,29 @@ describe("MacrosComponent Generate gate (D3)", () => {
     component = new MacrosComponent(macroServiceStub, {} as any, {} as any, {} as any, routerStub);
   });
 
-  it("opens the Generate page for a runnable macro", () => {
+  it("opens the dual-mode page for a runnable macro", () => {
     runnable = true;
     const m = macro();
-    component.onGenerate(m);
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_GENERATE, m.wid]);
+    component.onOpen(m);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
   });
 
-  it("blocks opening the Generate page for a not-runnable macro (gate closed)", () => {
+  it("STILL opens the page for a not-runnable macro (row is no longer gated; toggle is)", () => {
     runnable = false;
-    component.onGenerate(macro());
-    expect(navigate).not.toHaveBeenCalled();
+    const m = macro({ portSpec: { inputs: [{ index: 0 }], outputs: [] } });
+    component.onOpen(m);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
   });
 
   it("does not navigate while an inline name edit is in progress on the row", () => {
     runnable = true;
     const m = macro();
     component.editingNameWid = m.wid;
-    component.onGenerate(m);
+    component.onOpen(m);
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("isRunnable delegates to the shared MacroService criterion", () => {
+  it("isRunnable delegates to the shared MacroService criterion (informational label)", () => {
     runnable = false;
     expect(component.isRunnable(macro())).toBe(false);
     runnable = true;

@@ -158,7 +158,8 @@ routes.push({
           component: MacrosComponent,
         },
         {
-          path: "macros/generate/:macroId",
+          // Dual-mode macro page: Edit macro (default) / Generate workflow.
+          path: "macros/:macroId",
           component: TemplatedWorkflowCreationComponent,
         },
         {

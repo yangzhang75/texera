@@ -19,32 +19,18 @@
 <div class="tw-form">
   <header class="tw-header">
     <h2 class="job-title">{{ macroId ? "Generate workflow from macro" : "Build workflow from template" }}</h2>
-    <p class="tw-subtitle">
-      Fill in the parameters below, then submit to generate an independent workflow. Only properties the
-      macro owner marked configurable (in Edit macro) can be changed.
-    </p>
+    <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow.</p>
   </header>
 
-  <!-- Basic info of the workflow to be generated (macro flow only). -->
-  <div class="tw-basic-info" *ngIf="macroId">
-    <label class="tw-field">
-      <span class="tw-field-label">New workflow name</span>
-      <input
-        class="tw-input"
-        [value]="genName"
-        (input)="genName = $any($event.target).value"
-        placeholder="Workflow name" />
-    </label>
-    <label class="tw-field">
-      <span class="tw-field-label">Description</span>
-      <textarea
-        class="tw-input tw-textarea"
-        [value]="genDescription"
-        (input)="genDescription = $any($event.target).value"
-        rows="2"
-        placeholder="Description (optional)"></textarea>
-    </label>
-  </div>
+  <!-- Name for the generated workflow (macro flow): defaults to the macro name, editable. -->
+  <label class="tw-name-field" *ngIf="macroId">
+    <span class="tw-name-label">Workflow name</span>
+    <input
+      class="tw-name-input"
+      [value]="genName"
+      (input)="genName = $any($event.target).value"
+      placeholder="Workflow name" />
+  </label>
 
   <div *ngIf="sections.length === 0" class="empty-state">
     No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
@@ -58,25 +44,15 @@
   </div>
 
   <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
-    <p *ngIf="macroId && !macroRunnable" class="tw-gate-note">
-      This macro isn't runnable on its own (no data source in its body, or it has unbound inputs), so it
-      can't be generated into a workflow. Add a source operator to the macro first.
-    </p>
-    <span
-      nz-tooltip
-      [nzTooltipTitle]="macroId && !macroRunnable
-        ? 'Not runnable: the macro can\'t run standalone, so it can\'t be generated.'
-        : ''">
-      <button
-        nz-button
-        nzType="primary"
-        class="tw-submit"
-        [class.tw-submit-idle]="submitIdle"
-        [disabled]="submitDisabled || (!!macroId && !macroRunnable)"
-        (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
-        {{ macroId ? "Create Workflow" : "Submit" }}
-      </button>
-    </span>
+    <button
+      nz-button
+      nzType="primary"
+      class="tw-submit"
+      [class.tw-submit-idle]="submitIdle"
+      [disabled]="submitDisabled || (!!macroId && !macroRunnable)"
+      (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
+      {{ macroId ? "Create Workflow" : "Submit" }}
+    </button>
   </div>
 </div>
 

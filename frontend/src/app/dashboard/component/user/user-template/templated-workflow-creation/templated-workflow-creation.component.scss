@@ -262,130 +262,29 @@ texera-workspace {
   pointer-events: none;
 }
 
-/* Unified Macro: basic-info (name/description) fields */
-.tw-basic-info {
-  display: flex;
-  gap: 16px;
-  margin: 12px 0 16px;
-  flex-wrap: wrap;
-}
-.tw-field {
+// Compact name field for the generated workflow (macro flow). Aligns with the
+// old template's clean look — a single labeled input, not a big info block.
+.tw-name-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 280px;
+  margin: 0 0 20px;
+  max-width: 420px;
 }
-.tw-field-label {
+.tw-name-label {
   font-size: 12px;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.6);
 }
-.tw-input {
+.tw-name-input {
   border: 1px solid #d9d9d9;
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 14px;
   width: 100%;
   box-sizing: border-box;
-  &:focus { outline: none; border-color: #1d6fdb; }
-}
-.tw-textarea { resize: vertical; min-height: 38px; }
-
-.tw-gate-note {
-  color: #d46b08;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin: 0 0 10px;
-  font-size: 13px;
-  max-width: 640px;
-}
-
-.mode-toggle {
-  display: inline-flex;
-  border: 1px solid #d9d9d9;
-  border-radius: 8px;
-  overflow: hidden;
-  margin: 0 0 16px;
-
-  .mode-btn {
-    border: none;
-    background: #fff;
-    padding: 6px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    color: rgba(0, 0, 0, 0.65);
-
-    &.active {
-      background: #1d6fdb;
-      color: #fff;
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      color: rgba(0, 0, 0, 0.25);
-      background: #f5f5f5;
-    }
-
-    & + .mode-btn {
-      border-left: 1px solid #d9d9d9;
-    }
-  }
-}
-
-.macro-mode-hint {
-  color: rgba(0, 0, 0, 0.45);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
-.tw-whitelist {
-  border: 1px solid #eee;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin: 0 0 16px;
-  max-width: 720px;
-
-  .tw-whitelist-title {
-    margin: 0 0 2px;
-    font-size: 15px;
-    font-weight: 600;
-  }
-
-  .tw-whitelist-hint {
-    color: rgba(0, 0, 0, 0.5);
-    font-size: 12px;
-    margin: 0 0 10px;
-  }
-
-  .tw-whitelist-op {
-    padding: 6px 0;
-    border-top: 1px solid #f5f5f5;
-
-    &:first-of-type {
-      border-top: none;
-    }
-  }
-
-  .tw-whitelist-op-label {
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 4px;
-  }
-
-  .tw-whitelist-none {
-    color: rgba(0, 0, 0, 0.35);
-    font-size: 12px;
-    font-style: italic;
-  }
-
-  .tw-whitelist-prop {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    margin: 0 14px 4px 0;
-    font-size: 13px;
-    cursor: pointer;
+  &:focus {
+    outline: none;
+    border-color: #1d6fdb;
   }
 }

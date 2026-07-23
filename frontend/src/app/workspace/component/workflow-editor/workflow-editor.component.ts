@@ -705,7 +705,11 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
 
         regionMap = event.regions.map(([id, region]) => {
           const element = new Region({ id: "region-" + id });
-          const ops = region.map(id => this.paper.getModelById(id));
+          // A region can reference operators that aren't on this paper -- e.g.
+          // macro-expanded inner ops (their runtime ids don't exist on the
+          // pre-expansion canvas). Drop those so getBBox isn't called on
+          // undefined (would crash region rendering during execution).
+          const ops = region.map(id => this.paper.getModelById(id)).filter((c): c is joint.dia.Cell => c != null);
           this.paper.model.addCell(element);
           this.updateRegionElement(element, ops);
           return { regionElement: element, operators: ops };
@@ -736,7 +740,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
           ExecutingNonDependeePortsPhase: "rgba(255,213,79,0.2)",
           Completed: "rgba(76,175,80,0.2)",
         };
-        this.paper.getModelById("region-" + region.id).attr("body/fill", colorMap[region.state]);
+        this.paper.getModelById("region-" + region.id)?.attr("body/fill", colorMap[region.state]);
       });
   }
 
@@ -748,6 +752,11 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
   }
 
   private updateRegionElement(regionElement: joint.dia.Element, operators: joint.dia.Cell[]) {
+    // No on-canvas operators (e.g. all were macro-expanded inner ops): nothing
+    // to outline. concaveman on an empty point set would throw.
+    if (operators.length === 0) {
+      return;
+    }
     const points = operators.flatMap(op => {
       const { x, y, width, height } = op.getBBox(),
         padding = 15;

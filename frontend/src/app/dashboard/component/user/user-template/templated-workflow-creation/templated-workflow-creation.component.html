@@ -85,6 +85,7 @@
 <!-- Read-only body preview. -->
 <div class="readonly-embedded-workspace-container" *ngIf="wid && showEmbeddedWorkspace">
   <div class="inner-scale">
-    <texera-workspace [wid]="wid" [isEmbedded]="true" [mode]="'workflow'"> </texera-workspace>
+    <texera-workspace [wid]="wid" [isEmbedded]="true" [mode]="'workflow'" [previewRunnable]="!!macroId && macroRunnable">
+    </texera-workspace>
   </div>
 </div>

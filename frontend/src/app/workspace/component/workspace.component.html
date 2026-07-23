@@ -65,7 +65,20 @@
     </a>
   </div>
 </div>
-<div id="result" *ngIf="!isEmbedded">
+<!-- Embedded runnable preview: an in-place Run + the result panel, so a
+     biologist can run right here. The computing-unit selector is mounted but
+     visually hidden (its auto-connect wires up a unit); no env dropdown / Share. -->
+<div class="preview-run-bar" *ngIf="isEmbedded && previewRunnable">
+  <button
+    class="preview-run-btn"
+    [class.disabled]="!previewCanRun"
+    [title]="previewRunTooltip"
+    (click)="runPreview()">
+    <span class="preview-run-glyph">▶</span> {{ previewRunning ? "Running…" : "Run" }}
+  </button>
+  <texera-computing-unit-selection class="preview-connector"></texera-computing-unit-selection>
+</div>
+<div id="result" *ngIf="!isEmbedded || previewRunnable">
   <texera-result-panel></texera-result-panel>
 </div>
 <texera-workflow-editor

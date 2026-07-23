@@ -56,10 +56,13 @@ import { GuiConfigService } from "../../common/service/gui-config.service";
 import { ComputingUnitStatusService } from "../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ExecuteWorkflowService } from "../service/execute-workflow/execute-workflow.service";
 import { WorkflowResultService } from "../service/workflow-result/workflow-result.service";
+import { WorkflowWebsocketService } from "../service/workflow-websocket/workflow-websocket.service";
+import { ExecutionState } from "../types/execute-workflow.interface";
 import { checkIfGraphBroken } from "../../common/util/graph-check";
 import { MacroService } from "../service/macro/macro.service";
 import { NzSpinComponent } from "ng-zorro-antd/spin";
 import { ResultPanelComponent } from "./result-panel/result-panel.component";
+import { ComputingUnitSelectionComponent } from "./power-button/computing-unit-selection.component";
 import { WorkflowEditorComponent } from "./workflow-editor/workflow-editor.component";
 import { MenuComponent } from "./menu/menu.component";
 import { MiniMapComponent } from "./workflow-editor/mini-map/mini-map.component";
@@ -99,6 +102,7 @@ interface WorkspaceContext {
     NgIf,
     AgentPanelComponent,
     PropertyEditorComponent,
+    ComputingUnitSelectionComponent,
   ],
 })
 export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -109,6 +113,11 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   @Input() wid?: number = undefined;
   @Input() mode?: "workflow" | "template";
   @Input() isEmbedded: boolean = false;
+  // Embedded preview only: when the previewed macro is runnable, expose an
+  // in-place Run (+ results) so a biologist can run without leaving the Generate
+  // page. Connection reuses the production computing-unit auto-connect (a hidden
+  // selector), NOT the visible env dropdown / Share.
+  @Input() previewRunnable: boolean = false;
   @Output() workspaceReady = new EventEmitter<number | undefined>();
   // Macro drill-down state — drives the banner above the canvas so users know
   // they're editing a macro body rather than a normal workflow.
@@ -183,8 +192,44 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     private computingUnitStatusService: ComputingUnitStatusService,
     private executeWorkflowService: ExecuteWorkflowService,
     private workflowResultService: WorkflowResultService,
+    private workflowWebsocketService: WorkflowWebsocketService,
     private macroService: MacroService
   ) {}
+
+  // --- Embedded runnable-preview in-place Run ---------------------------------
+  // The preview body is loaded into the shared WorkflowActionService graph, and
+  // execution runs off that shared graph (see ExecuteWorkflowService). So Run
+  // here executes exactly what the preview shows. Connection comes from the
+  // hidden computing-unit selector's auto-connect; no visible env dropdown.
+
+  /** True while the shared execution is in a non-idle (running-ish) state. */
+  public get previewRunning(): boolean {
+    const s = this.executeWorkflowService.getExecutionState().state;
+    return (
+      s !== ExecutionState.Uninitialized &&
+      s !== ExecutionState.Completed &&
+      s !== ExecutionState.Failed &&
+      s !== ExecutionState.Killed
+    );
+  }
+
+  /** Run is offered only once a computing unit is connected (auto-connected). */
+  public get previewCanRun(): boolean {
+    return this.previewRunnable && this.workflowWebsocketService.isConnected && !this.previewRunning;
+  }
+
+  public get previewRunTooltip(): string {
+    if (this.previewRunning) return "Running…";
+    return this.workflowWebsocketService.isConnected
+      ? "Run this macro and see results below"
+      : "Connecting to a computing unit…";
+  }
+
+  /** Run the previewed macro body in place (shared graph = the preview). */
+  public runPreview(): void {
+    if (!this.previewCanRun) return;
+    this.executeWorkflowService.executeWorkflow("Macro preview");
+  }
 
   private reloadWorkspace(context: WorkspaceContext): void {
     this.cleanupWorkspaceState();

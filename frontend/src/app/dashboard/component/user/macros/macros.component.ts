@@ -155,19 +155,20 @@ export class MacrosComponent implements OnInit {
     return this.macroService.isMacroRunnable(this.inCount(m), m.bodyOperatorTypes ?? []);
   }
 
-  /** Row tooltip: the primary use case (generate a workflow) is the default open. */
+  /** Row tooltip: the default open depends on runnability (see onOpen). */
   runnableTooltip(m: MacroSummary): string {
     return this.isRunnable(m)
-      ? "Generate a workflow from this macro (or use Edit macro to change its body / configurable properties)"
-      : "Generate a workflow from this macro. Not runnable on its own (no data source) — it produces an Invalid Workflow you complete by adding a source.";
+      ? "Opens in Generate workflow (the primary use case). Use Edit macro to change its body / configurable properties."
+      : "Opens in Edit macro — not runnable on its own (no data source). You can still Generate it, but that produces an Invalid Workflow you complete by adding a source.";
   }
 
   /**
-   * Default open (row click) -> the Generate-workflow fill page, the biologist's
-   * primary use case. Template (fill values) is the main page; Edit macro is the
-   * secondary config page, reachable via the explicit "Edit macro" row action
-   * (and the "Edit macro" link on the Generate page). Consistent for every macro
-   * -- runnable is a label, never a gate here.
+   * Default open (row click). Landing depends on runnability:
+   * - runnable -> Generate workflow (the biologist's primary use case);
+   * - not-runnable -> Edit macro (it's naturally still-to-edit/embed; sending it
+   *   to Generate would only produce an Invalid Workflow -- a dead end).
+   * Both explicit row actions remain available regardless, so anyone who wants
+   * to Generate a not-runnable macro still can.
    */
   onOpen(m: MacroSummary): void {
     // Don't navigate while an inline edit is in progress on this row (the input
@@ -175,7 +176,11 @@ export class MacrosComponent implements OnInit {
     if (this.editingNameWid === m.wid || this.editingDescriptionWid === m.wid) {
       return;
     }
-    this.onGenerate(m);
+    if (this.isRunnable(m)) {
+      this.onGenerate(m);
+    } else {
+      this.onEditMacro(m);
+    }
   }
 
   /** Row action "Generate workflow" -> the fill-parameters page (Template main page). */

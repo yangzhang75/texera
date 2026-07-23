@@ -267,9 +267,14 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     return content;
   }
 
-  /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
+  /**
+   * "Create Workflow": generate a new independent workflow from the macro (1-to-n).
+   * Available for every macro -- a not-runnable macro (no data source) simply
+   * generates an Invalid Workflow the user completes by adding a source. No
+   * runnable gate here (entry is consistent for all macros).
+   */
   public onCreateWorkflowFromMacro(): void {
-    if (!this.macroId || !this.workflowReady || !this.macroRunnable) return;
+    if (!this.macroId || !this.workflowReady) return;
     const content = this.buildMacroContentWithParams();
     // Clean default name: the "New workflow name" field, else the macro's own
     // name (never a placeholder / timestamp).

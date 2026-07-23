@@ -62,7 +62,7 @@
       nzType="primary"
       class="tw-submit"
       [class.tw-submit-idle]="submitIdle"
-      [disabled]="submitDisabled || (!!macroId && !macroRunnable)"
+      [disabled]="submitDisabled"
       (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
       {{ macroId ? "Create Workflow" : "Submit" }}
     </button>

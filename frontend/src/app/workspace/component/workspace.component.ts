@@ -125,10 +125,6 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.macroEditMode && this.macroEditWid !== undefined && String(this.macroEditWid) === this.parentWorkflowId;
   }
   public macroSaving = false;
-  // Whether the macro being edited is runnable on its own (0 unbound inputs +
-  // a body source op). Gates the "Generate workflow" entry — not-runnable
-  // macros can be edited but offer no Generate action (no dead end).
-  public macroEditRunnable = false;
   @ViewChild("codeEditor", { read: ViewContainerRef }) codeEditorViewRef!: ViewContainerRef;
 
   /**
@@ -549,12 +545,6 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
           // view (via the `?instance=...` prefix machinery in
           // `WorkflowEditorComponent`). Caveat: persisting workflow changes
           // is disabled in drill-down anyway, so the spoofed wid is safe.
-          // Runnable gate for the "Generate workflow" entry (metadata is loaded
-          // in this forkJoin, so the source-op lookup is ready).
-          this.macroEditRunnable = this.macroService.isMacroRunnable(
-            detail.portSpec?.inputs?.length ?? 0,
-            this.macroService.macroDetailToWorkflow(detail).content.operators.map(o => o.operatorType)
-          )
           const macroWorkflowRaw = this.macroService.macroDetailToWorkflow(detail);
           const parentWidNum = Number(this.parentWorkflowId);
           const macroWorkflow = Number.isFinite(parentWidNum)

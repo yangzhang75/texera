@@ -37,9 +37,10 @@
     title="Save changes to the macro definition">
     {{ macroSaving ? "Saving…" : "Save macro" }}
   </a>
-  <!-- Jump to the Generate (fill) page for this macro. -->
+  <!-- Jump to the Generate (fill) page for this macro. Shown for every macro:
+       a not-runnable one just generates an Invalid Workflow (no runnable gate). -->
   <a
-    *ngIf="isStandaloneMacroEdit && macroEditRunnable"
+    *ngIf="isStandaloneMacroEdit"
     class="macro-edit-banner__action"
     (click)="openGenerateFromMacro()"
     title="Generate an independent workflow from this macro">

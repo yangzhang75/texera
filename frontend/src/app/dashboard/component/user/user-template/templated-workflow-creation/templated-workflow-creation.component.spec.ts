@@ -52,15 +52,35 @@ function make(): TemplatedWorkflowCreationComponent {
 }
 
 describe("TemplatedWorkflowCreationComponent (Generate, fill-only)", () => {
-  it("defaults macroRunnable to true (no gate for the template flow)", () => {
+  it("defaults macroRunnable to true", () => {
     expect(make().macroRunnable).toBe(true);
   });
 
-  it("does not generate when the macro isn't runnable (defensive gate)", () => {
+  it("generates even when the macro is NOT runnable (no runnable gate — yields an Invalid Workflow)", () => {
+    const gen = vi.fn().mockReturnValue(EMPTY);
     const c = make();
+    (c as any).macroService = { isMacroRunnable: () => false, generateWorkflowFromMacro: gen };
     c.macroId = 1;
-    c.macroRunnable = false;
-    // workflowReady is false + not runnable → guarded no-op (must not throw).
-    expect(() => c.onCreateWorkflowFromMacro()).not.toThrow();
+    c.macroRunnable = false; // not runnable...
+    (c as any).workflowReady = true;
+    (c as any).buildMacroContentWithParams = () => ({
+      operators: [],
+      operatorPositions: {},
+      links: [],
+      commentBoxes: [],
+      settings: {},
+    });
+    c.onCreateWorkflowFromMacro();
+    expect(gen).toHaveBeenCalled(); // ...still proceeds: the gate is gone.
+  });
+
+  it("still guards on workflowReady (nothing generated before the preview is ready)", () => {
+    const gen = vi.fn().mockReturnValue(EMPTY);
+    const c = make();
+    (c as any).macroService = { isMacroRunnable: () => true, generateWorkflowFromMacro: gen };
+    c.macroId = 1;
+    (c as any).workflowReady = false;
+    c.onCreateWorkflowFromMacro();
+    expect(gen).not.toHaveBeenCalled();
   });
 });

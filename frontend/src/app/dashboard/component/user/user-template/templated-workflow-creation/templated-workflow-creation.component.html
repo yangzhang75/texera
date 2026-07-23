@@ -18,7 +18,20 @@
 -->
 <div class="tw-form">
   <header class="tw-header">
-    <h2 class="job-title">{{ macroId ? "Generate workflow from macro" : "Build workflow from template" }}</h2>
+    <div class="tw-header-row">
+      <h2 class="job-title">{{ macroId ? "Generate workflow from macro" : "Build workflow from template" }}</h2>
+      <!-- Return to the Edit-macro config page (body + configurable properties). -->
+      <button
+        *ngIf="macroId"
+        nz-button
+        nzType="default"
+        nzSize="small"
+        class="tw-edit-macro"
+        title="Edit macro — change its body and configurable properties"
+        (click)="onEditMacro()">
+        <i nz-icon nzType="experiment" nzTheme="outline"></i> Edit macro
+      </button>
+    </div>
     <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow.</p>
   </header>
 

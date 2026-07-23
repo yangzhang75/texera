@@ -53,6 +53,7 @@ import {ExecuteWorkflowService} from "../../../../../workspace/service/execute-w
 import {ExecutionState} from "../../../../../workspace/types/execute-workflow.interface";
 import {CommonModule} from "@angular/common";
 import {NzButtonModule} from "ng-zorro-antd/button";
+import {NzIconModule} from "ng-zorro-antd/icon";
 import {NzTooltipModule} from "ng-zorro-antd/tooltip";
 import {WorkspaceComponent} from "../../../../../workspace/component/workspace.component";
 import {TemplatedWorkflowService} from "../../../../service/user/templated-workflow/templated-workflow.service";
@@ -75,6 +76,7 @@ interface ConfigurableSection {
     ReactiveFormsModule,
     FormlyModule,
     NzButtonModule,
+    NzIconModule,
     NzTooltipModule,
     WorkspaceComponent,
   ],
@@ -289,6 +291,18 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         },
         error: () => this.notificationService.error("Failed to generate workflow."),
       });
+  }
+
+  /**
+   * "Edit macro": jump to the editable canvas to change the macro body /
+   * configurable-property whitelist. The mutual return of the "return to Edit"
+   * entry -- Template (this fill page) is the main page, Edit macro is the
+   * config page reachable from here (and the Edit banner links back to Generate).
+   * Hard nav for the same embedded-workspace-singleton reason as Create above.
+   */
+  public onEditMacro(): void {
+    if (!this.macroId) return;
+    window.location.href = `${USER_WORKSPACE}/${this.macroId}/macro/${this.macroId}`;
   }
 
   private getConfigurablePropertyUpdatePayload(): {

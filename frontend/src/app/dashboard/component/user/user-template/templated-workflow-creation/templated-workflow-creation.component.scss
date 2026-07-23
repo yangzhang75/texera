@@ -32,6 +32,13 @@
   margin-bottom: 28px;
 }
 
+.tw-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .job-title {
   margin: 0 0 4px;
   font-size: 22px;

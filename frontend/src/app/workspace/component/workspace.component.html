@@ -28,6 +28,31 @@
   class="macro-edit-banner">
   <span class="macro-edit-banner__label">Editing Macro</span>
   <span class="macro-edit-banner__name">{{ macroEditName }}</span>
+
+  <!-- Save the edited body back to the macro definition. -->
+  <a
+    class="macro-edit-banner__action"
+    (click)="saveMacro()"
+    [class.disabled]="macroSaving"
+    title="Save changes to the macro definition">
+    {{ macroSaving ? "Saving…" : "Save macro" }}
+  </a>
+  <!-- Whitelist (which properties are configurable on the Generate page). -->
+  <a
+    class="macro-edit-banner__action"
+    (click)="showConfigPanel = !showConfigPanel"
+    title="Choose which properties are configurable when generating a workflow">
+    Configurable properties
+  </a>
+  <!-- Jump to the Generate (fill) page for this macro. -->
+  <a
+    *ngIf="isStandaloneMacroEdit"
+    class="macro-edit-banner__action"
+    (click)="openGenerateFromMacro()"
+    title="Generate an independent workflow from this macro">
+    Generate workflow →
+  </a>
+
   <!-- Use a button + click handler instead of routerLink so we can:
        (a) honor the per-tab drill-down breadcrumb stack (sessionStorage)
            so nested macros pop back to their DIRECT parent (e.g.
@@ -40,9 +65,14 @@
     *ngIf="parentWorkflowId"
     class="macro-edit-banner__back"
     (click)="onBackToParent()"
-    title="Return to parent workflow">
-    ← Back to parent
+    [title]="isStandaloneMacroEdit ? 'Back to Macros' : 'Return to parent workflow'">
+    {{ isStandaloneMacroEdit ? "← Back to Macros" : "← Back to parent" }}
   </a>
+</div>
+<div
+  *ngIf="macroEditMode && showConfigPanel"
+  class="macro-config-panel">
+  <texera-macro-configurable-properties [macroId]="macroEditWid!"></texera-macro-configurable-properties>
 </div>
 <div id="result">
   <texera-result-panel></texera-result-panel>

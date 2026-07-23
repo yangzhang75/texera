@@ -18,119 +18,55 @@
 -->
 <div class="tw-form">
   <header class="tw-header">
-    <h2 class="job-title">
-      {{ macroId ? (pageMode === "macro" ? "Edit macro" : "Generate workflow from macro") : "Build workflow from template" }}
-    </h2>
-    <p class="tw-subtitle" *ngIf="macroId && pageMode === 'macro'">
-      Edit the macro definition. The canvas below is a read-only preview of the body in this view.
-      Switch to “Generate workflow” to fill parameters and create an independent workflow.
-    </p>
-    <p class="tw-subtitle" *ngIf="!macroId || pageMode === 'template'">
-      Set the parameters below, then submit to generate an independent workflow. Only properties the
-      macro owner marked configurable can be changed.
+    <h2 class="job-title">{{ macroId ? "Generate workflow from macro" : "Build workflow from template" }}</h2>
+    <p class="tw-subtitle">
+      Fill in the parameters below, then submit to generate an independent workflow. Only properties the
+      macro owner marked configurable (in Edit macro) can be changed.
     </p>
   </header>
 
-  <!-- Mode toggle (macro only). Template side is gated on runnable (D3). -->
-  <div class="mode-toggle" *ngIf="macroId">
-    <button type="button" class="mode-btn" [class.active]="pageMode === 'macro'" (click)="switchMode('macro')">
-      Edit macro
-    </button>
-    <span
-      nz-tooltip
-      [nzTooltipTitle]="canUseTemplateMode()
-        ? ''
-        : 'This macro has no data source, so it can\'t be turned into a runnable workflow. Add a source operator to enable Generate workflow.'">
-      <button
-        type="button"
-        class="mode-btn"
-        [class.active]="pageMode === 'template'"
-        [disabled]="!canUseTemplateMode()"
-        (click)="switchMode('template')">
-        Generate workflow
-      </button>
-    </span>
-  </div>
-
-  <!-- ===================== MACRO MODE ===================== -->
-  <div class="tw-basic-info" *ngIf="macroId && pageMode === 'macro'">
+  <!-- Basic info of the workflow to be generated (macro flow only). -->
+  <div class="tw-basic-info" *ngIf="macroId">
     <label class="tw-field">
-      <span class="tw-field-label">Name</span>
+      <span class="tw-field-label">New workflow name</span>
       <input
         class="tw-input"
-        [value]="macroName"
-        (input)="macroName = $any($event.target).value"
-        (blur)="saveMacroName()"
-        (keyup.enter)="saveMacroName()"
-        placeholder="Macro name" />
+        [value]="genName"
+        (input)="genName = $any($event.target).value"
+        placeholder="Workflow name" />
     </label>
     <label class="tw-field">
       <span class="tw-field-label">Description</span>
       <textarea
         class="tw-input tw-textarea"
-        [value]="macroDescription"
-        (input)="macroDescription = $any($event.target).value"
-        (blur)="saveMacroDescription()"
+        [value]="genDescription"
+        (input)="genDescription = $any($event.target).value"
         rows="2"
         placeholder="Description (optional)"></textarea>
     </label>
   </div>
 
-  <!-- =================== TEMPLATE MODE =================== -->
-  <ng-container *ngIf="!macroId || pageMode === 'template'">
-    <!-- Basic info of the workflow to be generated (macro flow only). -->
-    <div class="tw-basic-info" *ngIf="macroId">
-      <label class="tw-field">
-        <span class="tw-field-label">New workflow name</span>
-        <input
-          class="tw-input"
-          [value]="genName"
-          (input)="genName = $any($event.target).value"
-          placeholder="Workflow name" />
-      </label>
-      <label class="tw-field">
-        <span class="tw-field-label">Description</span>
-        <textarea
-          class="tw-input tw-textarea"
-          [value]="genDescription"
-          (input)="genDescription = $any($event.target).value"
-          rows="2"
-          placeholder="Description (optional)"></textarea>
-      </label>
-    </div>
+  <div *ngIf="sections.length === 0" class="empty-state">
+    No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
+  </div>
 
-    <!-- Configurable-property whitelist (macro flow only). -->
-    <div class="tw-whitelist" *ngIf="macroId">
-      <h3 class="tw-whitelist-title">Configurable properties</h3>
-      <p class="tw-whitelist-hint">
-        Check which properties the workflow creator can fill in. Unchecked properties keep the macro's
-        current values. Only simple scalar properties are offered.
-      </p>
-      <div *ngFor="let op of whitelistOps" class="tw-whitelist-op">
-        <div class="tw-whitelist-op-label">{{ op.label }}</div>
-        <span *ngIf="op.candidates.length === 0" class="tw-whitelist-none">No configurable properties</span>
-        <label *ngFor="let p of op.candidates" class="tw-whitelist-prop">
-          <input
-            type="checkbox"
-            [checked]="isWhitelisted(op.operatorID, p)"
-            (change)="toggleWhitelist(op.operatorID, p)" />
-          <span>{{ p }}</span>
-        </label>
-      </div>
-    </div>
+  <div *ngFor="let section of sections" class="template-section">
+    <h3 class="template-section-title">{{ section.label }}</h3>
+    <form [formGroup]="section.form" class="template-section-body">
+      <formly-form [model]="section.model" [fields]="section.fields" [form]="section.form"> </formly-form>
+    </form>
+  </div>
 
-    <div *ngIf="sections.length === 0" class="empty-state">
-      No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
-    </div>
-
-    <div *ngFor="let section of sections" class="template-section">
-      <h3 class="template-section-title">{{ section.label }}</h3>
-      <form [formGroup]="section.form" class="template-section-body">
-        <formly-form [model]="section.model" [fields]="section.fields" [form]="section.form"> </formly-form>
-      </form>
-    </div>
-
-    <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
+  <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
+    <p *ngIf="macroId && !macroRunnable" class="tw-gate-note">
+      This macro isn't runnable on its own (no data source in its body, or it has unbound inputs), so it
+      can't be generated into a workflow. Add a source operator to the macro first.
+    </p>
+    <span
+      nz-tooltip
+      [nzTooltipTitle]="macroId && !macroRunnable
+        ? 'Not runnable: the macro can\'t run standalone, so it can\'t be generated.'
+        : ''">
       <button
         nz-button
         nzType="primary"
@@ -140,11 +76,11 @@
         (click)="macroId ? onCreateWorkflowFromMacro() : onJobFormSubmitted()">
         {{ macroId ? "Create Workflow" : "Submit" }}
       </button>
-    </div>
-  </ng-container>
+    </span>
+  </div>
 </div>
 
-<!-- Shared read-only body preview (both modes). -->
+<!-- Read-only body preview. -->
 <div class="readonly-embedded-workspace-container" *ngIf="wid && showEmbeddedWorkspace">
   <div class="inner-scale">
     <texera-workspace [wid]="wid" [isEmbedded]="true" [mode]="'workflow'"> </texera-workspace>

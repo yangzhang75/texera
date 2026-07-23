@@ -1034,6 +1034,18 @@ export class MacroService {
   }
 
   /**
+   * Save an edited macro body (Edit-macro canvas) back to the macro definition.
+   * Serializes the canvas content to the MacroBody shape and persists it.
+   */
+  public updateMacroBody(macroId: number, content: WorkflowContent): Observable<void> {
+    const body = this.workflowContentToMacroBody(content);
+    return this.http.post<void>(
+      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${macroId}/body`,
+      { content: JSON.stringify(body) }
+    );
+  }
+
+  /**
    * The properties of an operator type that are safe to expose as configurable
    * in Template mode: simple scalars (string / number / integer / boolean) that
    * do NOT depend on upstream columns (no `autofill`). Complex structures,
@@ -1709,6 +1721,68 @@ export class MacroService {
       if (pos) operatorPositions[o.operatorID] = pos;
     }
     return { operators, operatorPositions, links, commentBoxes: [], settings: full.settings };
+  }
+
+  /**
+   * Inverse of `macroDetailToWorkflow`: serialize an edited canvas
+   * (WorkflowContent, incl. MacroInput/MacroOutput marker operators) back into
+   * the MacroBody JSON shape stored in a macro's `workflow.content`. Used by the
+   * Edit-macro Save action.
+   *
+   *  - each canvas operator becomes a body operator with its operatorProperties
+   *    flattened back to top-level fields (markers carry `portIndex` there),
+   *    keeping its inputPorts/outputPorts so links resolve on reload;
+   *  - each link becomes a MacroLink with port ordinals parsed from the portIDs
+   *    ("input-2" -> 2);
+   *  - inputs/outputs are derived from the MacroInput/MacroOutput markers.
+   */
+  public workflowContentToMacroBody(content: WorkflowContent): {
+    operators: unknown[];
+    links: MacroBodyLink[];
+    inputs: MacroPortSpec[];
+    outputs: MacroPortSpec[];
+  } {
+    const portOrdinal = (portID: string | undefined): number => {
+      const n = Number((portID ?? "").split("-").pop());
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const operators = content.operators.map(op => {
+      const { operatorProperties, ...rest } = op as OperatorPredicate & {
+        operatorProperties?: Record<string, unknown>;
+      };
+      // Flatten operatorProperties back to top level (the body-op shape), while
+      // keeping identity + ports so macroDetailToWorkflow can round-trip it.
+      return {
+        operatorID: rest.operatorID,
+        operatorType: rest.operatorType,
+        operatorVersion: rest.operatorVersion ?? "",
+        inputPorts: rest.inputPorts ?? [],
+        outputPorts: rest.outputPorts ?? [],
+        ...(operatorProperties ?? {}),
+      };
+    });
+
+    const links: MacroBodyLink[] = content.links.map(l => ({
+      fromOpId: l.source.operatorID,
+      fromPortId: { id: portOrdinal(l.source.portID), internal: false },
+      toOpId: l.target.operatorID,
+      toPortId: { id: portOrdinal(l.target.portID), internal: false },
+    }));
+
+    const markerPorts = (markerType: string): MacroPortSpec[] =>
+      content.operators
+        .filter(op => op.operatorType === markerType)
+        .map(op => Number((op.operatorProperties as { portIndex?: number })?.portIndex ?? 0))
+        .sort((a, b) => a - b)
+        .map(index => ({ index }));
+
+    return {
+      operators,
+      links,
+      inputs: markerPorts("MacroInput"),
+      outputs: markerPorts("MacroOutput"),
+    };
   }
 
   private normalizeBodyOperator(raw: unknown): OperatorPredicate {

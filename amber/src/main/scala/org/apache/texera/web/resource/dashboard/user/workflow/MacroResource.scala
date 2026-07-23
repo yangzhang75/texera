@@ -117,6 +117,15 @@ object MacroResource {
       configurableProperties: Map[String, List[String]] = Map.empty
   )
 
+  /**
+    * Request body for `POST /macro/{wid}/body`. `content` is the edited macro
+    * body serialized as a MacroBody JSON string (operators incl. MacroInput/
+    * MacroOutput markers, links, inputs, outputs) -- the same shape the macro's
+    * `workflow.content` already holds. Produced by the frontend editor's
+    * workflowContentToMacroBody serializer.
+    */
+  case class UpdateMacroBodyRequest(content: String)
+
   /** Full response for `POST /macro/create` and `GET /macro/{wid}`. */
   case class MacroDetail(
       wid: Integer,
@@ -477,6 +486,57 @@ class MacroResource extends LazyLogging {
       .getOrElse(throw new NotFoundException(s"Macro $wid metadata missing"))
     metadata.setParamSpec(jsonbOfNode(mapper.valueToTree[JsonNode](req.configurableProperties)))
     macroMetadataDao.update(metadata)
+  }
+
+  /**
+    * Save an edited macro body (from the Edit-macro canvas). Overwrites the
+    * macro definition's `workflow.content` with the new MacroBody JSON and
+    * records a new version. Write access required. NOTE: this mutates the
+    * shared definition -- LIVE references pick up the change on their next
+    * run (there is only LIVE today; the live/snapshot choice + prompt-on-update
+    * lands in the follow-up commit). port_spec metadata is refreshed from the
+    * body's MacroInput/MacroOutput markers so the palette/runnable view stays
+    * in sync with the edited boundary.
+    */
+  @POST
+  @Consumes(Array(MediaType.APPLICATION_JSON))
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/body")
+  def updateMacroBody(
+      @PathParam("wid") wid: Integer,
+      req: UpdateMacroBodyRequest,
+      @Auth sessionUser: SessionUser
+  ): Unit = {
+    val uid = sessionUser.getUser.getUid
+    if (!hasWriteAccess(wid, uid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val workflow = Option(workflowDao.fetchOneByWid(wid))
+      .filter(_.getKind == WorkflowKindEnum.MACRO)
+      .getOrElse(throw new NotFoundException(s"Macro $wid not found"))
+    workflow.setContent(req.content)
+    workflowDao.update(workflow)
+    WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
+
+    // Keep macro_metadata.port_spec aligned with the edited body's boundary
+    // markers so the Macros list (ports + runnable) reflects the new shape.
+    val body = mapper.readTree(req.content)
+    val ops = Option(body.get("operators"))
+    def portsOf(markerType: String): List[MacroPortSpec] =
+      ops
+        .filter(_.isArray)
+        .map(_.elements().asScala.toList)
+        .getOrElse(Nil)
+        .filter(op => Option(op.get("operatorType")).map(_.asText).contains(markerType))
+        .flatMap(op => Option(op.get("portIndex")).map(_.asInt))
+        .sorted
+        .map(i => MacroPortSpec(i))
+    Option(macroMetadataDao.fetchOneByWid(wid)).foreach { metadata =>
+      metadata.setPortSpec(
+        jsonbOf(PortSpec(portsOf("MacroInput"), portsOf("MacroOutput")))
+      )
+      macroMetadataDao.update(metadata)
+    }
   }
 
   private def isOwner(wid: Integer, uid: Integer): Boolean =

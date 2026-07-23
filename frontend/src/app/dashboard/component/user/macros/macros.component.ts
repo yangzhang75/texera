@@ -37,7 +37,7 @@ import {
   DEFAULT_WORKFLOW_NAME,
   WorkflowPersistService,
 } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { USER_MACRO_OPEN } from "../../../../app-routing.constant";
+import { USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
  * The unified "Macros" dashboard tab. Lists every macro definition (kind=MACRO
@@ -173,7 +173,11 @@ export class MacrosComponent implements OnInit {
     if (this.editingNameWid === m.wid || this.editingDescriptionWid === m.wid) {
       return;
     }
-    this.router.navigate([USER_MACRO_OPEN, m.wid]);
+    // Open the macro in the editable canvas (Edit macro) — the drill-down editor
+    // route, reused standalone with the macro as its own "parent". From there
+    // the user can Save the body, edit the configurable-property whitelist, or
+    // jump to Generate workflow.
+    this.router.navigate([USER_WORKSPACE, m.wid, "macro", m.wid]);
   }
 
   /**

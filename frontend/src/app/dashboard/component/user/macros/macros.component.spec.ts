@@ -19,7 +19,7 @@
 
 import { MacrosComponent } from "./macros.component";
 import { MacroSummary } from "../../../../workspace/service/macro/macro.service";
-import { USER_MACRO_OPEN } from "../../../../app-routing.constant";
+import { USER_WORKSPACE } from "../../../../app-routing.constant";
 
 function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   return {
@@ -49,18 +49,18 @@ describe("MacrosComponent row open (Phase 2 C4: gate relocated to the page toggl
     component = new MacrosComponent(macroServiceStub, {} as any, {} as any, {} as any, routerStub);
   });
 
-  it("opens the dual-mode page for a runnable macro", () => {
+  it("opens the editable macro editor (drill-down route) for a runnable macro", () => {
     runnable = true;
     const m = macro();
     component.onOpen(m);
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
+    expect(navigate).toHaveBeenCalledWith([USER_WORKSPACE, m.wid, "macro", m.wid]);
   });
 
-  it("STILL opens the page for a not-runnable macro (row is no longer gated; toggle is)", () => {
+  it("STILL opens the editor for a not-runnable macro (editing is always allowed)", () => {
     runnable = false;
     const m = macro({ portSpec: { inputs: [{ index: 0 }], outputs: [] } });
     component.onOpen(m);
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, m.wid]);
+    expect(navigate).toHaveBeenCalledWith([USER_WORKSPACE, m.wid, "macro", m.wid]);
   });
 
   it("does not navigate while an inline name edit is in progress on the row", () => {

@@ -66,6 +66,7 @@ import { MiniMapComponent } from "./workflow-editor/mini-map/mini-map.component"
 import { LeftPanelComponent } from "./left-panel/left-panel.component";
 import { AgentPanelComponent } from "./agent/agent-panel/agent-panel.component";
 import { PropertyEditorComponent } from "./property-editor/property-editor.component";
+import { MacroConfigurablePropertiesComponent } from "./macro-configurable-properties/macro-configurable-properties.component";
 import { TemplateService } from "../../dashboard/service/user/template/template.service";
 import { Template } from "../../common/type/template";
 
@@ -99,6 +100,7 @@ interface WorkspaceContext {
     NgIf,
     AgentPanelComponent,
     PropertyEditorComponent,
+    MacroConfigurablePropertiesComponent,
   ],
 })
 export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -115,6 +117,18 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   public macroEditMode: boolean = false;
   public macroEditName: string = "";
   public parentWorkflowId?: string;
+  // wid of the macro definition being edited in macro-edit mode (== the route's
+  // :macroId). Drives Save-to-macro and the standalone-edit detection.
+  public macroEditWid?: number;
+  // Whether this macro-edit view is a standalone edit opened from the Macros
+  // list (parent == the macro itself) rather than a drill-down from within a
+  // parent workflow. Standalone edits go "back" to the Macros list.
+  public get isStandaloneMacroEdit(): boolean {
+    return this.macroEditMode && this.macroEditWid !== undefined && String(this.macroEditWid) === this.parentWorkflowId;
+  }
+  public macroSaving = false;
+  // Toggles the Edit-macro "Configurable properties" whitelist panel.
+  public showConfigPanel = false;
   @ViewChild("codeEditor", { read: ViewContainerRef }) codeEditorViewRef!: ViewContainerRef;
 
   /**
@@ -466,12 +480,44 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
    * stale canvas state).
    */
   public onBackToParent(): void {
+    // Standalone macro edit (opened from the Macros list): "back" returns to the
+    // list, not to /user/workflow/<macroWid> (which would just re-enter here).
+    if (this.isStandaloneMacroEdit) {
+      window.location.href = "/user/macros";
+      return;
+    }
     const target = this.popDrillDownBreadcrumb() ?? `/user/workflow/${this.parentWorkflowId}`;
     window.location.href = target;
   }
 
+  /** Save the edited macro body back to the macro definition (Edit-macro mode). */
+  public saveMacro(): void {
+    if (this.macroEditWid === undefined) {
+      return;
+    }
+    this.macroSaving = true;
+    const content = this.workflowActionService.getWorkflowContent();
+    this.macroService
+      .updateMacroBody(this.macroEditWid, content)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => this.message.success("Macro saved."),
+        error: () => this.notificationService.error("Failed to save macro."),
+      })
+      .add(() => (this.macroSaving = false));
+  }
+
+  /** Leave the editor and open the Generate-workflow (fill) page for this macro. */
+  public openGenerateFromMacro(): void {
+    if (this.macroEditWid === undefined) {
+      return;
+    }
+    window.location.href = `/user/macros/${this.macroEditWid}`;
+  }
+
   loadMacroWithId(macroId: number): void {
     this.isLoading = true;
+    this.macroEditWid = macroId;
     this.workflowActionService.disableWorkflowModification();
     forkJoin({
       operatorMetadata: this.operatorMetadataService.getOperatorMetadata(),

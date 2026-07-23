@@ -39,7 +39,8 @@ import org.apache.texera.dao.jooq.generated.tables.pojos.{
 }
 import org.apache.texera.web.resource.dashboard.user.workflow.MacroResource.{
   GenerateWorkflowRequest,
-  UpdateConfigurablePropertiesRequest
+  UpdateConfigurablePropertiesRequest,
+  UpdateMacroBodyRequest
 }
 import org.jooq.JSONB
 import org.scalatest.BeforeAndAfterAll
@@ -273,6 +274,31 @@ class MacroResourceSpec
         UpdateConfigurablePropertiesRequest(Map("Filter-op-0" -> List("condition"))),
         sessionUser(otherUid)
       )
+    }
+  }
+
+  "updateMacroBody" should "overwrite the body content and refresh port_spec from the markers" in {
+    val macroWid = createTestMacro(macroBody("Filter"))
+    val newBody =
+      """{"operators":[
+        |{"operatorID":"MacroInput-op-0","operatorType":"MacroInput","portIndex":0},
+        |{"operatorID":"Filter-op-1","operatorType":"Filter","operatorProperties":{}},
+        |{"operatorID":"MacroOutput-op-2","operatorType":"MacroOutput","portIndex":0}
+        |],"links":[],"inputs":[{"index":0}],"outputs":[{"index":0}]}""".stripMargin
+
+    resource.updateMacroBody(macroWid, UpdateMacroBodyRequest(newBody), sessionUser(testUid))
+
+    workflowDao.fetchOneByWid(macroWid).getContent shouldBe newBody
+    val detail = resource.get(macroWid, sessionUser(testUid))
+    detail.portSpec.inputs.map(_.index) shouldBe List(0)
+    detail.portSpec.outputs.map(_.index) shouldBe List(0)
+  }
+
+  it should "reject updateMacroBody from a caller without write access" in {
+    val macroWid = createTestMacro(macroBody("Filter"))
+
+    assertThrows[ForbiddenException] {
+      resource.updateMacroBody(macroWid, UpdateMacroBodyRequest(macroBody("Filter")), sessionUser(otherUid))
     }
   }
 }

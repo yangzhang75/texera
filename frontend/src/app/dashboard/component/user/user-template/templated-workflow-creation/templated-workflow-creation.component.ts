@@ -84,27 +84,15 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
-  // Dual-mode page (macro only): "macro" edits the definition (read-only body
-  // view + editable name/description this round); "template" fills params and
-  // generates a workflow. Default macro. The tid (template) flow ignores this.
-  public pageMode: "macro" | "template" = "macro";
-  // The macro definition's own name/description (Macro mode edits these and
-  // saves them back to the macro). Distinct from genName/genDescription, which
-  // name the NEW workflow produced in Template mode.
-  public macroName = "";
-  public macroDescription = "";
-  // Template-mode whitelist: opId -> the prop names currently exposed as
-  // configurable. Loaded from the macro's param_spec, persisted on toggle.
+  // Whitelist (opId -> configurable prop names) loaded from the macro's
+  // param_spec. Edited in the Edit-macro view; here it is read-only and only
+  // drives which fields the fill form renders.
   public whitelist: Record<string, string[]> = {};
-  // Per-operator candidate scalar properties for the whitelist checkboxes.
-  public whitelistOps: { operatorID: string; label: string; candidates: string[] }[] = [];
-  // Basic info for the workflow that "Create Workflow" will produce (macro mode).
+  // Basic info for the workflow that "Create Workflow" will produce.
   public genName = "";
   public genDescription = "";
-  // Runnable gate (macro mode): only a runnable macro can be generated (D3).
-  // The Macros list already blocks opening a not-runnable macro; this is the
-  // defensive gate for direct-URL access -- Create Workflow is disabled and a
-  // reason is shown. Defaults true so template mode is never gated.
+  // Runnable gate (D3): only a runnable macro can be generated. Create Workflow
+  // is disabled with a reason when the macro can't run standalone.
   public macroRunnable = true;
   public wid: number | undefined;
   public template: WorkflowContent | undefined;
@@ -281,80 +269,17 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     return content;
   }
 
-  /** Template mode is reachable only for a runnable macro (D3 gate on the toggle). */
-  public canUseTemplateMode(): boolean {
-    return !!this.macroId && this.macroRunnable;
-  }
-
-  /** Switch page mode; refuse to enter Template mode when the macro isn't runnable. */
-  public switchMode(mode: "macro" | "template"): void {
-    if (mode === "template" && !this.canUseTemplateMode()) {
-      return;
-    }
-    this.pageMode = mode;
-  }
-
-  public isWhitelisted(operatorID: string, prop: string): boolean {
-    return (this.whitelist[operatorID] ?? []).includes(prop);
-  }
-
   /**
-   * Toggle one property in/out of the Template-mode whitelist, persist the
-   * whole whitelist back to the macro definition (param_spec), then rebuild the
-   * parameter form so it renders exactly the checked properties.
+   * Apply the stored whitelist (param_spec, loaded in initFromMacro) onto each
+   * operator's configurableProperties, so the Generate form renders exactly the
+   * properties the macro author marked configurable in the Edit-macro view.
+   * (Whitelist EDITING lives in Edit-macro now; this page only fills values.)
    */
-  public toggleWhitelist(operatorID: string, prop: string): void {
-    if (!this.macroId) return;
-    const current = new Set(this.whitelist[operatorID] ?? []);
-    if (current.has(prop)) {
-      current.delete(prop);
-    } else {
-      current.add(prop);
-    }
-    const next: Record<string, string[]> = { ...this.whitelist };
-    if (current.size === 0) {
-      delete next[operatorID];
-    } else {
-      next[operatorID] = Array.from(current);
-    }
-    this.whitelist = next;
-    this.applyWhitelistToTemplate();
-    this.lastEnrichedSignature = "";
-    this.rebuildSectionsFromDynamicSchemas();
-    this.macroService
-      .updateMacroConfigurableProperties(this.macroId, this.whitelist)
-      .pipe(untilDestroyed(this))
-      .subscribe({
-        error: () => this.notificationService.error("Failed to save configurable properties."),
-      });
-  }
-
-  /** Push the current whitelist onto each template operator's configurableProperties. */
   private applyWhitelistToTemplate(): void {
     if (!this.template) return;
     this.template.operators.forEach(op => {
       (op as { configurableProperties?: string[] }).configurableProperties = this.whitelist[op.operatorID] ?? [];
     });
-  }
-
-  /** Save the macro definition's name (Macro mode). Reuses the workflow name endpoint. */
-  public saveMacroName(): void {
-    if (!this.macroId) return;
-    const name = this.macroName.trim();
-    if (!name) return;
-    this.workflowPersistService
-      .updateWorkflowName(this.macroId, name)
-      .pipe(untilDestroyed(this))
-      .subscribe({ error: () => this.notificationService.error("Failed to rename macro.") });
-  }
-
-  /** Save the macro definition's description (Macro mode). */
-  public saveMacroDescription(): void {
-    if (!this.macroId) return;
-    this.workflowPersistService
-      .updateWorkflowDescription(this.macroId, this.macroDescription)
-      .pipe(untilDestroyed(this))
-      .subscribe({ error: () => this.notificationService.error("Failed to update description.") });
   }
 
   /** "Create Workflow": generate a new independent workflow from the macro (1-to-n). */
@@ -363,7 +288,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     const content = this.buildMacroContentWithParams();
     // Clean default name: the "New workflow name" field, else the macro's own
     // name (never a placeholder / timestamp).
-    const name = this.genName?.trim() || this.macroName?.trim() || "Generated workflow";
+    const name = this.genName?.trim() || "Generated workflow";
     const description = this.genDescription?.trim() || undefined;
     this.macroService
       .generateWorkflowFromMacro(this.macroId, content, name, false, description)
@@ -486,7 +411,6 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     const macroParam = this.route.snapshot.params.macroId;
     if (macroParam) {
       this.macroId = Number(macroParam);
-      this.pageMode = "macro";
     } else {
       this.tid = this.route.snapshot.params.tid;
     }
@@ -585,10 +509,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     })
       .pipe(untilDestroyed(this))
       .subscribe(({ detail }) => {
-        // Macro-mode name/description edit the macro definition itself.
-        this.macroName = detail.name;
-        this.macroDescription = detail.description ?? "";
-        // Template-mode "new workflow" defaults (name/description of the workflow to generate).
+        // Defaults for the workflow that Create will produce.
         this.genName = detail.name;
         this.genDescription = detail.description ?? "";
         const content = this.macroService.macroDetailToGeneratedContent(detail);
@@ -608,12 +529,6 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
             : {};
         this.template = content;
         this.applyWhitelistToTemplate();
-        // Candidate scalar properties per operator for the whitelist checkboxes.
-        this.whitelistOps = content.operators.map(op => ({
-          operatorID: op.operatorID,
-          label: op.customDisplayName?.trim() ? op.customDisplayName : op.operatorType,
-          candidates: this.macroService.configurableCandidates(op.operatorType),
-        }));
         this.templatedWorkflowDraftService.initialize(content);
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows

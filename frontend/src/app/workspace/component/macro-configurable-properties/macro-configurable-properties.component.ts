@@ -52,6 +52,7 @@ import { NotificationService } from "../../../common/service/notification/notifi
       </div>
       <div *ngFor="let op of ops" class="mcp-op">
         <div class="mcp-op-label">{{ op.label }}</div>
+        <span *ngIf="op.candidates.length === 0" class="mcp-op-empty">No simple configurable properties</span>
         <label *ngFor="let p of op.candidates" class="mcp-prop">
           <input type="checkbox" [checked]="isChecked(op.operatorID, p)" (change)="toggle(op.operatorID, p)" />
           <span>{{ p }}</span>
@@ -93,6 +94,11 @@ import { NotificationService } from "../../../common/service/notification/notifi
         font-size: 13px;
         margin-bottom: 4px;
       }
+      .mcp-op-empty {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.4);
+        font-style: italic;
+      }
       .mcp-prop {
         display: inline-flex;
         align-items: center;
@@ -129,13 +135,15 @@ export class MacroConfigurablePropertiesComponent implements OnInit {
           const raw = detail.paramSpec;
           this.whitelist =
             raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, string[]>) : {};
-          this.ops = content.operators
-            .map(op => ({
-              operatorID: op.operatorID,
-              label: op.customDisplayName?.trim() ? op.customDisplayName : op.operatorType,
-              candidates: this.macroService.configurableCandidates(op.operatorType),
-            }))
-            .filter(o => o.candidates.length > 0);
+          // Show EVERY body operator (never drop one). Operators whose props are
+          // all complex (e.g. Filter's `predicates` array) simply have no scalar
+          // candidates and render a "no simple properties" note — they must not
+          // silently disappear from the list.
+          this.ops = content.operators.map(op => ({
+            operatorID: op.operatorID,
+            label: op.customDisplayName?.trim() ? op.customDisplayName : op.operatorType,
+            candidates: this.macroService.configurableCandidates(op.operatorType),
+          }));
           this.loading = false;
         },
         error: () => {

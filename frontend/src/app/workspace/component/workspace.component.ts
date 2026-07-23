@@ -127,8 +127,9 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.macroEditMode && this.macroEditWid !== undefined && String(this.macroEditWid) === this.parentWorkflowId;
   }
   public macroSaving = false;
-  // Toggles the Edit-macro "Configurable properties" whitelist panel.
-  public showConfigPanel = false;
+  // Collapse state of the right-docked Configurable-properties panel (open by
+  // default; collapse to free the right edge for the property editor).
+  public configDockCollapsed = false;
   @ViewChild("codeEditor", { read: ViewContainerRef }) codeEditorViewRef!: ViewContainerRef;
 
   /**

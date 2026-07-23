@@ -37,13 +37,6 @@
     title="Save changes to the macro definition">
     {{ macroSaving ? "Saving…" : "Save macro" }}
   </a>
-  <!-- Whitelist (which properties are configurable on the Generate page). -->
-  <a
-    class="macro-edit-banner__action"
-    (click)="showConfigPanel = !showConfigPanel"
-    title="Choose which properties are configurable when generating a workflow">
-    Configurable properties
-  </a>
   <!-- Jump to the Generate (fill) page for this macro. -->
   <a
     *ngIf="isStandaloneMacroEdit"
@@ -69,10 +62,20 @@
     {{ isStandaloneMacroEdit ? "← Back to Macros" : "← Back to parent" }}
   </a>
 </div>
+<!-- Configurable-property whitelist: a right-docked panel, always present in
+     Edit-macro mode (not a modal). Collapsible so the property editor stays
+     usable for editing operator values. -->
 <div
-  *ngIf="macroEditMode && showConfigPanel"
-  class="macro-config-panel">
-  <texera-macro-configurable-properties [macroId]="macroEditWid!"></texera-macro-configurable-properties>
+  *ngIf="macroEditMode"
+  class="macro-config-dock"
+  [class.collapsed]="configDockCollapsed">
+  <div class="macro-config-dock__header" (click)="configDockCollapsed = !configDockCollapsed">
+    <span class="macro-config-dock__chevron">{{ configDockCollapsed ? "‹" : "›" }}</span>
+    <span class="macro-config-dock__title">Configurable properties</span>
+  </div>
+  <div class="macro-config-dock__body" *ngIf="!configDockCollapsed">
+    <texera-macro-configurable-properties [macroId]="macroEditWid!"></texera-macro-configurable-properties>
+  </div>
 </div>
 <div id="result">
   <texera-result-panel></texera-result-panel>

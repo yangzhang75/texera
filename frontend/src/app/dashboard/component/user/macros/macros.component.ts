@@ -37,7 +37,7 @@ import {
   DEFAULT_WORKFLOW_NAME,
   WorkflowPersistService,
 } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { USER_WORKSPACE } from "../../../../app-routing.constant";
+import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
  * The unified "Macros" dashboard tab. Lists every macro definition (kind=MACRO
@@ -155,17 +155,19 @@ export class MacrosComponent implements OnInit {
     return this.macroService.isMacroRunnable(this.inCount(m), m.bodyOperatorTypes ?? []);
   }
 
-  /** Row tooltip: every macro opens (Edit macro); only runnable ones can also generate. */
+  /** Row tooltip: the primary use case (generate a workflow) is the default open. */
   runnableTooltip(m: MacroSummary): string {
     return this.isRunnable(m)
-      ? "Open — edit the macro, or generate a workflow from it"
-      : "Open — edit the macro. Not runnable on its own (no data source), so it can't be generated into a workflow yet.";
+      ? "Generate a workflow from this macro (or use Edit macro to change its body / configurable properties)"
+      : "Generate a workflow from this macro. Not runnable on its own (no data source) — it produces an Invalid Workflow you complete by adding a source.";
   }
 
   /**
-   * Open the dual-mode macro page (Edit macro by default; Generate workflow is
-   * a toggle inside, gated on runnable). Every macro can be opened -- the
-   * runnable gate lives on the toggle, not on the row (Phase 2 D3 relocation).
+   * Default open (row click) -> the Generate-workflow fill page, the biologist's
+   * primary use case. Template (fill values) is the main page; Edit macro is the
+   * secondary config page, reachable via the explicit "Edit macro" row action
+   * (and the "Edit macro" link on the Generate page). Consistent for every macro
+   * -- runnable is a label, never a gate here.
    */
   onOpen(m: MacroSummary): void {
     // Don't navigate while an inline edit is in progress on this row (the input
@@ -173,10 +175,20 @@ export class MacrosComponent implements OnInit {
     if (this.editingNameWid === m.wid || this.editingDescriptionWid === m.wid) {
       return;
     }
-    // Open the macro in the editable canvas (Edit macro) — the drill-down editor
-    // route, reused standalone with the macro as its own "parent". From there
-    // the user can Save the body, edit the configurable-property whitelist, or
-    // jump to Generate workflow.
+    this.onGenerate(m);
+  }
+
+  /** Row action "Generate workflow" -> the fill-parameters page (Template main page). */
+  onGenerate(m: MacroSummary): void {
+    this.router.navigate([USER_MACRO_OPEN, m.wid]);
+  }
+
+  /**
+   * Row action "Edit macro" -> the editable canvas (drill-down editor route,
+   * reused standalone with the macro as its own "parent"): edit the body, the
+   * configurable-property whitelist, then Save. Available for every macro.
+   */
+  onEditMacro(m: MacroSummary): void {
     this.router.navigate([USER_WORKSPACE, m.wid, "macro", m.wid]);
   }
 

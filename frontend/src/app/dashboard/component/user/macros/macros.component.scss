@@ -118,6 +118,18 @@
   border: 1px solid #d9d9d9;
 }
 
+/* two explicit row actions (Edit macro / Generate), right-aligned. */
+.macro-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  padding: 0 4px;
+
+  button {
+    height: 26px;
+  }
+}
+
 /* runnable state — the single expression of runnability (no separate dot). */
 .runnable-label {
   font-size: 12px;

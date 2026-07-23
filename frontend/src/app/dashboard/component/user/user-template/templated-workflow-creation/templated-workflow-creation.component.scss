@@ -59,13 +59,11 @@
   color: rgba(0, 0, 0, 0.45);
 }
 
+// A quiet one-line hint, not a half-screen box.
 .empty-state {
-  padding: 28px;
-  text-align: center;
+  padding: 4px 2px 12px;
   color: rgba(0, 0, 0, 0.45);
-  background: #fafafa;
-  border: 1px dashed #e6e8eb;
-  border-radius: 12px;
+  font-size: 13px;
 }
 
 // Each operator's configurable properties live in a light, airy card.

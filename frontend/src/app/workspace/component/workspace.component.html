@@ -26,59 +26,64 @@
 <div
   *ngIf="macroEditMode"
   class="macro-edit-banner">
-  <span class="macro-edit-banner__label">Editing Macro</span>
+  <span class="macro-edit-banner__label">Editing macro</span>
   <span class="macro-edit-banner__name">{{ macroEditName }}</span>
 
-  <!-- Save the edited body back to the macro definition. -->
-  <a
-    class="macro-edit-banner__action"
-    (click)="saveMacro()"
-    [class.disabled]="macroSaving"
-    title="Save changes to the macro definition">
-    {{ macroSaving ? "Saving…" : "Save macro" }}
-  </a>
-  <!-- Jump to the Generate (fill) page for this macro. Shown for every macro:
-       a not-runnable one just generates an Invalid Workflow (no runnable gate). -->
-  <a
-    *ngIf="isStandaloneMacroEdit"
-    class="macro-edit-banner__action"
-    (click)="openGenerateFromMacro()"
-    title="Generate an independent workflow from this macro">
-    Generate workflow →
-  </a>
+  <div class="macro-edit-banner__actions">
+    <!-- Save the edited body back to the macro definition. -->
+    <a
+      class="macro-edit-banner__action"
+      (click)="saveMacro()"
+      [class.disabled]="macroSaving"
+      title="Save changes to the macro definition">
+      {{ macroSaving ? "Saving…" : "Save macro" }}
+    </a>
+    <!-- Jump to the Generate (fill) page for this macro. Shown for every macro:
+         a not-runnable one just generates an Invalid Workflow (no runnable gate). -->
+    <a
+      *ngIf="isStandaloneMacroEdit"
+      class="macro-edit-banner__action"
+      (click)="openGenerateFromMacro()"
+      title="Generate an independent workflow from this macro">
+      Generate workflow →
+    </a>
 
-  <!-- Use a button + click handler instead of routerLink so we can:
-       (a) honor the per-tab drill-down breadcrumb stack (sessionStorage)
-           so nested macros pop back to their DIRECT parent (e.g.
-           /workflow/280/macro/294 → /workflow/280/macro/295), not the root.
-       (b) force a hard reload — SPA navigation between macro view and
-           workflow view leaves stale canvas state in some cases. Hard
-           reload guarantees clean reinit.
-  -->
-  <a
-    *ngIf="parentWorkflowId"
-    class="macro-edit-banner__back"
-    (click)="onBackToParent()"
-    [title]="isStandaloneMacroEdit ? 'Back to Macros' : 'Return to parent workflow'">
-    {{ isStandaloneMacroEdit ? "← Back to Macros" : "← Back to parent" }}
-  </a>
+    <!-- Use a button + click handler instead of routerLink so we can:
+         (a) honor the per-tab drill-down breadcrumb stack (sessionStorage)
+             so nested macros pop back to their DIRECT parent (e.g.
+             /workflow/280/macro/294 → /workflow/280/macro/295), not the root.
+         (b) force a hard reload — SPA navigation between macro view and
+             workflow view leaves stale canvas state in some cases. Hard
+             reload guarantees clean reinit.
+    -->
+    <a
+      *ngIf="parentWorkflowId"
+      class="macro-edit-banner__back"
+      (click)="onBackToParent()"
+      [title]="isStandaloneMacroEdit ? 'Back to Macros' : 'Return to parent workflow'">
+      {{ isStandaloneMacroEdit ? "← Back to Macros" : "← Back to parent" }}
+    </a>
+  </div>
 </div>
-<div id="result">
+<div id="result" *ngIf="!isEmbedded">
   <texera-result-panel></texera-result-panel>
 </div>
 <texera-workflow-editor
   *ngIf="mode || macroEditMode"
   [mode]="mode || 'workflow'">
 </texera-workflow-editor>
+<!-- The full workspace chrome (toolbar, env selector, Share, Run, minimap,
+     operator palette) is suppressed in an embedded preview so the macro Generate
+     page shows a quiet, read-only picture of the body. -->
 <texera-menu
-  *ngIf="mode"
+  *ngIf="mode && !isEmbedded"
   [writeAccess]="writeAccess"
   [pid]="pid"
   [mode]="mode"
   [isEmbedded]="isEmbedded">
 </texera-menu>
-<texera-mini-map class="box"></texera-mini-map>
-<texera-left-panel> </texera-left-panel>
+<texera-mini-map *ngIf="!isEmbedded" class="box"></texera-mini-map>
+<texera-left-panel *ngIf="!isEmbedded"> </texera-left-panel>
 <texera-agent-panel
   *ngIf="copilotEnabled"
   [agentIdToActivate]="agentIdToActivate"></texera-agent-panel>

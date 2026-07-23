@@ -18,16 +18,19 @@
  */
 
 import { Component, OnInit } from "@angular/core";
-import { NgFor, NgIf, NgStyle, DatePipe } from "@angular/common";
+import { NgFor, NgIf } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
 import { forkJoin } from "rxjs";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
-import { NzAvatarComponent } from "ng-zorro-antd/avatar";
+import { NzCardComponent } from "ng-zorro-antd/card";
+import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
+import { UserAvatarComponent } from "../user-avatar/user-avatar.component";
+import { formatRelativeTime } from "src/app/common/util/format.util";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import {
@@ -54,18 +57,23 @@ import { USER_MACRO_OPEN } from "../../../../app-routing.constant";
   imports: [
     NgFor,
     NgIf,
-    NgStyle,
-    DatePipe,
     FormsModule,
-    NzAvatarComponent,
+    NzCardComponent,
+    NzRowDirective,
+    NzColDirective,
     NzButtonComponent,
     NzIconDirective,
     NzTooltipModule,
+    UserAvatarComponent,
   ],
 })
 export class MacrosComponent implements OnInit {
   macros: MacroSummary[] = [];
   isLoading = false;
+
+  // Shared relative-time formatter (same one the Workflows list uses) so the
+  // Created/Edited columns read identically across both pages.
+  readonly formatRelativeTime = formatRelativeTime;
 
   // wid currently being renamed / re-described inline (undefined = none). Same
   // inline-edit affordance as the Workflows list.
@@ -111,6 +119,30 @@ export class MacrosComponent implements OnInit {
 
   outCount(m: MacroSummary): number {
     return m.portSpec?.outputs?.length ?? 0;
+  }
+
+  /** Coerce the transport time (epoch ms number, or ISO string) to epoch ms. */
+  epoch(t: string | number | undefined): number | undefined {
+    if (t === undefined || t === null) return undefined;
+    return typeof t === "number" ? t : new Date(t).getTime();
+  }
+
+  /** Body operator types minus the boundary markers. */
+  private bodyOps(m: MacroSummary): string[] {
+    return (m.bodyOperatorTypes ?? []).filter(t => t !== "MacroInput" && t !== "MacroOutput");
+  }
+
+  /**
+   * One-line subtitle for a macro row: the author's description if set, else a
+   * composed op-chain like "Filter → Limit (2 ops, 1 in / 1 out)".
+   */
+  descriptionOrSubtitle(m: MacroSummary): string {
+    const desc = m.description?.trim();
+    if (desc) return desc;
+    const ops = this.bodyOps(m);
+    if (ops.length === 0) return "";
+    const chain = ops.join(" → ");
+    return `${chain} (${ops.length} ops, ${this.inCount(m)} in / ${this.outCount(m)} out)`;
   }
 
   /**

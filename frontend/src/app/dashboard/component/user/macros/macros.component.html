@@ -2,8 +2,8 @@
   <div class="macros-header">
     <h2>Macros</h2>
     <p class="macros-subtitle">
-      Reusable, encapsulated sub-workflows. Insert one into a canvas as a node (LIVE), or generate an
-      independent workflow from it. A green light means the macro is runnable on its own.
+      Reusable, encapsulated sub-workflows. Open one to edit it, or generate an independent workflow from
+      it. The label on the right shows whether a macro can run on its own.
     </p>
   </div>
 
@@ -12,102 +12,92 @@
     No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
   </div>
 
-  <div
-    class="macro-row"
+  <nz-card
     *ngFor="let m of macros"
+    class="list-item-card macro-row-card"
+    [nzBodyStyle]="{ padding: '3px' }"
     (click)="onOpen(m)"
     [title]="runnableTooltip(m)">
-    <span
-      class="runnable-dot"
-      [class.runnable]="isRunnable(m)"
-      [title]="isRunnable(m)
-        ? 'Runnable: no unbound inputs — carries its own data source'
-        : 'Not runnable: has ' + inCount(m) + ' unbound input(s); generated workflow will be invalid until you add a source'"></span>
+    <div nz-row nzAlign="middle">
+      <!-- type icon -->
+      <div nz-col nzFlex="0" class="type-icon">
+        <i nz-icon nzType="deployment-unit" nzTheme="outline"></i>
+      </div>
 
-    <nz-avatar
-      class="macro-avatar"
-      [ngStyle]="{ 'background-color': 'grey', 'vertical-align': 'middle' }"
-      [nzGap]="4"
-      [nzText]="'' + m.wid"
-      nzSize="default"></nz-avatar>
+      <!-- id: small italic grey, lowest visual weight -->
+      <div nz-col nzFlex="0" class="workflow-id"><i>#{{ m.wid }}</i></div>
 
-    <div class="macro-main">
-      <div class="macro-title-line">
-        <span *ngIf="editingNameWid !== m.wid" class="macro-name">{{ m.name }}</span>
+      <!-- inline-edit actions: hidden until row hover -->
+      <div nz-col nzFlex="30px">
+        <div class="edit-button">
+          <button
+            nz-button
+            nzType="text"
+            title="Rename"
+            (click)="editingNameWid = m.wid; $event.stopPropagation()">
+            <i nz-icon nzType="edit"></i>
+          </button>
+        </div>
+        <div class="edit-button">
+          <button
+            nz-button
+            nzType="text"
+            title="Edit description"
+            (click)="editingDescriptionWid = m.wid; $event.stopPropagation()">
+            <i nz-icon nzType="form"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- name + one-line description/subtitle -->
+      <div nz-col nzFlex="1" class="resource-name-group">
+        <div class="resource-name truncate-single-line" *ngIf="editingNameWid !== m.wid">{{ m.name }}</div>
         <input
           *ngIf="editingNameWid === m.wid"
           #nameInput
-          class="macro-inline-input"
-          (click)="$event.stopPropagation()"
-          (focusout)="confirmRename(m, nameInput.value)"
-          (keyup.enter)="confirmRename(m, nameInput.value)"
+          class="resource-name-edit-input"
           value="{{ m.name }}"
-          placeholder="{{ m.name }}" />
+          (click)="$event.stopPropagation()"
+          (blur)="confirmRename(m, nameInput.value)"
+          (keydown.enter)="confirmRename(m, nameInput.value)" />
+        <div class="resource-description truncate-single-line" *ngIf="editingDescriptionWid !== m.wid">
+          {{ descriptionOrSubtitle(m) }}
+        </div>
+        <input
+          *ngIf="editingDescriptionWid === m.wid"
+          #descInput
+          class="resource-name-edit-input"
+          value="{{ m.description }}"
+          maxlength="500"
+          (click)="$event.stopPropagation()"
+          (blur)="confirmDescription(m, descInput.value)"
+          (keydown.enter)="confirmDescription(m, descInput.value)" />
+      </div>
 
-        <button
-          nz-button
-          nzType="text"
-          nzSize="small"
-          nz-tooltip="Rename macro"
-          nzTooltipPlacement="bottom"
-          (click)="$event.stopPropagation(); editingNameWid = m.wid">
-          <i nz-icon nzType="edit" nzTheme="outline"></i>
-        </button>
-        <button
-          nz-button
-          nzType="text"
-          nzSize="small"
-          nz-tooltip="Edit description"
-          nzTooltipPlacement="bottom"
-          (click)="$event.stopPropagation(); editingDescriptionWid = m.wid">
-          <i nz-icon nzType="plus-square" nzTheme="outline"></i>
-        </button>
+      <!-- owner avatar (same component the Workflows list uses) -->
+      <div nz-col nzFlex="50px" class="resource-info">
+        <texera-user-avatar
+          userColor="#1E90FF"
+          [userName]="m.ownerName || 'User'"
+          [isOwner]="!!m.isOwner">
+        </texera-user-avatar>
+      </div>
 
-        <i
-          *ngIf="m.isOwner"
-          class="macro-owner-icon"
-          nz-icon
-          nzType="user"
-          nzTheme="outline"
-          nz-tooltip="You are the owner"
-          nzTooltipPlacement="bottom"></i>
-        <i
-          *ngIf="m.isOwner === false"
-          class="macro-owner-icon"
-          nz-icon
-          nzType="team"
-          nzTheme="outline"
-          nz-tooltip="Shared by {{ m.ownerName }}"
-          nzTooltipPlacement="bottom"></i>
+      <!-- ports -->
+      <div nz-col nzFlex="70px" class="resource-info">
+        Ports:<br />{{ inCount(m) }} in / {{ outCount(m) }} out
+      </div>
 
-        <span class="macro-spacer"></span>
-
-        <span class="macro-ports">{{ inCount(m) }} in / {{ outCount(m) }} out</span>
+      <!-- runnable label (single expression of runnability) -->
+      <div nz-col nzFlex="95px" class="resource-info">
         <span class="runnable-label" [class.runnable]="isRunnable(m)">
           {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
         </span>
       </div>
 
-      <div class="macro-desc-line">
-        <span *ngIf="editingDescriptionWid !== m.wid" class="macro-desc">
-          {{ m.description || "No description" }}
-        </span>
-        <input
-          *ngIf="editingDescriptionWid === m.wid"
-          #descInput
-          class="macro-inline-input"
-          title="Description"
-          (click)="$event.stopPropagation()"
-          (focusout)="confirmDescription(m, descInput.value)"
-          (keyup.enter)="confirmDescription(m, descInput.value)"
-          value="{{ m.description }}"
-          maxlength="500" />
-      </div>
-
-      <div class="macro-meta-line">
-        <span>Last Modified: {{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
-        <span>Created: {{ m.creationTime | date: "yyyy-MM-dd HH:mm" }}</span>
-      </div>
+      <!-- compact created / edited, relative time, matching the Workflows list -->
+      <div nz-col nzFlex="90px" class="resource-info">Created:<br />{{ formatRelativeTime(epoch(m.creationTime)) }}</div>
+      <div nz-col nzFlex="90px" class="resource-info">Edited:<br />{{ formatRelativeTime(epoch(m.lastModifiedTime)) }}</div>
     </div>
-  </div>
+  </nz-card>
 </div>

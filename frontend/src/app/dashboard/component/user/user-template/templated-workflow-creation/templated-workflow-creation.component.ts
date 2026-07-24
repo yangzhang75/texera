@@ -385,6 +385,14 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
       if (fields.length === 0) return;
 
+      // Make number/integer fields null-safe. The FormlyJsonschema number parser
+      // does `document.querySelector('#'+f.id).validity.badInput` when the field
+      // goes empty; with ng-zorro's nz-input-number the id lands on the WRAPPER
+      // (the native <input> has no id), so `.validity` is undefined and it
+      // throws ("Cannot read properties of undefined (reading 'badInput')"),
+      // taking down the whole param form. Replace that parser with a guarded one.
+      this.makeNumberFieldsNullSafe(fields);
+
       // Seed the model from the staged draft, not the live graph.
       // This preserves unsaved user edits across schema-triggered form rebuilds.
       const draftPropsSource: Record<string, any> =
@@ -405,6 +413,45 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     });
 
     return sections;
+  }
+
+  /**
+   * Replace the FormlyJsonschema number/integer parser with a null-safe variant
+   * on the given fields (recurses into field groups). The stock parser reads
+   * `document.querySelector('#'+f.id).validity.badInput` when the value clears;
+   * ng-zorro's nz-input-number puts the id on the wrapper (not the native
+   * input), so `.validity` is undefined and it throws. Ours resolves the real
+   * native input (or treats "no input" as empty) and guards `validity`.
+   */
+  private makeNumberFieldsNullSafe(fields: FormlyFieldConfig[]): void {
+    const toNum = (val: any): number | null => {
+      if (val === "" || val === null || val === undefined) return null;
+      const n = Number(val);
+      return Number.isNaN(n) ? null : n;
+    };
+    const visit = (field: FormlyFieldConfig): void => {
+      if (field.type === "number" || field.type === "integer") {
+        field.parsers = [
+          (v: any, f?: FormlyFieldConfig) => {
+            let num: any = toNum(v);
+            if (num === null && f) {
+              const el = typeof document !== "undefined" && f.id ? document.querySelector(`#${f.id}`) : null;
+              const nativeInput =
+                el instanceof HTMLInputElement ? el : (el?.querySelector?.("input") as HTMLInputElement | null);
+              // badInput (mid-typing "1." / "e") -> keep raw; otherwise the field
+              // is genuinely empty -> clear to undefined.
+              num = nativeInput?.validity?.badInput === true ? v : undefined;
+              if (num !== f.formControl?.value) {
+                f.formControl?.setValue(num, { emitModelToViewChange: false });
+              }
+            }
+            return num;
+          },
+        ];
+      }
+      (field.fieldGroup ?? []).forEach(visit);
+    };
+    fields.forEach(visit);
   }
 
   ngOnInit(): void {

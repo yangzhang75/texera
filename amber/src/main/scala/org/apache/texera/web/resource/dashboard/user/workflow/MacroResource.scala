@@ -116,6 +116,10 @@ object MacroResource {
     */
   case class UpdateMacroBodyRequest(content: String)
 
+  // Open-time LIVE check: map each requested macro wid to its latest version
+  // (vid), for the frontend to compare against each LIVE node's pinned version.
+  case class LatestVersionsRequest(wids: List[Integer])
+
   /** Full response for `POST /macro/create` and `GET /macro/{wid}`. */
   case class MacroDetail(
       wid: Integer,
@@ -130,7 +134,10 @@ object MacroResource {
       category: Option[String],
       icon: Option[String],
       isOwner: Boolean,
-      readonly: Boolean
+      readonly: Boolean,
+      // Latest version (vid) of this macro definition. A LIVE reference pins a
+      // macroVersion and compares it against this to decide whether to prompt.
+      version: Integer
   )
 
   /**
@@ -412,6 +419,25 @@ class MacroResource extends LazyLogging {
     toDetail(workflow, metadata, isOwner = isOwner(wid, uid), readonly = !hasWriteAccess(wid, uid))
   }
 
+  /**
+    * Latest version (vid) per requested macro wid -- the open-time LIVE check.
+    * Only readable MACRO wids are returned; others are silently dropped (the
+    * caller just won't prompt for them). Keyed by wid-as-string to match the
+    * frontend's macroId (stored as a string on the node).
+    */
+  @POST
+  @Consumes(Array(MediaType.APPLICATION_JSON))
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/latest-versions")
+  def latestVersions(req: LatestVersionsRequest, @Auth sessionUser: SessionUser): Map[String, Integer] = {
+    val uid = sessionUser.getUser.getUid
+    req.wids.distinct
+      .filter(wid => hasReadAccess(wid, uid))
+      .filter(wid => Option(workflowDao.fetchOneByWid(wid)).exists(_.getKind == WorkflowKindEnum.MACRO))
+      .map(wid => wid.toString -> WorkflowVersionResource.getLatestVersion(wid))
+      .toMap
+  }
+
   @GET
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/{wid}/schema")
@@ -530,6 +556,7 @@ class MacroResource extends LazyLogging {
       Option(metadata.getCategory),
       Option(metadata.getIcon),
       isOwner,
-      readonly
+      readonly,
+      WorkflowVersionResource.getLatestVersion(workflow.getWid)
     )
 }

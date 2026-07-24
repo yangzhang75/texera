@@ -313,7 +313,7 @@ export class OperatorMenuComponent {
       operatorVersion: "",
       operatorProperties: {
         macroId: String(m.wid),
-        macroVersion: 1,
+        macroVersion: m.version ?? 1,
         linkMode: "LIVE",
         inputPortCount,
         outputPortCount,

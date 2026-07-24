@@ -84,8 +84,12 @@ object MacroExpander {
           )
         )
       case MacroOpDesc.LIVE =>
-        registry
-          .fetch(m.macroId, m.macroVersion)
+        // A LIVE reference pins its version by carrying an embedded body (same
+        // as SNAPSHOT); the open-time prompt re-embeds on confirm. Prefer that
+        // pinned body; fall back to the registry's current row for legacy LIVE
+        // nodes that predate embedding (backward compatible, one branch).
+        m.snapshot
+          .orElse(registry.fetch(m.macroId, m.macroVersion))
           .getOrElse(
             throw new IllegalArgumentException(
               s"MacroOpDesc[${m.macroId}@v${m.macroVersion}] not found in registry " +

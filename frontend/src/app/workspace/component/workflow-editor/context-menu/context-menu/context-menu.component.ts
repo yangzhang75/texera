@@ -633,9 +633,8 @@ export class ContextMenuComponent {
       operatorVersion: "",
       operatorProperties: {
         macroId: detail.wid.toString(),
-        // TODO: backend should expose the pinned vid on MacroDetail; defaulting
-        // to 1 until then (DbMacroRegistry ignores version in v1 anyway).
-        macroVersion: 1,
+        // Pin the macro definition's current version (LIVE prompts on a newer one).
+        macroVersion: detail.version,
         linkMode: "LIVE",
         inputPortCount: built.inputPortCount,
         outputPortCount: built.outputPortCount,

@@ -566,7 +566,11 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     const macroId = props["macroId"];
     if (!macroId) return;
     const linkMode = props["linkMode"];
-    if (linkMode === "SNAPSHOT" && !props["snapshot"]) {
+    // Both SNAPSHOT and LIVE carry an embedded pinned body (Approach A): SNAPSHOT
+    // stays frozen; LIVE additionally gets the open-time update prompt. Embed the
+    // macro's current body when a reference has none yet. (LIVE no longer clears
+    // its body — that would make it silently follow the latest definition.)
+    if ((linkMode === "SNAPSHOT" || linkMode === "LIVE") && !props["snapshot"]) {
       this.macroService
         .snapshotIntoInstance(macroId as string)
         .pipe(untilDestroyed(this))
@@ -588,12 +592,6 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
             /* couldn't fetch (no access / deleted) — leave the node as-is */
           },
         });
-    } else if (linkMode === "LIVE" && props["snapshot"]) {
-      const cur = this.workflowActionService.getTexeraGraph().getOperator(op.operatorID);
-      if (!cur) return;
-      const next = { ...cur.operatorProperties };
-      delete next["snapshot"];
-      this.workflowActionService.setOperatorProperty(op.operatorID, next);
     }
   }
 

@@ -165,7 +165,10 @@ object MacroResource {
       // OperatorMetadataService to decide "runnable" (0 external inputs AND a
       // body source op). Kept as bare type strings so the list stays light and
       // the backend needs no per-operator port metadata of its own.
-      bodyOperatorTypes: List[String]
+      bodyOperatorTypes: List[String],
+      // Latest version (vid) of the macro definition; a reference pins this so
+      // a freshly-inserted node isn't immediately "behind".
+      version: Integer
   )
 
   /**
@@ -361,7 +364,8 @@ class MacroResource extends LazyLogging {
         usageMap.getOrElse(r.value1().intValue(), 0),
         isOwner = r.value9() != null && r.value9() == uid,
         ownerName = Option(r.value10()).getOrElse(""),
-        bodyOperatorTypes = bodyOperatorTypesOf(r.value11())
+        bodyOperatorTypes = bodyOperatorTypesOf(r.value11()),
+        version = WorkflowVersionResource.getLatestVersion(r.value1())
       )
     }.toList
   }

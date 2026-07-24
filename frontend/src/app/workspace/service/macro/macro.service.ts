@@ -113,6 +113,8 @@ export interface MacroDetail {
   icon?: string;
   isOwner: boolean;
   readonly: boolean;
+  // Latest version (vid) of the macro definition; a reference pins this.
+  version: number;
 }
 
 export interface MacroSummary {
@@ -138,6 +140,9 @@ export interface MacroSummary {
   // older backend builds (without the usageCount field) still work — frontend
   // treats `undefined` as "unknown" and hides the chip.
   usageCount?: number;
+  // Latest version (vid) of the macro definition; a reference pins this.
+  // Optional so older backends still parse.
+  version?: number;
 }
 
 // Shape that MacroExpander (backend) reads off `workflow.content`. Matches the
@@ -294,7 +299,7 @@ export class MacroService {
       operatorVersion: "",
       operatorProperties: {
         macroId: detail.wid.toString(),
-        macroVersion: 1,
+        macroVersion: detail.version,
         // Default SNAPSHOT (a self-contained copy — safest). The editor's
         // reconcileMacroSnapshot embeds the body right after the node is added.
         linkMode: "SNAPSHOT",

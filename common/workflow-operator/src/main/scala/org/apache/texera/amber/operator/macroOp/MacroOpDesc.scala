@@ -20,6 +20,7 @@
 package org.apache.texera.amber.operator.macroOp
 
 import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty, JsonPropertyDescription}
+import com.fasterxml.jackson.databind.JsonNode
 import com.kjetland.jackson.jsonSchema.annotations.{JsonSchemaInject, JsonSchemaTitle}
 import org.apache.texera.amber.core.virtualidentity.{ExecutionIdentity, WorkflowIdentity}
 import org.apache.texera.amber.core.workflow.{InputPort, OutputPort, PhysicalPlan, PortIdentity}
@@ -78,6 +79,18 @@ class MacroOpDesc extends LogicalOp {
   @JsonProperty(value = "displayName")
   @JsonSchemaTitle("Display Name")
   var displayName: String = ""
+
+  // Per-instance parameter overrides for THIS generation (Phase 2, 方案甲).
+  // Keyed by a path RELATIVE to this node -- "innerMacroNodeId/.../leafOpId" --
+  // mapping a leaf inner op to {prop -> value}. Values are raw JsonNode so any
+  // param type round-trips (and applies at the JSON level pre-parse, so a
+  // declared field here can never reintroduce the configurableProperties-style
+  // deserialization crash). MacroExpander applies path-1 entries to this body's
+  // ops and passes the stripped remainder down to nested Macro nodes, recursing
+  // to any depth. Empty for a plain reference; written only at Create.
+  @JsonProperty(value = "paramOverrides")
+  @JsonSchemaTitle("Parameter Overrides")
+  var paramOverrides: Map[String, Map[String, JsonNode]] = Map.empty
 
   @JsonProperty(value = "fusion")
   @JsonSchemaTitle("Fusion")

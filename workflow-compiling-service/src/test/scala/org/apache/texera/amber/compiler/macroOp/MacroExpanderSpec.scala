@@ -23,6 +23,7 @@ import org.apache.texera.amber.compiler.WorkflowCompiler
 import org.apache.texera.amber.compiler.model.{LogicalLink, LogicalPlan, LogicalPlanPojo}
 import org.apache.texera.amber.core.virtualidentity.{OperatorIdentity, WorkflowIdentity}
 import org.apache.texera.amber.core.workflow.{PortIdentity, WorkflowContext}
+import com.fasterxml.jackson.databind.node.IntNode
 import org.apache.texera.amber.operator.limit.LimitOpDesc
 import org.apache.texera.amber.operator.macroOp._
 import org.apache.texera.amber.operator.source.scan.csv.CSVScanSourceOpDesc
@@ -138,6 +139,43 @@ class MacroExpanderSpec extends AnyFlatSpec with Matchers {
     val edges = out.links.map(l => (l.fromOpId.id, l.toOpId.id)).toSet
     edges should contain("src" -> "Outer--Inner--inner-inner")
     edges should contain("Outer--Inner--inner-inner" -> "sink")
+  }
+
+  it should "inject a depth-2 param override into the nested inner op (方案甲)" in {
+    val innerBody = MacroBody(
+      operators = List(inMarker(0, "in"), limit("inner-limit", 7), outMarker(0, "out")),
+      links = List(
+        MacroLink("in", PortIdentity(0), "inner-limit", PortIdentity(0)),
+        MacroLink("inner-limit", PortIdentity(0), "out", PortIdentity(0))
+      )
+    )
+    val innerInst = snapshotInstance("Inner", "macro-inner", innerBody)
+    val outerBody = MacroBody(
+      operators = List(inMarker(0, "oin"), innerInst, outMarker(0, "oout")),
+      links = List(
+        MacroLink("oin", PortIdentity(0), "Inner", PortIdentity(0)),
+        MacroLink("Inner", PortIdentity(0), "oout", PortIdentity(0))
+      )
+    )
+    val outer = snapshotInstance("Outer", "macro-outer", outerBody)
+    // Path relative to `outer`: nested Macro node "Inner" -> leaf op "inner-limit".
+    outer.paramOverrides = Map("Inner/inner-limit" -> Map("limit" -> IntNode.valueOf(99)))
+    val src = limit("src", 0); val sink = limit("sink", 1)
+    val plan = LogicalPlan(
+      operators = List(src, outer, sink),
+      links = List(
+        LogicalLink(src.operatorIdentifier, PortIdentity(0), outer.operatorIdentifier, PortIdentity(0)),
+        LogicalLink(outer.operatorIdentifier, PortIdentity(0), sink.operatorIdentifier, PortIdentity(0))
+      )
+    )
+    val out = MacroExpander.expand(plan, MacroRegistry.Empty)
+    val innerLimit = out.operators.collect {
+      case l: LimitOpDesc if l.operatorIdentifier.id == "Outer--Inner--inner-limit" => l
+    }
+    innerLimit should have size 1
+    innerLimit.head.limit shouldBe 99 // override applied 2 levels deep
+    // the original inner body definition is untouched (still 7)
+    innerBody.operators.collect { case l: LimitOpDesc => l.limit } shouldBe List(7)
   }
 
   it should "detect a self-referential macro cycle" in {

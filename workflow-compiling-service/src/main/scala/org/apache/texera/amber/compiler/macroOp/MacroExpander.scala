@@ -32,6 +32,9 @@ import org.apache.texera.amber.operator.macroOp.{
   MacroOutputOp
 }
 import org.apache.texera.amber.util.JSONUtils.objectMapper
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
+import scala.util.control.NonFatal
 
 // Pre-compile pass: walks a LogicalPlan, inlines every MacroOpDesc by splicing its
 // body's inner operators and links into the parent, and produces a flat LogicalPlan
@@ -102,8 +105,14 @@ object MacroExpander {
         )
     }
 
+    // Apply this generation's per-instance param overrides (方案甲): entries
+    // whose path is a single segment target this body's leaf ops directly;
+    // deeper paths ride down onto the matching nested Macro node's own
+    // paramOverrides, applied when the recursion reaches it. Empty for a plain
+    // reference. The expanded copy itself stays clean until this point.
+    val overriddenOperators = applyParamOverrides(body.operators, m.paramOverrides)
     val expandedBody = expand(
-      LogicalPlan(body.operators, body.links.map(toLogicalLink)),
+      LogicalPlan(overriddenOperators, body.links.map(toLogicalLink)),
       registry,
       ctx.descend(m.macroId, m.macroVersion)
     )
@@ -251,6 +260,53 @@ object MacroExpander {
   private def deepClone(op: LogicalOp): LogicalOp = {
     val json = objectMapper.writeValueAsString(op)
     objectMapper.readValue(json, classOf[LogicalOp])
+  }
+
+  /**
+    * Apply per-instance param overrides (方案甲, arbitrary depth) to a body's
+    * operators, returning fresh op instances (never mutating the shared/persisted
+    * body). For each override keyed by a path relative to this body:
+    *   - single segment `opId`  -> a leaf real op here: merge {prop -> value}
+    *     into its JSON and re-parse (JSON-level, so any param type round-trips
+    *     and a declared field can't reintroduce an unknown-field crash);
+    *   - `opId/rest...`         -> `opId` is a nested Macro node here: attach the
+    *     stripped `rest` path to a CLONE of that node's paramOverrides, so the
+    *     recursion applies it one level down. Recurses to any depth.
+    */
+  private def applyParamOverrides(
+      operators: List[LogicalOp],
+      overrides: Map[String, Map[String, JsonNode]]
+  ): List[LogicalOp] = {
+    if (overrides.isEmpty) return operators
+    operators.map { op =>
+      val id = op.operatorIdentifier.id
+      overrides.get(id) match {
+        case Some(propValues) => applyLeafOverride(op, propValues)
+        case None =>
+          val deeper: Map[String, Map[String, JsonNode]] = overrides.collect {
+            case (path, values) if path.startsWith(s"$id/") => path.substring(id.length + 1) -> values
+          }
+          op match {
+            case m: MacroOpDesc if deeper.nonEmpty =>
+              val cloned = deepClone(m).asInstanceOf[MacroOpDesc]
+              cloned.paramOverrides = m.paramOverrides ++ deeper
+              cloned
+            case _ => op
+          }
+      }
+    }
+  }
+
+  // Merge {prop -> value} into a leaf op at the JSON level, then re-parse. Bad
+  // values are tolerated (keep the original op) rather than crashing expansion.
+  private def applyLeafOverride(op: LogicalOp, propValues: Map[String, JsonNode]): LogicalOp = {
+    try {
+      val node = objectMapper.valueToTree[ObjectNode](op)
+      propValues.foreach { case (prop, value) => node.set[ObjectNode](prop, value) }
+      objectMapper.treeToValue(node, classOf[LogicalOp])
+    } catch {
+      case NonFatal(_) => op
+    }
   }
 
   /**

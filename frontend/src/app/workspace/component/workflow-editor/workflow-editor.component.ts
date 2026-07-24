@@ -56,6 +56,7 @@ import concaveman from "concaveman";
 import { OperatorResultSummary, AgentService } from "../../service/agent/agent.service";
 import { MacroService, MacroBindings } from "../../service/macro/macro.service";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
+import { NotificationService } from "../../../common/service/notification/notification.service";
 import { NzNoAnimationDirective } from "ng-zorro-antd/core/animation";
 import { ContextMenuComponent } from "./context-menu/context-menu/context-menu.component";
 import { NgClass, NgIf } from "@angular/common";
@@ -150,7 +151,8 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     private config: GuiConfigService,
     private agentService: AgentService,
     private macroService: MacroService,
-    private workflowResultService: WorkflowResultService
+    private workflowResultService: WorkflowResultService,
+    private notificationService: NotificationService
   ) {
     this.wrapper = this.workflowActionService.getJointGraphWrapper();
   }
@@ -924,14 +926,14 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
               // No parent workflow wid in the URL means we're in an embedded
               // preview (the macro Generate page at /user/macros/:macroId, which
               // has no `:id`). There's no editable parent canvas to drill the
-              // node into; instead jump to the NESTED macro's own fill page, and
-              // pass the current URL as `ret` so it can return to the outer macro
-              // (ret chains, so multi-level back works). This round: correct
-              // navigation + return only -- the nested params actually feeding
-              // the expansion is a later round.
+              // node into. Jumping to the nested macro's own Generate page was
+              // wrong (a not-runnable inner macro has no "generate independent
+              // workflow" meaning -- confusing). Until Phase 2 rebuilds this as an
+              // in-place param-config view whose values inject into THIS
+              // generation's expanded copy, just show a light hint (not a
+              // dead-click, not a misleading navigation).
               if (!parentWid) {
-                const currentUrl = window.location.pathname + window.location.search;
-                window.location.href = `/user/macros/${macroId}?ret=${encodeURIComponent(currentUrl)}`;
+                this.notificationService.info("Nested-macro parameter configuration is coming soon.");
                 return;
               }
               try {

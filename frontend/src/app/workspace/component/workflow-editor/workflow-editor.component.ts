@@ -579,7 +579,10 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
         .subscribe({
           next: content => {
             try {
-              const body = JSON.parse(content);
+              // HttpClient already parses the raw JSON response into an object;
+              // tolerate a string too. (JSON.parse on the object silently no-op'd
+              // before, so LIVE/SNAPSHOT nodes never actually embedded.)
+              const body = typeof content === "string" ? JSON.parse(content) : content;
               const cur = this.workflowActionService.getTexeraGraph().getOperator(op.operatorID);
               if (!cur) return;
               this.workflowActionService.setOperatorProperty(op.operatorID, {

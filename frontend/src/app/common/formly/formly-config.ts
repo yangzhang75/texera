@@ -34,12 +34,59 @@ import { HuggingFaceComponent } from "../../workspace/component/hugging-face/hug
 import { HuggingFaceAudioUploadComponent } from "../../workspace/component/hugging-face-audio-upload/hugging-face-audio-upload.component";
 import { ConfigurablePropertyWrapperComponent } from "../../workspace/component/property-editor/operator-property-edit-frame/configurable-property-wrapper/configurable-property-wrapper.component";
 
+function toNumberOrNull(val: any): number | null {
+  if (val === "" || val === null || val === undefined) return null;
+  const n = Number(val);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Null-safe replacement for FormlyJsonschema's built-in number/integer parser.
+ *
+ * The stock parser (ngx-formly-core-json-schema) does
+ * `document.querySelector('#'+f.id).validity.badInput` when the value clears.
+ * That assumes `f.id` is a native <input>, but ng-zorro's nz-input-number puts
+ * the id on the WRAPPER (the native input has no id), so `.validity` is
+ * undefined and it throws "Cannot read properties of undefined (reading
+ * 'badInput')", taking down the whole form on the first cleared/typed digit.
+ *
+ * This variant resolves the real native input (looking inside the wrapper) and
+ * guards `validity`; behavior is otherwise identical (badInput -> keep the raw
+ * mid-typing value; genuinely empty -> clear to undefined).
+ */
+function nullSafeNumberParser(v: any, f?: FormlyFieldConfig): any {
+  let num: any = toNumberOrNull(v);
+  if (num === null && f) {
+    const el = typeof document !== "undefined" && f.id ? document.querySelector(`#${f.id}`) : null;
+    const nativeInput = el instanceof HTMLInputElement ? el : ((el?.querySelector?.("input") as HTMLInputElement) ?? null);
+    num = nativeInput?.validity?.badInput === true ? v : undefined;
+    if (f.formControl && num !== f.formControl.value) {
+      f.formControl.setValue(num, { emitModelToViewChange: false });
+    }
+  }
+  return num;
+}
+
 /**
  * Configuration for using Json Schema with Formly.
  * This config is copy-pasted from official documentation,
  * see https://formly.dev/examples/advanced/json-schema
  */
 export const TEXERA_FORMLY_CONFIG = {
+  // App-wide guard: swap FormlyJsonschema's crash-prone number parser for a
+  // null-safe one on every number/integer field (see nullSafeNumberParser).
+  extensions: [
+    {
+      name: "texera-number-parser-guard",
+      extension: {
+        postPopulate(field: FormlyFieldConfig): void {
+          if ((field.type === "number" || field.type === "integer") && Array.isArray(field.parsers)) {
+            field.parsers = [nullSafeNumberParser];
+          }
+        },
+      },
+    },
+  ],
   validationMessages: [
     { name: "required", message: "This field is required" },
     { name: "null", message: "should be null" },

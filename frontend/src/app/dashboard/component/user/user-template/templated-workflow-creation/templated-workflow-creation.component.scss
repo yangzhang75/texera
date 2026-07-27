@@ -94,6 +94,26 @@
   padding: 20px 28px 4px;
 }
 
+// P2.2 — nested macro params bubbled up read-only: subtle dashed frame + a small
+// badge, indented by depth (inline style) so the nesting is legible at a glance.
+.template-section-nested {
+  border-style: dashed;
+  border-color: #d9dde1;
+  background: #fafbfc;
+}
+
+.template-section-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: none;
+  color: rgba(0, 0, 0, 0.45);
+  background: #eef0f2;
+}
+
 // ---- Action bar ----
 .tw-actionbar {
   display: flex;

@@ -62,9 +62,16 @@
     No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
   </div>
 
-  <div *ngFor="let section of sections" class="template-section">
-    <h3 class="template-section-title">{{ section.label }}</h3>
-    <form [formGroup]="section.form" class="template-section-body">
+  <div
+    *ngFor="let section of sections"
+    class="template-section"
+    [class.template-section-nested]="section.readOnly"
+    [style.marginLeft.px]="section.readOnly && section.depth ? section.depth * 16 : 0">
+    <h3 class="template-section-title">
+      {{ section.label }}
+      <span *ngIf="section.readOnly && !section.cycle" class="template-section-badge">nested · read-only</span>
+    </h3>
+    <form *ngIf="!section.cycle" [formGroup]="section.form" class="template-section-body">
       <formly-form [model]="section.model" [fields]="section.fields" [form]="section.form"> </formly-form>
     </form>
   </div>

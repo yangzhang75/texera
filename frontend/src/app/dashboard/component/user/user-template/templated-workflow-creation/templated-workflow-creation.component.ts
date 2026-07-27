@@ -29,7 +29,7 @@ import {WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, Subscription} from "rxjs";
+import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute, Router} from "@angular/router";
@@ -64,6 +64,17 @@ interface ConfigurableSection {
   fields: FormlyFieldConfig[];
   form: FormGroup;
   model: Record<string, any>;
+  // P2.2 — sections bubbled up from a NESTED macro's definition are shown
+  // read-only here (drill-to-edit lands in P2.3, injection in P2.4). `path` is
+  // the operator path relative to this generation's root
+  // ("nestedMacroNodeId/.../leafOpId"), which keys the override map P2.4 injects;
+  // `depth` (1 = first nesting level) drives the indented display. `cycle` marks
+  // a section that only reports an A→B→A reference was cut, with no editable
+  // fields.
+  readOnly?: boolean;
+  path?: string;
+  depth?: number;
+  cycle?: boolean;
 }
 
 @UntilDestroy()
@@ -100,6 +111,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   public template: WorkflowContent | undefined;
 
   public sections: ConfigurableSection[] = [];
+  // P2.2 — read-only sections bubbled from the nested macro DEFINITIONS. Computed
+  // once (async, recursive) after the body loads, then re-appended after every
+  // top-level rebuild so schema-driven rebuilds don't drop them.
+  private nestedSections: ConfigurableSection[] = [];
   public isLogin: boolean = this.userService.isLogin();
   public currentUid: number | undefined;
   public executionState: ExecutionState = ExecutionState.Uninitialized;
@@ -319,7 +334,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   } {
     const operatorProperties: Record<string, Record<string, unknown>> = {};
 
-    for (const section of this.sections) {
+    // Read-only nested sections (P2.2) are display-only — their leaf-op IDs don't
+    // exist in this top-level content and their injection is wired separately in
+    // P2.4, so they must never enter the submit payload.
+    for (const section of this.sections.filter(s => !s.readOnly)) {
       // Use the live form-control values, NOT section.model: after a submit/rebuild the Formly
       // `model` object can go stale, so submitting off it would apply the previously-applied value
       // instead of what the user just typed (e.g. Limit looked like it wouldn't update).
@@ -330,7 +348,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   private mergeFormValuesIntoOperatorProperties(): void {
-    for (const section of this.sections) {
+    for (const section of this.sections.filter(s => !s.readOnly)) {
       this.mergeSectionFormValuesIntoOperatorProperties(section);
     }
   }
@@ -341,7 +359,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   private writeOperatorPropertiesToGraph(): void {
-    for (const section of this.sections) {
+    for (const section of this.sections.filter(s => !s.readOnly)) {
       this.workflowActionService.setOperatorProperty(
         section.operatorID,
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
@@ -538,6 +556,8 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         // built straight from those — no separate whitelist source.
         this.template = content;
         this.templatedWorkflowDraftService.initialize(content);
+        // P2.2 — bubble up read-only sections for any nested macro's params.
+        this.computeNestedMacroSections();
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows
         // list) so the embedded canvas can render the expanded body -- the
@@ -611,7 +631,144 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
     this.formChangesSub?.unsubscribe();
     this.sections = this.buildSectionsFromTemplate({ content: this.template }, enriched);
+    // Keep the already-computed read-only nested sections (P2.2) attached; the
+    // top-level rebuild above replaces the array, so re-append them here.
+    if (this.nestedSections.length > 0) {
+      this.sections = [...this.sections, ...this.nestedSections];
+    }
     this.subscribeToFormChanges();
+  }
+
+  /**
+   * P2.2 — asynchronously walk the nested Macro nodes in the generated body and
+   * build a read-only configurable section for every nested configurable leaf
+   * param, sourced from each nested macro's DEFINITION (getMacro) rather than the
+   * embedded snapshot, keyed by its path relative to this generation's root.
+   * Read-only here; P2.3 makes them drillable to edit and P2.4 wires the edits
+   * into the injected override map.
+   *
+   * Cycle guard: a macro whose wid already appears on the current path (A→B→A) is
+   * cut with a note section instead of recursing forever.
+   */
+  private computeNestedMacroSections(): void {
+    if (!this.template || this.macroId === undefined) return;
+    const rootId = String(this.macroId);
+    this.collectNestedSections(this.template.operators, "", new Set([rootId]))
+      .pipe(untilDestroyed(this))
+      .subscribe(sections => {
+        this.nestedSections = sections;
+        // Re-append onto the current top-level sections (the schema signature is
+        // unchanged, so rebuild would early-return and not pick these up).
+        const topLevel = this.sections.filter(s => !s.readOnly);
+        this.sections = [...topLevel, ...this.nestedSections];
+      });
+  }
+
+  /**
+   * Recursively collect read-only sections for the nested Macro nodes found in
+   * `operators`. `pathPrefix` is the path to the containing scope ("" at root);
+   * `visited` is the set of macro wids already on this path (cycle guard).
+   */
+  private collectNestedSections(
+    operators: OperatorPredicate[],
+    pathPrefix: string,
+    visited: Set<string>
+  ): Observable<ConfigurableSection[]> {
+    const macroOps = operators.filter(
+      op => op.operatorType === "Macro" && op.operatorProperties?.["macroId"]
+    );
+    if (macroOps.length === 0) return of([]);
+
+    const perMacro = macroOps.map(macroOp => {
+      const macroId = String(macroOp.operatorProperties!["macroId"]);
+      const nodePath = pathPrefix ? `${pathPrefix}/${macroOp.operatorID}` : macroOp.operatorID;
+      const depth = nodePath.split("/").length;
+      const label =
+        macroOp.customDisplayName?.trim() ||
+        (macroOp.operatorProperties?.["displayName"] as string)?.trim() ||
+        "macro";
+
+      if (visited.has(macroId)) {
+        // A→B→A: the macro references an ancestor. Cut here with a note.
+        return of<ConfigurableSection[]>([this.makeCycleNoteSection(nodePath, label, depth)]);
+      }
+
+      return this.macroService.getMacro(Number(macroId)).pipe(
+        map(detail => this.macroService.macroDetailToGeneratedContent(detail)),
+        switchMap(content => {
+          const own = content.operators
+            .filter(op => (op.configurableProperties ?? []).length > 0)
+            .map(op => this.buildReadOnlySection(op, `${nodePath}/${op.operatorID}`, depth, label));
+          return this.collectNestedSections(
+            content.operators,
+            nodePath,
+            new Set([...visited, macroId])
+          ).pipe(map(deeper => [...own, ...deeper]));
+        }),
+        // Can't fetch the definition (deleted / no access): skip that branch
+        // rather than fail the whole form.
+        catchError(() => of<ConfigurableSection[]>([]))
+      );
+    });
+
+    return forkJoin(perMacro).pipe(map(arrays => arrays.flat()));
+  }
+
+  /**
+   * Build a disabled (read-only) section for one nested configurable leaf op.
+   * Fields are populated from the operator's own JSON schema and its definition
+   * default values, then each control disables itself on init so ng-zorro inputs
+   * render greyed and non-editable.
+   */
+  private buildReadOnlySection(
+    op: OperatorPredicate,
+    path: string,
+    depth: number,
+    parentLabel: string
+  ): ConfigurableSection {
+    const configurableKeys = op.configurableProperties ?? [];
+    const schema = this.operatorMetadataService.getOperatorSchema(op.operatorType);
+    const fullField = this.formlyJsonschema.toFieldConfig(cloneDeep(schema.jsonSchema) as any);
+    const configurableSet = new Set(configurableKeys);
+    const fields = (fullField.fieldGroup ?? [])
+      .filter(child => typeof child.key === "string" && configurableSet.has(child.key))
+      .map(child => ({
+        ...child,
+        // Disable on init: reliable read-only for ng-zorro reactive-form controls
+        // (setDisabledState greys + blocks the input); getRawValue still returns
+        // the value so P2.4 can read it.
+        hooks: { ...child.hooks, onInit: (f: FormlyFieldConfig) => f.formControl?.disable() },
+      }));
+
+    const source = op.operatorProperties ?? {};
+    const model: Record<string, any> = {};
+    configurableKeys.forEach(key => (model[key] = cloneDeep(source[key])));
+
+    return {
+      operatorID: op.operatorID,
+      label: `${parentLabel} › ${op.customDisplayName?.trim() || op.operatorType}`,
+      fields,
+      form: new FormGroup({}),
+      model,
+      readOnly: true,
+      path,
+      depth,
+    };
+  }
+
+  /** A→B→A cycle note: a read-only section with no fields, just a message. */
+  private makeCycleNoteSection(path: string, label: string, depth: number): ConfigurableSection {
+    return {
+      operatorID: path,
+      label: `${label} — nested reference cycle detected, not expanded`,
+      fields: [],
+      form: new FormGroup({}),
+      model: {},
+      readOnly: true,
+      cycle: true,
+      path,
+      depth,
+    };
   }
 
   /**
@@ -622,9 +779,12 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
    * required propagation path.
    */
   private subscribeToFormChanges(): void {
-    if (this.sections.length === 0) return;
+    // Only editable (top-level) sections drive dynamic-schema recompiles;
+    // read-only nested sections (P2.2) are disabled and emit nothing.
+    const editable = this.sections.filter(s => !s.readOnly);
+    if (editable.length === 0) return;
 
-    const valueChangeStreams = this.sections.map(section =>
+    const valueChangeStreams = editable.map(section =>
       section.form.valueChanges.pipe(
         map(nextModel =>
           this.templatedWorkflowDraftService.mergeSectionModelIfChanged(

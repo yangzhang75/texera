@@ -303,7 +303,36 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         };
       }
     }
+    this.injectNestedParamOverrides(content);
     return content;
+  }
+
+  /**
+   * P2.4 — inject the drilled nested-macro edits (paramOverrides) into the
+   * generated content. Frontend keys are the leaf's full root-relative path
+   * ("nestedNodeId/.../leafOpId"); the backend MacroOpDesc.paramOverrides on a
+   * Macro node is keyed RELATIVE to that node, so we strip the first segment (the
+   * top-level nested Macro node's id in this content) and attach the remainder to
+   * that node. The expander then applies single-segment keys to the node's own
+   * body and drills multi-segment keys one level per nested Macro (P2.1). Only
+   * this generation's copy is touched — the shared definition is never modified.
+   */
+  private injectNestedParamOverrides(content: WorkflowContent): void {
+    for (const [path, props] of Object.entries(this.paramOverrides)) {
+      const segments = path.split("/");
+      if (segments.length < 2) continue; // needs at least nodeId/leafOpId
+      const [nodeId, ...rest] = segments;
+      const relKey = rest.join("/");
+      const macroOp = content.operators.find(
+        o => o.operatorID === nodeId && o.operatorType === "Macro"
+      ) as (OperatorPredicate & { operatorProperties: Record<string, unknown> }) | undefined;
+      if (!macroOp) continue;
+      const overrides = {
+        ...((macroOp.operatorProperties["paramOverrides"] as Record<string, unknown>) ?? {}),
+        [relKey]: props,
+      };
+      macroOp.operatorProperties = { ...macroOp.operatorProperties, paramOverrides: overrides };
+    }
   }
 
   /**

@@ -297,7 +297,13 @@ class MacroResource extends LazyLogging {
     val workflow = new Workflow()
     workflow.setName(name)
     req.description.filter(_.trim.nonEmpty).foreach(d => workflow.setDescription(d))
-    workflow.setContent(req.content)
+    // Strip the frontend-only `configurableProperties` whitelist from every
+    // inlined operator before persisting. The generated content is a concrete,
+    // fully-expanded workflow (no Macro nodes) whose leaf ops still carry the
+    // macro's configurable-field markers; those are not real operator props and
+    // make the strict execute-time Jackson parser throw UnrecognizedProperty
+    // (e.g. on LimitOpDesc). Same treatment snapshotIntoInstance already applies.
+    workflow.setContent(MacroBody.stripConfigurableProperties(req.content))
     workflow.setIsPublic(false)
     workflow.setKind(WorkflowKindEnum.WORKFLOW)
     workflowDao.insert(workflow)

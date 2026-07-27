@@ -195,9 +195,13 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
     //   SNAPSHOT + no body → embed the macro body (freeze a copy);
     //   LIVE + body present → drop the body (reference the definition).
     // Runs on insert, on any property change (e.g. switching Link Mode in the
-    // property panel), and for existing ops on load. Guarded to editable
-    // canvases only (skips read-only previews).
-    graph.getAllOperators().forEach(op => this.reconcileMacroSnapshot(op));
+    // property panel). Guarded to editable canvases only, and — critically —
+    // ONLY on genuine user actions, never during a workflow LOAD. Freeze-at-
+    // insert: embed the body when the user first drops a macro node; opening a
+    // saved workflow must NEVER re-embed (that would clobber a node's pinned old
+    // body with the current definition — the bug that broke "decline keeps old").
+    // reconcileMacroSnapshot itself skips while reloadingWorkflow is set, so the
+    // load-time bulk pass over existing ops is intentionally gone.
     graph
       .getOperatorAddStream()
       .pipe(untilDestroyed(this))
@@ -564,6 +568,12 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
   private reconcileMacroSnapshot(op: OperatorPredicate): void {
     if (op?.operatorType !== "Macro") return;
     if (!this.workflowActionService.checkWorkflowModificationEnabled()) return;
+    // Never embed during a workflow LOAD: reloadWorkflow adds operators through
+    // the same add-stream, and re-embedding there would overwrite a node's
+    // pinned (possibly older) body with the current definition. Freeze happens
+    // only on a genuine user insert (reloadingWorkflow is false then). The
+    // LIVE open-prompt is the sole path that updates a pinned body afterward.
+    if (this.wrapper.getReloadingWorkflow()) return;
     const props = op.operatorProperties ?? {};
     const macroId = props["macroId"];
     if (!macroId) return;

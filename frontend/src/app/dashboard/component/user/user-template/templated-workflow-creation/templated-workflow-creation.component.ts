@@ -64,17 +64,29 @@ interface ConfigurableSection {
   fields: FormlyFieldConfig[];
   form: FormGroup;
   model: Record<string, any>;
-  // P2.2 — sections bubbled up from a NESTED macro's definition are shown
-  // read-only here (drill-to-edit lands in P2.3, injection in P2.4). `path` is
-  // the operator path relative to this generation's root
-  // ("nestedMacroNodeId/.../leafOpId"), which keys the override map P2.4 injects;
-  // `depth` (1 = first nesting level) drives the indented display. `cycle` marks
-  // a section that only reports an A→B→A reference was cut, with no editable
-  // fields.
-  readOnly?: boolean;
+  // Set on a drilled (nested-macro) section (P2.3): `path` is the leaf op's path
+  // relative to this generation's root ("nestedNodeId/.../leafOpId") and keys the
+  // override map injected at Create (P2.4); `depth` (1 = first nesting level) is
+  // for display. Absent on root top-level sections.
   path?: string;
   depth?: number;
-  cycle?: boolean;
+}
+
+// P2.3 — one entry per drilled level; the breadcrumb is [root, ...stack.labels].
+interface DrillLevel {
+  macroId: string;
+  nodeId: string;
+  label: string; // definition name + version, e.g. "limit_filter v22"
+  path: string; // node path relative to the generation root
+}
+
+// A nested Macro node offered as a drill target at the current scope.
+interface DrillRow {
+  nodeId: string;
+  macroId: string;
+  label: string;
+  path: string;
+  cycle: boolean; // macro already on the current path (A→B→A) — drill disabled
 }
 
 @UntilDestroy()
@@ -111,10 +123,18 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   public template: WorkflowContent | undefined;
 
   public sections: ConfigurableSection[] = [];
-  // P2.2 — read-only sections bubbled from the nested macro DEFINITIONS. Computed
-  // once (async, recursive) after the body loads, then re-appended after every
-  // top-level rebuild so schema-driven rebuilds don't drop them.
-  private nestedSections: ConfigurableSection[] = [];
+  // P2.3 — focused-drill state. drillStack is empty at root; drillRows are the
+  // nested Macro nodes offered at the current scope. paramOverrides holds edits
+  // made at drilled levels (path -> {prop: value}), injected at Create (P2.4) —
+  // it never touches the shared macro definition. macroContentCache/macroMeta
+  // are filled by prefetchNestedMacros and CLEARED on each Generate entry so a
+  // nested definition edited between visits is never served stale.
+  public drillStack: DrillLevel[] = [];
+  public drillRows: DrillRow[] = [];
+  public paramOverrides: Record<string, Record<string, unknown>> = {};
+  private macroContentCache = new Map<string, WorkflowContent>();
+  private macroMeta = new Map<string, { name: string; version: number }>();
+  public rootLabel = "";
   public isLogin: boolean = this.userService.isLogin();
   public currentUid: number | undefined;
   public executionState: ExecutionState = ExecutionState.Uninitialized;
@@ -334,10 +354,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   } {
     const operatorProperties: Record<string, Record<string, unknown>> = {};
 
-    // Read-only nested sections (P2.2) are display-only — their leaf-op IDs don't
-    // exist in this top-level content and their injection is wired separately in
-    // P2.4, so they must never enter the submit payload.
-    for (const section of this.sections.filter(s => !s.readOnly)) {
+    // Create is only reachable from the root scope (drill-in disables it), so
+    // this.sections here are always the top-level editable sections. Nested-macro
+    // edits live in paramOverrides and are injected separately at Create (P2.4).
+    for (const section of this.sections) {
       // Use the live form-control values, NOT section.model: after a submit/rebuild the Formly
       // `model` object can go stale, so submitting off it would apply the previously-applied value
       // instead of what the user just typed (e.g. Limit looked like it wouldn't update).
@@ -348,7 +368,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   private mergeFormValuesIntoOperatorProperties(): void {
-    for (const section of this.sections.filter(s => !s.readOnly)) {
+    for (const section of this.sections) {
       this.mergeSectionFormValuesIntoOperatorProperties(section);
     }
   }
@@ -359,7 +379,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   private writeOperatorPropertiesToGraph(): void {
-    for (const section of this.sections.filter(s => !s.readOnly)) {
+    for (const section of this.sections) {
       this.workflowActionService.setOperatorProperty(
         section.operatorID,
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
@@ -543,6 +563,15 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         // Defaults for the workflow that Create will produce.
         this.genName = detail.name;
         this.genDescription = detail.description ?? "";
+        // P2.3 — fresh drill state per Generate entry. Clearing the caches here is
+        // the invalidation strategy: definitions are re-fetched every visit, so a
+        // nested macro edited between visits can never be served stale.
+        this.drillStack = [];
+        this.drillRows = [];
+        this.paramOverrides = {};
+        this.macroContentCache.clear();
+        this.macroMeta.clear();
+        this.rootLabel = `${detail.name} v${detail.version}`;
         const content = this.macroService.macroDetailToGeneratedContent(detail);
         // Runnable gate: 0 external inputs AND a body source op. Metadata is
         // loaded above (forkJoin), so the source lookup is ready here.
@@ -556,8 +585,8 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         // built straight from those — no separate whitelist source.
         this.template = content;
         this.templatedWorkflowDraftService.initialize(content);
-        // P2.2 — bubble up read-only sections for any nested macro's params.
-        this.computeNestedMacroSections();
+        // P2.3 — prefetch nested macro definitions so drilling is synchronous.
+        this.prefetchNestedMacros();
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows
         // list) so the embedded canvas can render the expanded body -- the
@@ -605,6 +634,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
    */
   private rebuildSectionsFromDynamicSchemas(): void {
     if (!this.template) return;
+    // Root scope only. While drilled into a nested macro (P2.3) the visible
+    // sections are managed by rebuildScope() off the static definition; the
+    // dynamic-schema stream must not clobber them with the root's top-level ops.
+    if (this.drillStack.length > 0) return;
 
     const enriched = new Map<string, OperatorSchema>();
 
@@ -631,144 +664,168 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
     this.formChangesSub?.unsubscribe();
     this.sections = this.buildSectionsFromTemplate({ content: this.template }, enriched);
-    // Keep the already-computed read-only nested sections (P2.2) attached; the
-    // top-level rebuild above replaces the array, so re-append them here.
-    if (this.nestedSections.length > 0) {
-      this.sections = [...this.sections, ...this.nestedSections];
-    }
     this.subscribeToFormChanges();
   }
 
   /**
-   * P2.2 — asynchronously walk the nested Macro nodes in the generated body and
-   * build a read-only configurable section for every nested configurable leaf
-   * param, sourced from each nested macro's DEFINITION (getMacro) rather than the
-   * embedded snapshot, keyed by its path relative to this generation's root.
-   * Read-only here; P2.3 makes them drillable to edit and P2.4 wires the edits
-   * into the injected override map.
-   *
-   * Cycle guard: a macro whose wid already appears on the current path (A→B→A) is
-   * cut with a note section instead of recursing forever.
+   * P2.3 — prefetch every reachable nested macro DEFINITION (getMacro) into
+   * macroContentCache / macroMeta so the focused-drill view can switch levels
+   * synchronously. Recursion is cycle-guarded (A→B→A stops). Caches are cleared
+   * on each Generate entry (initFromMacro) so a nested definition edited between
+   * visits is never served stale — see the reset there.
    */
-  private computeNestedMacroSections(): void {
+  private prefetchNestedMacros(): void {
     if (!this.template || this.macroId === undefined) return;
-    const rootId = String(this.macroId);
-    this.collectNestedSections(this.template.operators, "", new Set([rootId]))
+    this.walkAndCacheNestedMacros(this.template.operators, new Set([String(this.macroId)]))
       .pipe(untilDestroyed(this))
-      .subscribe(sections => {
-        this.nestedSections = sections;
-        // Re-append onto the current top-level sections (the schema signature is
-        // unchanged, so rebuild would early-return and not pick these up).
-        const topLevel = this.sections.filter(s => !s.readOnly);
-        this.sections = [...topLevel, ...this.nestedSections];
+      .subscribe(() => this.rebuildScope());
+  }
+
+  /**
+   * Recursively fetch + cache the definitions of the nested Macro nodes in
+   * `operators`. `visited` is the set of macro wids on the current path (cycle
+   * guard); an already-cached macro is not re-walked (its subtree is done).
+   */
+  private walkAndCacheNestedMacros(operators: OperatorPredicate[], visited: Set<string>): Observable<void> {
+    const macroIds = operators
+      .filter(op => op.operatorType === "Macro" && op.operatorProperties?.["macroId"])
+      .map(op => String(op.operatorProperties!["macroId"]))
+      .filter(id => !visited.has(id) && !this.macroContentCache.has(id));
+    if (macroIds.length === 0) return of(void 0);
+
+    const per = macroIds.map(macroId =>
+      this.macroService.getMacro(Number(macroId)).pipe(
+        switchMap(detail => {
+          this.macroMeta.set(macroId, { name: detail.name, version: detail.version });
+          const content = this.macroService.macroDetailToGeneratedContent(detail);
+          this.macroContentCache.set(macroId, content);
+          return this.walkAndCacheNestedMacros(content.operators, new Set([...visited, macroId]));
+        }),
+        // Can't fetch (deleted / no access): skip that branch, don't fail the form.
+        catchError(() => of(void 0))
+      )
+    );
+    return forkJoin(per).pipe(map(() => void 0));
+  }
+
+  /**
+   * Rebuild the visible form for the CURRENT drill scope.
+   *  - root (empty stack): the top-level editable sections (dynamic-schema path)
+   *    plus a drill row per top-level nested Macro node;
+   *  - drilled: that macro's own configurable leaf params rendered EDITABLE
+   *    (seeded from paramOverrides else the definition default), plus drill rows
+   *    for its own nested macros.
+   */
+  private rebuildScope(): void {
+    if (this.drillStack.length === 0) {
+      // Force a fresh root build: returning from a drilled level leaves
+      // this.sections holding the drilled sections, but the root schema signature
+      // is unchanged, so the signature-skip in rebuildSectionsFromDynamicSchemas
+      // would early-return and keep the wrong sections. Reset it so root rebuilds.
+      this.lastEnrichedSignature = "";
+      this.rebuildSectionsFromDynamicSchemas();
+      this.drillRows = this.buildDrillRows(this.template?.operators ?? [], "", new Set([String(this.macroId)]));
+      return;
+    }
+    const level = this.drillStack[this.drillStack.length - 1];
+    const content = this.macroContentCache.get(level.macroId);
+    this.formChangesSub?.unsubscribe();
+    this.sections = (content?.operators ?? [])
+      .filter(op => (op.configurableProperties ?? []).length > 0)
+      .map(op => this.buildEditableOverrideSection(op, `${level.path}/${op.operatorID}`));
+    this.subscribeDrilledOverrides();
+    // Cycle guard = every macro wid on the current path (root + each drilled level).
+    const pathMacroIds = new Set<string>([String(this.macroId), ...this.drillStack.map(l => l.macroId)]);
+    this.drillRows = this.buildDrillRows(content?.operators ?? [], level.path, pathMacroIds);
+  }
+
+  /** Drill rows for the nested Macro nodes at the given scope. */
+  private buildDrillRows(operators: OperatorPredicate[], pathPrefix: string, pathMacroIds: Set<string>): DrillRow[] {
+    return operators
+      .filter(op => op.operatorType === "Macro" && op.operatorProperties?.["macroId"])
+      .map(op => {
+        const macroId = String(op.operatorProperties!["macroId"]);
+        const nodePath = pathPrefix ? `${pathPrefix}/${op.operatorID}` : op.operatorID;
+        const meta = this.macroMeta.get(macroId);
+        // Breadcrumb/label carries the definition name + version (e.g. "limit_filter v22").
+        const label = meta
+          ? `${meta.name} v${meta.version}`
+          : ((op.operatorProperties?.["displayName"] as string)?.trim() || "macro");
+        return { nodeId: op.operatorID, macroId, label, path: nodePath, cycle: pathMacroIds.has(macroId) };
       });
   }
 
   /**
-   * Recursively collect read-only sections for the nested Macro nodes found in
-   * `operators`. `pathPrefix` is the path to the containing scope ("" at root);
-   * `visited` is the set of macro wids already on this path (cycle guard).
+   * Build an EDITABLE section for one nested configurable leaf op. Values are
+   * seeded from an existing override (this generation's earlier edit) else the
+   * definition default; edits flow to paramOverrides[path] via
+   * subscribeDrilledOverrides. `path` is the leaf's path relative to the root and
+   * is the key P2.4 injects on.
    */
-  private collectNestedSections(
-    operators: OperatorPredicate[],
-    pathPrefix: string,
-    visited: Set<string>
-  ): Observable<ConfigurableSection[]> {
-    const macroOps = operators.filter(
-      op => op.operatorType === "Macro" && op.operatorProperties?.["macroId"]
-    );
-    if (macroOps.length === 0) return of([]);
-
-    const perMacro = macroOps.map(macroOp => {
-      const macroId = String(macroOp.operatorProperties!["macroId"]);
-      const nodePath = pathPrefix ? `${pathPrefix}/${macroOp.operatorID}` : macroOp.operatorID;
-      const depth = nodePath.split("/").length;
-      const label =
-        macroOp.customDisplayName?.trim() ||
-        (macroOp.operatorProperties?.["displayName"] as string)?.trim() ||
-        "macro";
-
-      if (visited.has(macroId)) {
-        // A→B→A: the macro references an ancestor. Cut here with a note.
-        return of<ConfigurableSection[]>([this.makeCycleNoteSection(nodePath, label, depth)]);
-      }
-
-      return this.macroService.getMacro(Number(macroId)).pipe(
-        map(detail => this.macroService.macroDetailToGeneratedContent(detail)),
-        switchMap(content => {
-          const own = content.operators
-            .filter(op => (op.configurableProperties ?? []).length > 0)
-            .map(op => this.buildReadOnlySection(op, `${nodePath}/${op.operatorID}`, depth, label));
-          return this.collectNestedSections(
-            content.operators,
-            nodePath,
-            new Set([...visited, macroId])
-          ).pipe(map(deeper => [...own, ...deeper]));
-        }),
-        // Can't fetch the definition (deleted / no access): skip that branch
-        // rather than fail the whole form.
-        catchError(() => of<ConfigurableSection[]>([]))
-      );
-    });
-
-    return forkJoin(perMacro).pipe(map(arrays => arrays.flat()));
-  }
-
-  /**
-   * Build a disabled (read-only) section for one nested configurable leaf op.
-   * Fields are populated from the operator's own JSON schema and its definition
-   * default values, then each control disables itself on init so ng-zorro inputs
-   * render greyed and non-editable.
-   */
-  private buildReadOnlySection(
-    op: OperatorPredicate,
-    path: string,
-    depth: number,
-    parentLabel: string
-  ): ConfigurableSection {
+  private buildEditableOverrideSection(op: OperatorPredicate, path: string): ConfigurableSection {
     const configurableKeys = op.configurableProperties ?? [];
     const schema = this.operatorMetadataService.getOperatorSchema(op.operatorType);
     const fullField = this.formlyJsonschema.toFieldConfig(cloneDeep(schema.jsonSchema) as any);
     const configurableSet = new Set(configurableKeys);
-    const fields = (fullField.fieldGroup ?? [])
-      .filter(child => typeof child.key === "string" && configurableSet.has(child.key))
-      .map(child => ({
-        ...child,
-        // Disable on init: reliable read-only for ng-zorro reactive-form controls
-        // (setDisabledState greys + blocks the input); getRawValue still returns
-        // the value so P2.4 can read it.
-        hooks: { ...child.hooks, onInit: (f: FormlyFieldConfig) => f.formControl?.disable() },
-      }));
+    const fields = (fullField.fieldGroup ?? []).filter(
+      child => typeof child.key === "string" && configurableSet.has(child.key)
+    );
 
+    const override = this.paramOverrides[path] ?? {};
     const source = op.operatorProperties ?? {};
     const model: Record<string, any> = {};
-    configurableKeys.forEach(key => (model[key] = cloneDeep(source[key])));
+    configurableKeys.forEach(
+      key => (model[key] = cloneDeep(override[key] !== undefined ? override[key] : source[key]))
+    );
 
     return {
       operatorID: op.operatorID,
-      label: `${parentLabel} › ${op.customDisplayName?.trim() || op.operatorType}`,
+      label: op.customDisplayName?.trim() || op.operatorType,
       fields,
       form: new FormGroup({}),
       model,
-      readOnly: true,
       path,
-      depth,
+      depth: path.split("/").length,
     };
   }
 
-  /** A→B→A cycle note: a read-only section with no fields, just a message. */
-  private makeCycleNoteSection(path: string, label: string, depth: number): ConfigurableSection {
-    return {
-      operatorID: path,
-      label: `${label} — nested reference cycle detected, not expanded`,
-      fields: [],
-      form: new FormGroup({}),
-      model: {},
-      readOnly: true,
-      cycle: true,
-      path,
-      depth,
-    };
+  /** Pipe drilled-section edits into paramOverrides[path] (injected at Create, P2.4). */
+  private subscribeDrilledOverrides(): void {
+    this.formChangesSub?.unsubscribe();
+    if (this.sections.length === 0) return;
+    const streams = this.sections.map(section =>
+      section.form.valueChanges.pipe(
+        map(() => {
+          if (section.path) this.paramOverrides[section.path] = { ...section.form.getRawValue() };
+        })
+      )
+    );
+    this.formChangesSub = merge(...streams).pipe(untilDestroyed(this)).subscribe();
+  }
+
+  /** Drill into a nested macro (focused view). Refused on an A→B→A cycle. */
+  public drillInto(row: DrillRow): void {
+    if (row.cycle) {
+      this.notificationService.warning(`${row.label}: nested reference cycle — cannot drill in.`);
+      return;
+    }
+    this.drillStack = [...this.drillStack, { macroId: row.macroId, nodeId: row.nodeId, label: row.label, path: row.path }];
+    this.rebuildScope();
+  }
+
+  /** Breadcrumb navigation: index 0 = root, i = the i-th drilled level. */
+  public drillTo(index: number): void {
+    this.drillStack = index <= 0 ? [] : this.drillStack.slice(0, index);
+    this.rebuildScope();
+  }
+
+  public drillBack(): void {
+    this.drillStack = this.drillStack.slice(0, -1);
+    this.rebuildScope();
+  }
+
+  public get breadcrumb(): string[] {
+    return [this.rootLabel || "root", ...this.drillStack.map(l => l.label)];
   }
 
   /**
@@ -779,12 +836,9 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
    * required propagation path.
    */
   private subscribeToFormChanges(): void {
-    // Only editable (top-level) sections drive dynamic-schema recompiles;
-    // read-only nested sections (P2.2) are disabled and emit nothing.
-    const editable = this.sections.filter(s => !s.readOnly);
-    if (editable.length === 0) return;
+    if (this.sections.length === 0) return;
 
-    const valueChangeStreams = editable.map(section =>
+    const valueChangeStreams = this.sections.map(section =>
       section.form.valueChanges.pipe(
         map(nextModel =>
           this.templatedWorkflowDraftService.mergeSectionModelIfChanged(

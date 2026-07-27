@@ -94,24 +94,77 @@
   padding: 20px 28px 4px;
 }
 
-// P2.2 — nested macro params bubbled up read-only: subtle dashed frame + a small
-// badge, indented by depth (inline style) so the nesting is legible at a glance.
-.template-section-nested {
-  border-style: dashed;
-  border-color: #d9dde1;
-  background: #fafbfc;
+// P2.3 — drill breadcrumb + nested-macro drill rows.
+.tw-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  background: #f6f8fa;
+  border: 1px solid #eef0f2;
+  border-radius: 10px;
+  font-size: 12px;
 }
 
-.template-section-badge {
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 10px;
+.tw-crumb {
+  color: #1677ff;
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.tw-crumb-current {
+  color: rgba(0, 0, 0, 0.65);
   font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: none;
+  cursor: default;
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+.tw-crumb-sep {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.tw-back {
+  margin-left: auto;
+}
+
+.tw-drill-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 20px;
+  background: #fafbfc;
+  border: 1px dashed #d9dde1;
+  border-radius: 12px;
+}
+
+.tw-drill-row-cycle {
+  opacity: 0.6;
+}
+
+.tw-drill-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.tw-drill-cyclenote {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #d4380d;
+}
+
+.tw-drill-hint {
+  font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
-  background: #eef0f2;
 }
 
 // ---- Action bar ----

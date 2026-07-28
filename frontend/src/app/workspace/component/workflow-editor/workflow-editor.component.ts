@@ -937,16 +937,13 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnChanges
             if (op?.operatorType === "Macro" && macroId) {
               const parentWid = this.route.snapshot.params.id ?? "";
               // No parent workflow wid in the URL means we're in an embedded
-              // preview (the macro Generate page at /user/macros/:macroId, which
-              // has no `:id`). There's no editable parent canvas to drill the
-              // node into. Jumping to the nested macro's own Generate page was
-              // wrong (a not-runnable inner macro has no "generate independent
-              // workflow" meaning -- confusing). Until Phase 2 rebuilds this as an
-              // in-place param-config view whose values inject into THIS
-              // generation's expanded copy, just show a light hint (not a
-              // dead-click, not a misleading navigation).
+              // preview (the macro Generate page at /user/macros/:macroId). Drill
+              // into this macro node IN-PLACE on the Generate page — identical to
+              // clicking its "Configure nested params" row — so the two entry
+              // points behave the same. The Generate page subscribes to
+              // MacroService.previewDrillRequested$.
               if (!parentWid) {
-                this.notificationService.info("Nested-macro parameter configuration is coming soon.");
+                this.macroService.requestPreviewDrill(String(macroId), elementID);
                 return;
               }
               try {

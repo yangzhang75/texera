@@ -616,6 +616,11 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         this.templatedWorkflowDraftService.initialize(content);
         // P2.3 — prefetch nested macro definitions so drilling is synchronous.
         this.prefetchNestedMacros();
+        // Canvas entry: clicking a Macro node on the embedded preview drills into
+        // it, identical to its "Configure nested params" row. Subscribe once.
+        this.macroService.previewDrillRequested$
+          .pipe(untilDestroyed(this))
+          .subscribe(({ nodeId }) => this.drillIntoNodeFromCanvas(nodeId));
 
         // Create a throwaway 'preview' workflow (filtered from the Workflows
         // list) so the embedded canvas can render the expanded body -- the
@@ -855,6 +860,19 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
   public get breadcrumb(): string[] {
     return [this.rootLabel || "root", ...this.drillStack.map(l => l.label)];
+  }
+
+  /**
+   * Canvas entry point: a Macro node was clicked on the embedded preview (always
+   * a top-level nested macro, since the preview shows the root content). Reset to
+   * root scope, then drill into that node's row — same destination and behavior
+   * as clicking its "Configure nested params" row.
+   */
+  private drillIntoNodeFromCanvas(nodeId: string): void {
+    this.drillStack = [];
+    this.rebuildScope(); // repopulates root drillRows from the prefetch cache
+    const row = this.drillRows.find(r => r.nodeId === nodeId);
+    if (row) this.drillInto(row);
   }
 
   /**

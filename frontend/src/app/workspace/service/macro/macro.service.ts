@@ -20,7 +20,7 @@
 import { HttpClient } from "@angular/common/http";
 import { Injectable } from "@angular/core";
 import * as dagre from "dagre";
-import { BehaviorSubject, Observable, ReplaySubject, of, shareReplay } from "rxjs";
+import { BehaviorSubject, Observable, ReplaySubject, Subject, of, shareReplay } from "rxjs";
 import { tap, map, catchError } from "rxjs/operators";
 import { AppSettings } from "../../../common/app-setting";
 import { ExecutionMode, Workflow, WorkflowContent } from "../../../common/type/workflow";
@@ -377,6 +377,16 @@ export class MacroService {
   /** Stream that ticks whenever the runtime-mapping cache is refreshed. */
   public getRuntimeMacroMappingTick(): Observable<number> {
     return this.runtimeMacroMappingTick.asObservable();
+  }
+
+  // Bridge: clicking a Macro node on the embedded Generate-page preview canvas
+  // (workflow-editor, no editable parent workflow) drills into that macro's
+  // params on the Generate page — the SAME destination as the node's
+  // "Configure nested params" row. Emits {macroId, nodeId(=operatorID)}.
+  private previewDrillSubject = new Subject<{ macroId: string; nodeId: string }>();
+  public readonly previewDrillRequested$ = this.previewDrillSubject.asObservable();
+  public requestPreviewDrill(macroId: string, nodeId: string): void {
+    this.previewDrillSubject.next({ macroId, nodeId });
   }
 
   /**

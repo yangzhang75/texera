@@ -25,7 +25,7 @@ import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
 import {WorkflowActionService} from "../../../../../workspace/service/workflow-graph/model/workflow-action.service";
-import {WorkflowContent} from "../../../../../common/type/workflow";
+import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
@@ -135,6 +135,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   private macroContentCache = new Map<string, WorkflowContent>();
   private macroMeta = new Map<string, { name: string; version: number }>();
   public rootLabel = "";
+  // The root preview Workflow (expanded macro body shown at root scope). Kept so
+  // the embedded canvas can be re-rendered to the current drill level's graph:
+  // drilling reloads the nested macro's body, returning reloads this.
+  private rootPreviewWorkflow?: Workflow;
   public isLogin: boolean = this.userService.isLogin();
   public currentUid: number | undefined;
   public executionState: ExecutionState = ExecutionState.Uninitialized;
@@ -639,6 +643,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
           )
           .subscribe({
             next: workflow => {
+              this.rootPreviewWorkflow = workflow; // for canvas drill sync
               this.workflowActionService.reloadWorkflow(workflow);
               if (workflow.content) {
                 this.templatedWorkflowDraftService.seedValuesFromContent(workflow.content);
@@ -845,17 +850,41 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     }
     this.drillStack = [...this.drillStack, { macroId: row.macroId, nodeId: row.nodeId, label: row.label, path: row.path }];
     this.rebuildScope();
+    this.syncPreviewCanvasToScope();
   }
 
   /** Breadcrumb navigation: index 0 = root, i = the i-th drilled level. */
   public drillTo(index: number): void {
     this.drillStack = index <= 0 ? [] : this.drillStack.slice(0, index);
     this.rebuildScope();
+    this.syncPreviewCanvasToScope();
   }
 
   public drillBack(): void {
     this.drillStack = this.drillStack.slice(0, -1);
     this.rebuildScope();
+    this.syncPreviewCanvasToScope();
+  }
+
+  /**
+   * Re-render the embedded preview canvas to match the current drill scope, so
+   * "which level am I in" reads the same in the params panel AND the canvas.
+   * Root scope → the root preview body; a drilled level → that nested macro's
+   * definition body (from the prefetch cache). Reuses the shared
+   * WorkflowActionService the embedded workspace renders from; content is the
+   * same positioned WorkflowContent macroDetailToGeneratedContent already
+   * produces (so reloadWorkflow has operatorPositions for every op).
+   */
+  private syncPreviewCanvasToScope(): void {
+    if (!this.rootPreviewWorkflow) return;
+    let content: WorkflowContent | undefined;
+    if (this.drillStack.length === 0) {
+      content = this.rootPreviewWorkflow.content;
+    } else {
+      content = this.macroContentCache.get(this.drillStack[this.drillStack.length - 1].macroId);
+    }
+    if (!content) return;
+    this.workflowActionService.reloadWorkflow({ ...this.rootPreviewWorkflow, content });
   }
 
   public get breadcrumb(): string[] {

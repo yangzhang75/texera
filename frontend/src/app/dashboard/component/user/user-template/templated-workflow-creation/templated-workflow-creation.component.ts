@@ -879,7 +879,14 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     if (!this.rootPreviewWorkflow) return;
     let content: WorkflowContent | undefined;
     if (this.drillStack.length === 0) {
-      content = this.rootPreviewWorkflow.content;
+      // Bake the drilled nested-param overrides into the root graph so the
+      // in-place preview Run (which executes the shared graph, and is only
+      // offered at root) reflects them — otherwise overrides apply only at
+      // Create and the preview runs stale defaults. Deterministic from the
+      // paramOverrides state, so no dependency on form-render timing.
+      const rootContent = cloneDeep(this.rootPreviewWorkflow.content);
+      this.injectNestedParamOverrides(rootContent);
+      content = rootContent;
     } else {
       content = this.macroContentCache.get(this.drillStack[this.drillStack.length - 1].macroId);
     }

@@ -942,7 +942,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     this.drillStack = [];
     this.rebuildScope();
     this.syncPreviewCanvasToScope();
-    this.triggerPreviewRunWhenReady();
+    // Defer to a macrotask so Angular re-evaluates [previewRunDelegated] (now
+    // false, since drillStack is empty) BEFORE we call runPreview — otherwise
+    // runPreview would still be delegated and re-emit, looping back here.
+    setTimeout(() => this.triggerPreviewRunWhenReady(), 0);
   }
 
   /**

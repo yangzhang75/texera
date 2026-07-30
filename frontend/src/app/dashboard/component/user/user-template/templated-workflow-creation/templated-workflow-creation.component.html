@@ -114,35 +114,26 @@
       {{ macroId ? "Create Workflow" : "Submit" }}
     </button>
     <span *ngIf="drillStack.length > 0" class="tw-drill-hint">
-      Return to the top level (breadcrumb) to create the workflow{{ (macroId && macroRunnable) ? ", or run the whole workflow with your changes:" : "." }}
+      Return to the top level (breadcrumb) to create the workflow{{ (macroId && macroRunnable) ? ", or use Run below to run the whole workflow with your changes." : "." }}
     </span>
-    <!-- Run the whole generated workflow from here: a nested body has no data
-         source of its own, so this bakes the nested edits into the root graph,
-         returns to root scope, and runs end-to-end (no manual navigation). -->
-    <button
-      *ngIf="drillStack.length > 0 && macroId && macroRunnable"
-      nz-button
-      nzType="primary"
-      nzSize="small"
-      class="tw-run-nested"
-      title="Run the whole generated workflow with your nested changes"
-      (click)="runWholeWorkflowFromNested()">
-      <span class="tw-run-nested-glyph">▶</span> Run whole workflow
-    </button>
   </div>
 </div>
 
 <!-- Read-only body preview. -->
 <div class="readonly-embedded-workspace-container" *ngIf="wid && showEmbeddedWorkspace">
   <div class="inner-scale">
-    <!-- Run only at root scope: while drilled the canvas shows a nested body that
-         is not standalone-runnable, so hide Run there (return to root to run),
-         mirroring Create being root-only. -->
+    <!-- The preview Run bar (Run + computing-unit picker) shows at every scope.
+         While drilled the canvas shows a nested body that is not standalone-
+         runnable, so the Run is DELEGATED: clicking it runs the whole generated
+         workflow (runWholeWorkflowFromNested) instead of the body on the canvas.
+         Same bar/style/CU picker as root — one consistent control everywhere. -->
     <texera-workspace
       [wid]="wid"
       [isEmbedded]="true"
       [mode]="'workflow'"
-      [previewRunnable]="!!macroId && macroRunnable && drillStack.length === 0">
+      [previewRunnable]="!!macroId && macroRunnable"
+      [previewRunDelegated]="drillStack.length > 0"
+      (previewRunRequested)="runWholeWorkflowFromNested()">
     </texera-workspace>
   </div>
 </div>

@@ -119,6 +119,12 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   // page. Connection reuses the production computing-unit auto-connect (a hidden
   // selector), NOT the visible env dropdown / Share.
   @Input() previewRunnable: boolean = false;
+  // When true, the preview Run button doesn't execute the shared graph directly;
+  // it emits previewRunRequested so the host can run something else. Used by the
+  // macro Generate page: while drilled into a nested body (which has no data
+  // source of its own), Run must run the WHOLE generated workflow, not the body.
+  @Input() previewRunDelegated: boolean = false;
+  @Output() previewRunRequested = new EventEmitter<void>();
   @Output() workspaceReady = new EventEmitter<number | undefined>();
   // Macro drill-down state — drives the banner above the canvas so users know
   // they're editing a macro body rather than a normal workflow.
@@ -230,6 +236,12 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Run the previewed macro body in place (shared graph = the preview). */
   public runPreview(): void {
     if (!this.previewCanRun) return;
+    // Drilled into a nested body: hand off to the host, which runs the whole
+    // generated workflow instead of the (source-less) body on the canvas.
+    if (this.previewRunDelegated) {
+      this.previewRunRequested.emit();
+      return;
+    }
     this.executeWorkflowService.executeWorkflow("Macro preview");
   }
 

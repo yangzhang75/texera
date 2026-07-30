@@ -47,6 +47,21 @@ object MacroExpander {
   def expand(plan: LogicalPlan, registry: MacroRegistry): LogicalPlan =
     expand(plan, registry, MacroCompileContext.root)
 
+  /**
+    * Same as `expand`, but also returns the path accumulator:
+    * expanded-inner-op-final-id -> full node path ("nodeId/.../bodyOpId"). The
+    * compiler keys inner-op input schemas by that path so the drilled Generate
+    * view can look them up (it computes the same path from the drill breadcrumb).
+    */
+  def expandWithPaths(
+      plan: LogicalPlan,
+      registry: MacroRegistry
+  ): (LogicalPlan, Map[String, String]) = {
+    val ctx = MacroCompileContext.root
+    val expanded = expand(plan, registry, ctx)
+    (expanded, ctx.pathAcc.toMap)
+  }
+
   private def expand(
       plan: LogicalPlan,
       registry: MacroRegistry,
@@ -117,7 +132,7 @@ object MacroExpander {
       ctx.descend(m.macroId, m.macroVersion)
     )
 
-    spliceIntoParent(parent, m, expandedBody)
+    spliceIntoParent(parent, m, expandedBody, ctx)
   }
 
   private def toLogicalLink(ml: MacroLink): LogicalLink =
@@ -131,7 +146,8 @@ object MacroExpander {
   private def spliceIntoParent(
       parent: LogicalPlan,
       m: MacroOpDesc,
-      body: LogicalPlan
+      body: LogicalPlan,
+      ctx: MacroCompileContext
   ): LogicalPlan = {
     val instanceId = m.operatorIdentifier.id
     val mId = m.operatorIdentifier
@@ -167,6 +183,16 @@ object MacroExpander {
       op.setOperatorId(freshId)
       originalId -> op.operatorIdentifier
     }.toMap
+
+    // Record each inner op's full node path for this level, re-keying the shared
+    // accumulator as ids change. If originalId already has a path (it came from a
+    // nested splice done earlier), prepend this instance node; otherwise it's a
+    // direct body op of this macro and originalId is the leaf body-op id.
+    idRewrite.foreach {
+      case (originalId, freshId) =>
+        val seg = ctx.pathAcc.remove(originalId.id).getOrElse(originalId.id)
+        ctx.pathAcc(freshId.id) = s"$instanceId/$seg"
+    }
 
     def rewriteInnerId(id: OperatorIdentity): OperatorIdentity =
       idRewrite.getOrElse(

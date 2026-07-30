@@ -22,6 +22,7 @@ package org.apache.texera.amber.compiler
 import com.google.protobuf.timestamp.Timestamp
 import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.apache.texera.amber.compiler.WorkflowCompiler.{
+  collectInputSchemaFromPhysicalPlan,
   collectOutputSchemaFromPhysicalPlan,
   convertErrorListToWorkflowFatalErrorMap
 }
@@ -129,6 +130,31 @@ object WorkflowCompiler {
       .mapValues { list =>
         list.flatMap(_._2).toMap
       }
+      .toMap
+  }
+
+  // Same as collectOutputSchemaFromPhysicalPlan but for INPUT ports. Used to key
+  // each expanded inner op's RESOLVED input schema by its full node path, so the
+  // drilled Generate view can turn its attribute-selector fields into dropdowns —
+  // including ops fed across the macro boundary (the expanded plan has already
+  // rewired MacroInput to the real upstream, so the input schema is resolved).
+  private def collectInputSchemaFromPhysicalPlan(
+      physicalPlan: PhysicalPlan
+  ): Map[OperatorIdentity, Map[PortIdentity, Option[Schema]]] = {
+    physicalPlan.operators
+      .map { physicalOp =>
+        val portSchemas = physicalOp.inputPorts.values
+          .filterNot(_._1.id.internal)
+          .map {
+            case (port, _, schema) =>
+              port.id -> schema.toOption
+          }
+          .toMap
+        physicalOp.id -> portSchemas
+      }
+      .groupBy(_._1.logicalOpId)
+      .view
+      .mapValues(list => list.flatMap(_._2).toMap)
       .toMap
   }
 
@@ -294,13 +320,13 @@ class WorkflowCompiler(
     // 2. expand any macro operators into a flat logical plan. Macros are a purely
     // logical-plan-level abstraction; after this pass the rest of the pipeline never
     // sees a MacroOpDesc / MacroInputOp / MacroOutputOp.
-    val logicalPlan: LogicalPlan =
+    val (logicalPlan: LogicalPlan, macroPathMap: Map[String, String]) =
       try {
-        MacroExpander.expand(rawLogicalPlan, macroRegistry)
+        MacroExpander.expandWithPaths(rawLogicalPlan, macroRegistry)
       } catch {
         case e: Throwable =>
           errorList.append((OperatorIdentity("__macro_expander__"), e))
-          rawLogicalPlan
+          (rawLogicalPlan, Map.empty[String, String])
       }
 
     // 3. resolve the file name in each scan source operator
@@ -319,6 +345,23 @@ class WorkflowCompiler(
     // text instead of column dropdowns). See macroBoundaryOutputSchemas.
     opIdToOutputSchema =
       opIdToOutputSchema ++ macroBoundaryOutputSchemas(rawLogicalPlan, logicalPlan, opIdToOutputSchema)
+
+    // 4b. Also key each expanded inner op's RESOLVED INPUT schema by its full node
+    // path ("nodeId/.../bodyOpId"), so the drilled Generate view can turn nested
+    // attribute-selector fields into column dropdowns at ANY depth (incl. ops fed
+    // across the macro boundary). NOTE: these path-keyed entries carry the op's
+    // INPUT schema (not output); only the drilled view reads path keys, and a path
+    // (has "/") never collides with a real operator id, so the normal output-schema
+    // consumers are unaffected. macroPathMap: final expanded id -> node path.
+    if (macroPathMap.nonEmpty) {
+      val inputSchemas = collectInputSchemaFromPhysicalPlan(physicalPlan)
+      macroPathMap.foreach {
+        case (finalId, path) =>
+          inputSchemas.get(OperatorIdentity(finalId)).foreach { schema =>
+            opIdToOutputSchema = opIdToOutputSchema + (OperatorIdentity(path) -> schema)
+          }
+      }
+    }
 
     // Only block the physical plan for errors on outer canvas operators. Errors that
     // originated inside a macro body carry a "/" in their ID (e.g. "Macro-xxx/SleepOp")

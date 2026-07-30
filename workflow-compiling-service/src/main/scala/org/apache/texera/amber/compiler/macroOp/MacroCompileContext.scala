@@ -19,12 +19,20 @@
 
 package org.apache.texera.amber.compiler.macroOp
 
+import scala.collection.mutable
+
 // Threaded through MacroExpander to detect macro recursion and depth bombs.
 // `visited` is the set of (macroId, version) pairs on the current expansion path;
 // reappearance means a cycle.
+// `pathAcc` is a SHARED mutable accumulator (same reference across descend): it
+// maps each expanded inner op's CURRENT logical id -> its full node path from the
+// root ("nodeId/.../bodyOpId"). spliceIntoParent updates it as ids are rewritten
+// (re-keying when an inner id becomes the seed for the outer splice). Lets the
+// compiler key inner-op schemas by a path the drilled Generate view can compute.
 case class MacroCompileContext(
     visited: Set[(String, Int)],
-    depth: Int
+    depth: Int,
+    pathAcc: mutable.Map[String, String]
 ) {
 
   def guardAgainstCycle(macroId: String, version: Int): Unit = {
@@ -47,10 +55,10 @@ case class MacroCompileContext(
   }
 
   def descend(macroId: String, version: Int): MacroCompileContext =
-    MacroCompileContext(visited + ((macroId, version)), depth + 1)
+    MacroCompileContext(visited + ((macroId, version)), depth + 1, pathAcc) // share pathAcc ref
 }
 
 object MacroCompileContext {
   val MaxDepth: Int = 16
-  def root: MacroCompileContext = MacroCompileContext(Set.empty, 0)
+  def root: MacroCompileContext = MacroCompileContext(Set.empty, 0, mutable.Map.empty)
 }

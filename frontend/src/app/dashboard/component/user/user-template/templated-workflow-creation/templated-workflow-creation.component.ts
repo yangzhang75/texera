@@ -139,6 +139,11 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // the embedded canvas can be re-rendered to the current drill level's graph:
   // drilling reloads the nested macro's body, returning reloads this.
   private rootPreviewWorkflow?: Workflow;
+  // Raw compile output schemas. Besides normal ops, the compiler ALSO keys each
+  // expanded inner op's RESOLVED INPUT schema by its full node path
+  // ("nodeId/.../bodyOpId") — the drilled view uses those (direct lookup) to turn
+  // nested attribute fields into column dropdowns at any depth. Captured per compile.
+  private lastRawOutputSchemas: Record<string, OperatorPortSchemaMap> = {};
   public isLogin: boolean = this.userService.isLogin();
   public currentUid: number | undefined;
   public executionState: ExecutionState = ExecutionState.Uninitialized;
@@ -771,7 +776,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     this.formChangesSub?.unsubscribe();
     this.sections = (content?.operators ?? [])
       .filter(op => (op.configurableProperties ?? []).length > 0)
-      .map(op => this.buildEditableOverrideSection(op, `${level.path}/${op.operatorID}`));
+      .map(op => this.buildEditableOverrideSection(op, level.path));
     this.subscribeDrilledOverrides();
     // Cycle guard = every macro wid on the current path (root + each drilled level).
     const pathMacroIds = new Set<string>([String(this.macroId), ...this.drillStack.map(l => l.macroId)]);
@@ -801,9 +806,18 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
    * subscribeDrilledOverrides. `path` is the leaf's path relative to the root and
    * is the key P2.4 injects on.
    */
-  private buildEditableOverrideSection(op: OperatorPredicate, path: string): ConfigurableSection {
+  private buildEditableOverrideSection(op: OperatorPredicate, pathPrefix: string): ConfigurableSection {
+    const path = `${pathPrefix}/${op.operatorID}`;
     const configurableKeys = op.configurableProperties ?? [];
-    const schema = this.operatorMetadataService.getOperatorSchema(op.operatorType);
+    // Enrich with this op's RESOLVED input schema (keyed by its node path in the
+    // compile result) so attribute-selector fields render as column dropdowns —
+    // at any depth, including ops fed across the macro boundary. Falls back to the
+    // static schema (free text) if the compile hasn't populated it yet.
+    const inputSchema = this.lastRawOutputSchemas[path];
+    const schema = WorkflowCompilingService.setOperatorInputAttrs(
+      this.operatorMetadataService.getOperatorSchema(op.operatorType),
+      inputSchema
+    );
     const fullField = this.formlyJsonschema.toFieldConfig(cloneDeep(schema.jsonSchema) as any);
     const configurableSet = new Set(configurableKeys);
     const fields = (fullField.fieldGroup ?? []).filter(
@@ -851,6 +865,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     this.drillStack = [...this.drillStack, { macroId: row.macroId, nodeId: row.nodeId, label: row.label, path: row.path }];
     this.rebuildScope();
     this.syncPreviewCanvasToScope();
+    this.refreshDrillSchemas();
   }
 
   /** Breadcrumb navigation: index 0 = root, i = the i-th drilled level. */
@@ -858,12 +873,31 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     this.drillStack = index <= 0 ? [] : this.drillStack.slice(0, index);
     this.rebuildScope();
     this.syncPreviewCanvasToScope();
+    this.refreshDrillSchemas();
   }
 
   public drillBack(): void {
     this.drillStack = this.drillStack.slice(0, -1);
     this.rebuildScope();
     this.syncPreviewCanvasToScope();
+    this.refreshDrillSchemas();
+  }
+
+  /**
+   * When drilled, (re)compile the full expanded plan and capture the path-keyed
+   * inner-op input schemas, then re-enrich the drilled sections so their
+   * attribute-selector fields become column dropdowns. Async: the dropdowns
+   * appear a beat after drilling if the schema wasn't already cached.
+   */
+  private refreshDrillSchemas(): void {
+    if (this.drillStack.length === 0) return;
+    this.compileDraftWorkflowForDynamicSchemas()
+      .pipe(untilDestroyed(this))
+      .subscribe(r => {
+        if (!r.operatorOutputSchemas) return;
+        this.lastRawOutputSchemas = r.operatorOutputSchemas;
+        if (this.drillStack.length > 0) this.rebuildScope(); // re-enrich with fresh schemas
+      });
   }
 
   /**
@@ -981,6 +1015,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
   private applyDraftSchemaPropagationResult(outputSchemas: Record<string, OperatorPortSchemaMap>): void {
     if (!this.template) return;
+    this.lastRawOutputSchemas = outputSchemas; // incl. path-keyed inner-op input schemas
 
     this.templatedWorkflowDraftService.applyDraftSchemaPropagationResult({
       content: this.template,

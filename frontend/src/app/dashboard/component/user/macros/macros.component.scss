@@ -102,7 +102,6 @@
 }
 
 .macro-list-item {
-  cursor: pointer;
   transition: background 0.15s ease;
 
   &:hover {
@@ -132,6 +131,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 60vh;
+  cursor: pointer;
+
+  &:hover {
+    color: #1890ff;
+  }
 }
 
 .macro-owner-icon {

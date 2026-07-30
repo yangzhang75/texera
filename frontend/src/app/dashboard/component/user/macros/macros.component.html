@@ -31,17 +31,15 @@
        height / dividers / hover); macro-specific Runnable badge + Edit / Generate
        / More-actions kept. -->
   <nz-list *ngIf="!isLoading && filteredMacros.length > 0" class="macros-list" [nzSplit]="true">
-    <nz-list-item
-      *ngFor="let m of filteredMacros"
-      class="macro-list-item"
-      (click)="onOpen(m)"
-      [title]="runnableTooltip(m)">
+    <nz-list-item *ngFor="let m of filteredMacros" class="macro-list-item">
       <nz-list-item-meta>
         <nz-list-item-meta-avatar>
           <nz-avatar class="macro-id-avatar" nzIcon="experiment"></nz-avatar>
         </nz-list-item-meta-avatar>
         <nz-list-item-meta-title>
-          <span class="macro-name">{{ m.name }}</span>
+          <!-- Only the NAME opens the macro (like the Workflows list) — clicking
+               elsewhere on the row does nothing, so no accidental navigation. -->
+          <span class="macro-name" [title]="runnableTooltip(m)" (click)="onOpen(m)">{{ m.name }}</span>
           <span class="runnable-label" [class.runnable]="isRunnable(m)">
             {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
           </span>

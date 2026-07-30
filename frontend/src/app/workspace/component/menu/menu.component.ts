@@ -33,7 +33,7 @@ import { WorkflowActionService } from "../../service/workflow-graph/model/workfl
 import { ExecutionState } from "../../types/execute-workflow.interface";
 import { WorkflowWebsocketService } from "../../service/workflow-websocket/workflow-websocket.service";
 import { WorkflowResultExportService } from "../../service/workflow-result-export/workflow-result-export.service";
-import { catchError, debounceTime, filter, mergeMap, switchMap, tap } from "rxjs/operators";
+import { catchError, debounceTime, filter, map, mergeMap, switchMap, tap } from "rxjs/operators";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { WorkflowUtilService } from "../../service/workflow-graph/util/workflow-util.service";
 import { WorkflowVersionService } from "../../../dashboard/service/user/workflow-version/workflow-version.service";
@@ -721,11 +721,34 @@ export class MenuComponent implements OnInit, OnDestroy {
       this.notificationService.warning("Add at least one operator before creating a macro.");
       return;
     }
-    const name = this.workflowActionService.getWorkflow().name?.trim() || "New macro";
+    const src = this.workflowActionService.getWorkflow();
+    const name = src.name?.trim() || "New macro";
+    // A brand-new (never-saved) canvas turned into a macro must NOT linger in the
+    // Workflows list: the workspace would otherwise auto-persist it as a stray
+    // workflow (the user asked that nothing appear under Workflows until they
+    // Generate one). So for an unsaved source we persist it (to capture the wid
+    // the workspace would create), then delete that throwaway row after the macro
+    // exists. An ALREADY-saved workflow is left untouched — Create macro just
+    // derives a macro copy from it (never destroys the user's existing workflow).
+    const wasUnsaved = !src.wid;
     const built = this.macroService.buildMacroFromSelection(this.workflowActionService, allOpIds, name);
     this.macroService
       .createMacro(built.request)
-      .pipe(untilDestroyed(this))
+      .pipe(
+        switchMap(detail => {
+          if (!wasUnsaved) {
+            return of(detail);
+          }
+          return this.workflowPersistService.persistWorkflow(src).pipe(
+            tap(saved => this.workflowActionService.setWorkflowMetadata(saved)),
+            switchMap(saved =>
+              saved.wid ? this.workflowPersistService.deleteWorkflow([saved.wid]) : of(undefined)
+            ),
+            map(() => detail)
+          );
+        }),
+        untilDestroyed(this)
+      )
       .subscribe({
         next: detail => {
           this.notificationService.success("Macro created — choose which parameters are configurable, then Save.");

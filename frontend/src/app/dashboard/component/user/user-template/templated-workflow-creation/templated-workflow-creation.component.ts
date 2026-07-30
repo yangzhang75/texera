@@ -391,15 +391,14 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       .generateWorkflowFromMacro(this.macroId, content, name, false, description)
       .pipe(untilDestroyed(this))
       .subscribe({
-        next: newWid => {
-          this.notificationService.success("Workflow generated. Find it under Your Work > Workflows.");
-          // Hard navigation (not router.navigate): this page embeds a
-          // WorkspaceComponent that shares the singleton WorkflowActionService
-          // with the target workspace. An SPA transition reuses that state and
-          // races YJS replay vs reloadWorkflow, leaving the new canvas
-          // transiently blank. A full reload gives the target a clean slate --
-          // same reason the macro drill-down uses window.location.href.
-          window.location.href = `${USER_WORKSPACE}/${newWid}`;
+        next: () => {
+          // Biologists don't want to be dropped into the workflow canvas — Create
+          // just SAVES the generated workflow (they see results from the in-place
+          // preview Run above). Stay on the Generate page with a confirmation
+          // rather than navigating into the workspace editor.
+          this.notificationService.success(
+            `Workflow "${name}" created — find it under Your Work › Workflows.`
+          );
         },
         error: () => this.notificationService.error("Failed to generate workflow."),
       });

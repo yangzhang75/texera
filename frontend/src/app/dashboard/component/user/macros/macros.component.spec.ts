@@ -42,11 +42,12 @@ describe("MacrosComponent", () => {
   let notif: any;
   let persist: any;
   let modal: any;
+  let macroSvc: any;
 
   beforeEach(() => {
     runnable = true;
     navigate = vi.fn();
-    const macroServiceStub = { isMacroRunnable: () => runnable } as any;
+    macroSvc = { isMacroRunnable: () => runnable, listMacros: () => of([]) };
     notif = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
     persist = {
       retrieveOwners: vi.fn(() => of(["a@b.c"])),
@@ -54,9 +55,10 @@ describe("MacrosComponent", () => {
       updateWorkflowDescription: vi.fn(() => of({})),
     };
     modal = { create: vi.fn(), confirm: vi.fn() };
+    const metadataStub = { getOperatorMetadata: () => of({}) };
     // constructor: (macroService, notificationService, operatorMetadataService,
     //   workflowPersistService, modalService, router)
-    component = new MacrosComponent(macroServiceStub, notif, {} as any, persist, modal, { navigate } as any);
+    component = new MacrosComponent(macroSvc, notif, metadataStub as any, persist, modal, { navigate } as any);
   });
 
   it("runnable macro opens the Generate (fill) page by default", () => {
@@ -111,6 +113,17 @@ describe("MacrosComponent", () => {
     expect(line).toContain("CSVFileScan → Filter"); // markers dropped
     expect(line).toContain("2 ops");
     expect(line).toContain("edited");
+  });
+
+  it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {
+    const list = [
+      macro({ wid: 1, lastModifiedTime: "2026-01-01T00:00:00Z" }),
+      macro({ wid: 2, lastModifiedTime: "2026-03-01T00:00:00Z" }),
+      macro({ wid: 3, lastModifiedTime: "2026-02-01T00:00:00Z" }),
+    ];
+    macroSvc.listMacros = () => of(list);
+    component.reload();
+    expect(component.macros.map(m => m.wid)).toEqual([2, 3, 1]);
   });
 
   it("Share opens ShareAccessComponent for the macro (type=workflow, macro wid, owner write access)", async () => {

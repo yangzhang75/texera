@@ -100,7 +100,12 @@ export class MacrosComponent implements OnInit {
       .pipe(untilDestroyed(this))
       .subscribe({
         next: ({ macros }) => {
-          this.macros = macros;
+          // Newest first: the macro a user just created shows at the top. Sort by
+          // last-modified time, tie-broken by wid (the backend returns no order).
+          this.macros = [...macros].sort(
+            (a, b) =>
+              (this.epoch(b.lastModifiedTime) ?? 0) - (this.epoch(a.lastModifiedTime) ?? 0) || b.wid - a.wid
+          );
           this.isLoading = false;
         },
         error: () => {

@@ -62,9 +62,9 @@ texera-workflow-editor {
 // drill-down route (/workflow/:id/macro/:macroId). Sits above the menu so the
 // user can't miss that they're editing a macro definition, not the parent
 // workflow. Same z-index family as `texera-menu` (z: 1) but +1 to stay above.
-// Embedded runnable-preview Run bar: a single accent button floated at the
-// top-left of the preview canvas. The computing-unit selector is mounted here
-// purely to auto-connect, and is kept invisible (no env dropdown / Share).
+// Embedded runnable-preview Run bar: an accent Run button floated at the
+// top-left of the preview canvas, with a quieted-down computing-unit picker
+// next to it (see .preview-connector — usage bars hidden, borderless chip).
 .preview-run-bar {
   position: absolute;
   top: 10px;
@@ -105,9 +105,56 @@ texera-workflow-editor {
   font-size: 11px;
 }
 
+// The full workspace CU selector is a wide, boxed control with inline CPU/Memory
+// usage bars — too heavy for the quiet preview bar. Scope it down here (only
+// inside .preview-connector, so the full workspace copy is untouched): hide the
+// usage bars and render the picker as a light, borderless chip that reveals on
+// hover, so it reads as a secondary control next to Run rather than a big box.
 .preview-connector {
   display: inline-flex;
   align-items: center;
+
+  ::ng-deep {
+    // Drop the inline CPU/Memory usage bars in the preview.
+    .metrics-container {
+      display: none !important;
+    }
+
+    // Collapse the metrics-driven min-width so the chip hugs its label.
+    .computing-units-selection,
+    .computing-units-selection.metrics-visible {
+      min-width: 0 !important;
+      max-width: none !important;
+      gap: 0 !important;
+    }
+
+    // Quiet, borderless picker button that only surfaces on hover.
+    // width:auto defeats ng-zorro's .ant-btn-icon-only (which pins the button to
+    // 32px and would clip the CU name once the fixed min-width is removed).
+    .computing-units-dropdown-button {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 30px;
+      padding: 0 8px;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      color: rgba(0, 0, 0, 0.65);
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.04);
+        color: #1890ff;
+      }
+    }
+
+    // Size the name to its content (don't let it collapse to 0 now that the
+    // button no longer has a fixed width) so the picked CU stays visible.
+    .unit-name-text {
+      flex: 0 0 auto;
+      max-width: 140px;
+    }
+  }
 }
 
 // Clean top bar (matches the Generate page header: white ground, dark title,

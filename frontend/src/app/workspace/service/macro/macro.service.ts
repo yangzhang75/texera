@@ -398,7 +398,16 @@ export class MacroService {
    * a refresh after Run is clicked or after a workflow content change.
    */
   public getRuntimeMacroMapping(wid: number): Observable<Map<string, MacroProvenanceEntry>> {
-    if (this.runtimeMacroMappingLoadedFor === wid && this.runtimeMacroMapping.size > 0) {
+    // Cache by workflow id even when the mapping is EMPTY. A workflow that has a
+    // macro but whose latest compile produced no mapping (never run, or a failed
+    // run) otherwise re-fetches on EVERY call (size stays 0). Since this is
+    // called from the per-stats-update render path AND each refresh ticks the
+    // mapping subject (which re-aggregates status -> re-renders -> calls here
+    // again), the old `size > 0` guard created an infinite ~1/sec HTTP loop that
+    // hammered the backend and kept macro inner-op stats from settling (ops never
+    // turned green). The execute path calls refreshRuntimeMacroMapping explicitly
+    // after Run, so the cache still updates the moment a real mapping appears.
+    if (this.runtimeMacroMappingLoadedFor === wid) {
       return of(this.runtimeMacroMapping);
     }
     return this.refreshRuntimeMacroMapping(wid);

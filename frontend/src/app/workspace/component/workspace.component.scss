@@ -106,7 +106,8 @@ texera-workflow-editor {
 }
 
 .preview-connector {
-  display: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 // Clean top bar (matches the Generate page header: white ground, dark title,

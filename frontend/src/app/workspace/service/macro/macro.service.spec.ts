@@ -103,6 +103,7 @@ function macroDetailWithMarkers(): MacroDetail {
     paramSpec: [],
     isOwner: true,
     readonly: false,
+    version: 1,
   } as MacroDetail;
 }
 

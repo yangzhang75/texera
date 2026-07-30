@@ -29,7 +29,7 @@ import {Workflow, WorkflowContent} from "../../../../../common/type/workflow";
 import {WorkflowPersistService} from "../../../../../common/service/workflow-persist/workflow-persist.service";
 import {AppSettings} from "../../../../../common/app-setting";
 import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {catchError, debounceTime, EMPTY, forkJoin, merge, Observable, of, Subscription} from "rxjs";
+import {catchError, debounceTime, EMPTY, firstValueFrom, forkJoin, merge, Observable, of, Subscription} from "rxjs";
 import {filter, finalize, map, switchMap} from "rxjs/operators";
 import {cloneDeep, isEqual} from "lodash";
 import {ActivatedRoute, Router} from "@angular/router";
@@ -57,6 +57,8 @@ import {NzIconModule} from "ng-zorro-antd/icon";
 import {NzTooltipModule} from "ng-zorro-antd/tooltip";
 import {WorkspaceComponent} from "../../../../../workspace/component/workspace.component";
 import {TemplatedWorkflowService} from "../../../../service/user/templated-workflow/templated-workflow.service";
+import {NzModalService} from "ng-zorro-antd/modal";
+import {ShareAccessComponent} from "../../share-access/share-access.component";
 
 interface ConfigurableSection {
   operatorID: string;
@@ -109,6 +111,9 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // When set, this page generates a workflow from a MACRO definition instead of
   // a template. Same preview + Formly form + submit UI; data source is the macro.
   public macroId: number | undefined;
+  // Whether the current user owns the macro definition — gates the Share action
+  // (only an owner can grant/revoke access), mirroring the workspace Share menu.
+  public macroIsOwner = false;
   // When this Generate page was reached by drilling into a NESTED macro from an
   // outer macro's preview, `ret` is the outer page's full URL to return to. It
   // chains: the outer URL itself carries its own `ret`, so multi-level back works.
@@ -180,6 +185,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     private route: ActivatedRoute,
     private http: HttpClient,
     private macroService: MacroService,
+    private modalService: NzModalService,
     private router: Router
   ) {
     this.userService
@@ -385,6 +391,30 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   public onEditMacro(): void {
     if (!this.macroId) return;
     window.location.href = `${USER_WORKSPACE}/${this.macroId}/macro/${this.macroId}`;
+  }
+
+  /**
+   * Share the macro definition with other users. A macro is a `workflow` row
+   * (kind=MACRO), so it reuses the exact same ShareAccessComponent the workspace
+   * Share menu opens for a workflow — same access levels, same owner autocomplete
+   * (retrieveOwners is a global owner list, not tied to the preview context).
+   */
+  public async onShareMacro(): Promise<void> {
+    if (!this.macroId) return;
+    this.modalService.create({
+      nzContent: ShareAccessComponent,
+      nzData: {
+        writeAccess: this.macroIsOwner,
+        type: "workflow",
+        id: this.macroId,
+        allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
+        inWorkspace: false,
+      },
+      nzFooter: null,
+      nzTitle: "Share this macro with others",
+      nzCentered: true,
+      nzWidth: "800px",
+    });
   }
 
   private getConfigurablePropertyUpdatePayload(): {
@@ -601,6 +631,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         // Defaults for the workflow that Create will produce.
         this.genName = detail.name;
         this.genDescription = detail.description ?? "";
+        this.macroIsOwner = detail.isOwner;
         // P2.3 — fresh drill state per Generate entry. Clearing the caches here is
         // the invalidation strategy: definitions are re-fetched every visit, so a
         // nested macro edited between visits can never be served stale.

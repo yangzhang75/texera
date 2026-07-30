@@ -47,6 +47,7 @@ function make(): TemplatedWorkflowCreationComponent {
     {} as any, // route
     {} as any, // http
     macroService,
+    {} as any, // modalService
     {} as any // router
   );
 }

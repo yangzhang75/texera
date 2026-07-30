@@ -43,6 +43,18 @@
           (click)="onEditMacro()">
           <i nz-icon nzType="experiment" nzTheme="outline"></i> Edit macro
         </button>
+        <!-- Share the macro definition with other users (owner only). Reuses the
+             same ShareAccessComponent as the workspace Share menu. -->
+        <button
+          *ngIf="macroId && macroIsOwner"
+          nz-button
+          nzType="default"
+          nzSize="small"
+          class="tw-share-macro"
+          title="Share this macro with others"
+          (click)="onShareMacro()">
+          <i nz-icon nzType="share-alt" nzTheme="outline"></i> Share
+        </button>
       </div>
     </div>
     <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow.</p>

@@ -160,6 +160,10 @@ object MacroResource {
       usageCount: Int,
       isOwner: Boolean,
       ownerName: String,
+      // Whether the macro is public (WORKFLOW.IS_PUBLIC) — visible to everyone.
+      // Mirrors the workflow public flag and is toggled through the shared
+      // /workflow/public|private/{wid} endpoints (which carry no kind guard).
+      isPublic: Boolean,
       // Operator types present in the macro body (markers included). The
       // frontend maps these to input-port counts via its already-loaded
       // OperatorMetadataService to decide "runnable" (0 external inputs AND a
@@ -341,7 +345,8 @@ class MacroResource extends LazyLogging {
         MACRO_METADATA.ICON,
         WORKFLOW_OF_USER.UID,
         USER.NAME,
-        WORKFLOW.CONTENT
+        WORKFLOW.CONTENT,
+        WORKFLOW.IS_PUBLIC
       )
       .from(WORKFLOW)
       .join(WORKFLOW_USER_ACCESS)
@@ -370,6 +375,7 @@ class MacroResource extends LazyLogging {
         usageMap.getOrElse(r.value1().intValue(), 0),
         isOwner = r.value9() != null && r.value9() == uid,
         ownerName = Option(r.value10()).getOrElse(""),
+        isPublic = r.value12() != null && r.value12().booleanValue(),
         bodyOperatorTypes = bodyOperatorTypesOf(r.value11()),
         version = WorkflowVersionResource.getLatestVersion(r.value1())
       )

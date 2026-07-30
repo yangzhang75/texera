@@ -53,6 +53,7 @@ describe("MacrosComponent", () => {
       retrieveOwners: vi.fn(() => of(["a@b.c"])),
       deleteWorkflow: vi.fn(() => of({})),
       updateWorkflowDescription: vi.fn(() => of({})),
+      updateWorkflowIsPublished: vi.fn(() => of({})),
     };
     modal = { create: vi.fn(), confirm: vi.fn() };
     const metadataStub = { getOperatorMetadata: () => of({}) };
@@ -148,6 +149,26 @@ describe("MacrosComponent", () => {
     await opts.nzOnOk(); // run the confirm handler
     expect(persist.deleteWorkflow).toHaveBeenCalledWith([9]);
     expect(component.macros.map(x => x.wid)).toEqual([10]);
+  });
+
+  it("Make public confirms, calls updateWorkflowIsPublished(true), and flips the model flag", async () => {
+    const m = macro({ wid: 13, isPublic: false } as Partial<MacroSummary>);
+    component.onTogglePublic(m);
+    const opts = modal.confirm.mock.calls[0][0];
+    expect(opts.nzTitle).toContain("public");
+    await opts.nzOnOk();
+    expect(persist.updateWorkflowIsPublished).toHaveBeenCalledWith(13, true);
+    expect(m.isPublic).toBe(true);
+  });
+
+  it("Make private confirms, calls updateWorkflowIsPublished(false), and flips the model flag", async () => {
+    const m = macro({ wid: 14, isPublic: true } as Partial<MacroSummary>);
+    component.onTogglePublic(m);
+    const opts = modal.confirm.mock.calls[0][0];
+    expect(opts.nzTitle).toContain("private");
+    await opts.nzOnOk();
+    expect(persist.updateWorkflowIsPublished).toHaveBeenCalledWith(14, false);
+    expect(m.isPublic).toBe(false);
   });
 
   it("Change description persists via updateWorkflowDescription and updates the model", async () => {

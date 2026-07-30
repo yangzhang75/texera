@@ -131,6 +131,10 @@ export interface MacroSummary {
   // shows owner + shared-by. Optional so older backends still parse.
   isOwner?: boolean;
   ownerName?: string;
+  // Whether the macro is public (WORKFLOW.IS_PUBLIC) — visible to everyone.
+  // Toggled from the Macros list via the shared workflow public endpoints.
+  // Optional so older backends (without the field) still parse.
+  isPublic?: boolean;
   // Operator types in the macro body (markers included). Fed to
   // MacroService.isMacroRunnable to decide the runnable gate without shipping
   // the full body content. Optional so older backends still parse.

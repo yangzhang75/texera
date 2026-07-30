@@ -29,6 +29,7 @@ import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
 import { NzListModule } from "ng-zorro-antd/list";
 import { NzAvatarModule } from "ng-zorro-antd/avatar";
+import { NzCardModule } from "ng-zorro-antd/card";
 import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
 import { ShareAccessComponent } from "../share-access/share-access.component";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
@@ -62,6 +63,7 @@ import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constan
     NzTooltipModule,
     NzListModule,
     NzAvatarModule,
+    NzCardModule,
   ],
 })
 export class MacrosComponent implements OnInit {
@@ -221,6 +223,32 @@ export class MacrosComponent implements OnInit {
       nzTitle: "Share this macro with others",
       nzCentered: true,
       nzWidth: "800px",
+    });
+  }
+
+  /**
+   * Row action "Make public / Make private" — a macro is a `workflow` row
+   * (kind=MACRO), so it reuses the workflow public endpoints
+   * (PUT /workflow/public|private/{wid}); those carry no kind guard and only
+   * check write access, so they work unchanged on a macro's wid. Making a macro
+   * public lets anyone find and use it; making it private reverts that.
+   */
+  onTogglePublic(m: MacroSummary): void {
+    const next = !m.isPublic;
+    const verb = next ? "public" : "private";
+    this.modalService.confirm({
+      nzTitle: next ? `Make macro "${m.name}" public?` : `Make macro "${m.name}" private?`,
+      nzContent: next
+        ? "Anyone will be able to find and use this macro. You can make it private again at any time."
+        : "This macro will no longer be visible to everyone.",
+      nzOkText: next ? "Make public" : "Make private",
+      nzOnOk: () =>
+        firstValueFrom(this.workflowPersistService.updateWorkflowIsPublished(m.wid, next))
+          .then(() => {
+            m.isPublic = next;
+            this.notificationService.success(`Macro is now ${verb}.`);
+          })
+          .catch(() => this.notificationService.error(`Failed to make macro ${verb}.`)),
     });
   }
 

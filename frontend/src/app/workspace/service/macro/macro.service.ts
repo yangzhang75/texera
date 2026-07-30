@@ -1049,18 +1049,6 @@ export class MacroService {
   }
 
   /**
-   * Latest version (vid) per macro wid -- the open-time LIVE update check.
-   * Returns a map keyed by wid-as-string (matching the node's macroId string).
-   * Only readable MACRO wids come back; others are absent (no prompt for them).
-   */
-  public getLatestVersions(wids: number[]): Observable<Record<string, number>> {
-    return this.http.post<Record<string, number>>(
-      `${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/latest-versions`,
-      { wids }
-    );
-  }
-
-  /**
    * Save an edited macro body (Edit-macro canvas) back to the macro definition.
    * Serializes the canvas content to the MacroBody shape and persists it.
    */

@@ -332,6 +332,17 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
         this.reloadWorkspace(context);
       }
     });
+
+    // Auto-save the macro body when a configurable-property checkbox is toggled
+    // in Edit-macro (debounced to coalesce rapid toggles), so the whitelist
+    // takes effect without clicking "Save macro". Only fires in Edit-macro mode.
+    this.macroService.configurableAutoSaveRequested$
+      .pipe(debounceTime(500), untilDestroyed(this))
+      .subscribe(() => {
+        if (this.macroEditMode && this.macroEditWid !== undefined) {
+          this.saveMacro();
+        }
+      });
   }
 
   ngAfterViewInit() {

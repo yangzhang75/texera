@@ -389,6 +389,16 @@ export class MacroService {
     this.previewDrillSubject.next({ macroId, nodeId });
   }
 
+  // Fired when a configurable-property checkbox is toggled in Edit-macro. The
+  // workspace listens and auto-saves the macro body (debounced), so marking
+  // params configurable takes effect immediately — no "Save macro" needed for
+  // the checkbox. (Body structure edits still use the explicit Save.)
+  private configurableAutoSaveSubject = new Subject<void>();
+  public readonly configurableAutoSaveRequested$ = this.configurableAutoSaveSubject.asObservable();
+  public requestConfigurableAutoSave(): void {
+    this.configurableAutoSaveSubject.next();
+  }
+
   /**
    * Fetch the macro-instance provenance map for the most-recent compile of
    * the given workflow. The backend populates this map during MacroExpander

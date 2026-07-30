@@ -38,6 +38,7 @@ import {
 import { isDefined } from "../../../../common/util/predicate";
 import { ExecutionState, OperatorState, OperatorStatistics } from "src/app/workspace/types/execute-workflow.interface";
 import { DynamicSchemaService } from "../../../service/dynamic-schema/dynamic-schema.service";
+import { MacroService } from "../../../service/macro/macro.service";
 import { WorkflowCompilingService } from "../../../service/compile-workflow/workflow-compiling.service";
 import {
   createOutputFormChangeEventStream,
@@ -181,7 +182,8 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     private workflowStatusSerivce: WorkflowStatusService,
     private config: GuiConfigService,
     private workflowPveService: WorkflowPveService,
-    private computingUnitStatusService: ComputingUnitStatusService
+    private computingUnitStatusService: ComputingUnitStatusService,
+    private macroService: MacroService
   ) {}
 
   private patchPythonUdfEnvironmentSchema(schema: CustomJSONSchema7, environments: string[]): CustomJSONSchema7 {
@@ -999,6 +1001,11 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       this.currentOperatorId,
       Array.from(currentConfigurableProperties)
     );
+
+    // Auto-save: marking a param configurable persists immediately (the
+    // workspace debounce-saves the macro body on this signal) so the user no
+    // longer has to click "Save macro" just for the checkbox.
+    this.macroService.requestConfigurableAutoSave();
   }
 
   isTemplateMode(): boolean {

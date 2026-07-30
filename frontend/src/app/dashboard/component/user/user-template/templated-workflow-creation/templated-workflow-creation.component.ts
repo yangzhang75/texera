@@ -1017,14 +1017,13 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   /**
-   * Canvas entry point: a Macro node was clicked on the embedded preview (always
-   * a top-level nested macro, since the preview shows the root content). Reset to
-   * root scope, then drill into that node's row — same destination and behavior
-   * as clicking its "Configure nested params" row.
+   * Canvas entry point: a Macro node was double-clicked on the embedded preview.
+   * Drill into it from the CURRENT scope (drillRows always reflects the current
+   * scope; nodeId is the operator id the canvas element carries). Deeper canvas
+   * drilling has a separate event-plumbing issue tracked outside this method —
+   * the "Configure nested params" row drills reliably at any depth.
    */
   private drillIntoNodeFromCanvas(nodeId: string): void {
-    this.drillStack = [];
-    this.rebuildScope(); // repopulates root drillRows from the prefetch cache
     const row = this.drillRows.find(r => r.nodeId === nodeId);
     if (row) this.drillInto(row);
   }

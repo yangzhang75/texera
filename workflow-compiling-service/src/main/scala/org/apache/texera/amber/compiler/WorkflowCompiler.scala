@@ -227,6 +227,40 @@ class WorkflowCompiler(
   }
 
   /**
+    * After MacroExpander runs, a macro instance node is gone from the plan — but on the
+    * parent canvas, downstream operators still link FROM that (now-absent) macro node.
+    * Frontend schema propagation follows those links to find the upstream output schema,
+    * so it cannot resolve the input attributes of any operator downstream of a macro, and
+    * their attribute-selector fields render as free-text inputs instead of column dropdowns.
+    *
+    * Re-attribute: an original link M.out[p] -> D.in[q] was rewired by expansion into
+    * X.out[j] -> D.in[q] (X = the macro's inner boundary op). So M.output[p] schema =
+    * X.output[j] schema, looked up via D's incoming link in the expanded plan. Handles the
+    * common macro -> non-macro downstream case; a macro feeding directly into another macro
+    * is skipped (D is expanded away), leaving that rarer case unchanged.
+    */
+  private def macroBoundaryOutputSchemas(
+      rawPlan: LogicalPlan,
+      expandedPlan: LogicalPlan,
+      outSchemas: Map[OperatorIdentity, Map[PortIdentity, Option[Schema]]]
+  ): Map[OperatorIdentity, Map[PortIdentity, Option[Schema]]] = {
+    val macroIds = rawPlan.operators.collect { case m: MacroOpDesc => m.operatorIdentifier }.toSet
+    if (macroIds.isEmpty) return Map.empty
+    val expandedIncoming: Map[(OperatorIdentity, PortIdentity), (OperatorIdentity, PortIdentity)] =
+      expandedPlan.links.map(l => (l.toOpId, l.toPortId) -> (l.fromOpId, l.fromPortId)).toMap
+    val acc = scala.collection.mutable.Map[OperatorIdentity, Map[PortIdentity, Option[Schema]]]()
+    rawPlan.links.filter(l => macroIds.contains(l.fromOpId)).foreach { l =>
+      expandedIncoming.get((l.toOpId, l.toPortId)).foreach {
+        case (x, j) =>
+          outSchemas.get(x).flatMap(_.get(j)).foreach { schema =>
+            acc(l.fromOpId) = acc.getOrElse(l.fromOpId, Map.empty) + (l.fromPortId -> schema)
+          }
+      }
+    }
+    acc.toMap
+  }
+
+  /**
     * Compile a workflow to physical plan, along with the schema propagation result and error(if any)
     *
     * @param logicalPlanPojo the pojo parsed from workflow str provided by user
@@ -278,6 +312,13 @@ class WorkflowCompiler(
     // 4. collect the output schema for each logical op
     // even if error is encountered when logical => physical, we still want to get the input schemas for rest no-error operators
     opIdToOutputSchema = collectOutputSchemaFromPhysicalPlan(physicalPlan, errorList)
+
+    // 4a. Re-attribute macro-instance boundary output schemas to the visible macro node
+    // id, so frontend schema propagation can resolve the input attributes of operators
+    // downstream of a macro (otherwise their attribute-selector fields render as free
+    // text instead of column dropdowns). See macroBoundaryOutputSchemas.
+    opIdToOutputSchema =
+      opIdToOutputSchema ++ macroBoundaryOutputSchemas(rawLogicalPlan, logicalPlan, opIdToOutputSchema)
 
     // Only block the physical plan for errors on outer canvas operators. Errors that
     // originated inside a macro body carry a "/" in their ID (e.g. "Macro-xxx/SleepOp")

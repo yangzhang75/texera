@@ -114,8 +114,21 @@
       {{ macroId ? "Create Workflow" : "Submit" }}
     </button>
     <span *ngIf="drillStack.length > 0" class="tw-drill-hint">
-      Return to the top level (breadcrumb) to create the workflow.
+      Return to the top level (breadcrumb) to create the workflow{{ (macroId && macroRunnable) ? ", or run the whole workflow with your changes:" : "." }}
     </span>
+    <!-- Run the whole generated workflow from here: a nested body has no data
+         source of its own, so this bakes the nested edits into the root graph,
+         returns to root scope, and runs end-to-end (no manual navigation). -->
+    <button
+      *ngIf="drillStack.length > 0 && macroId && macroRunnable"
+      nz-button
+      nzType="primary"
+      nzSize="small"
+      class="tw-run-nested"
+      title="Run the whole generated workflow with your nested changes"
+      (click)="runWholeWorkflowFromNested()">
+      <span class="tw-run-nested-glyph">▶</span> Run whole workflow
+    </button>
   </div>
 </div>
 

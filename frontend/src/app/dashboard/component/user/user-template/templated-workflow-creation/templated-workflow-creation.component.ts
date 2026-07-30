@@ -20,7 +20,7 @@
 import {FormlyFieldConfig, FormlyModule} from "@ngx-formly/core";
 import {FormlyJsonschema} from "@ngx-formly/core/json-schema";
 import {FormGroup, ReactiveFormsModule} from "@angular/forms";
-import {AfterViewInit, Component, OnInit} from "@angular/core";
+import {AfterViewInit, Component, OnInit, ViewChild} from "@angular/core";
 import {UntilDestroy, untilDestroyed} from "@ngneat/until-destroy";
 import {NotificationService} from "../../../../../common/service/notification/notification.service";
 import {UserService} from "../../../../../common/service/user/user.service";
@@ -138,12 +138,20 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   public drillRows: DrillRow[] = [];
   public paramOverrides: Record<string, Record<string, unknown>> = {};
   private macroContentCache = new Map<string, WorkflowContent>();
+  // Same nested definitions as macroContentCache, but WITH the MacroInput/
+  // MacroOutput boundary markers kept — used ONLY to render the drilled canvas,
+  // so a biologist sees where data enters/leaves the nested macro (in/out). The
+  // stripped macroContentCache still drives the param form + drill logic.
+  private macroDisplayCache = new Map<string, WorkflowContent>();
   private macroMeta = new Map<string, { name: string; version: number }>();
   public rootLabel = "";
   // The root preview Workflow (expanded macro body shown at root scope). Kept so
   // the embedded canvas can be re-rendered to the current drill level's graph:
   // drilling reloads the nested macro's body, returning reloads this.
   private rootPreviewWorkflow?: Workflow;
+  // The embedded preview workspace — used to trigger its in-place Run when the
+  // biologist runs the whole workflow from a drilled nested scope.
+  @ViewChild(WorkspaceComponent) private previewWorkspace?: WorkspaceComponent;
   // Raw compile output schemas. Besides normal ops, the compiler ALSO keys each
   // expanded inner op's RESOLVED INPUT schema by its full node path
   // ("nodeId/.../bodyOpId") — the drilled view uses those (direct lookup) to turn
@@ -639,6 +647,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         this.drillRows = [];
         this.paramOverrides = {};
         this.macroContentCache.clear();
+        this.macroDisplayCache.clear();
         this.macroMeta.clear();
         this.rootLabel = `${detail.name} v${detail.version}`;
         const content = this.macroService.macroDetailToGeneratedContent(detail);
@@ -774,6 +783,8 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
           this.macroMeta.set(macroId, { name: detail.name, version: detail.version });
           const content = this.macroService.macroDetailToGeneratedContent(detail);
           this.macroContentCache.set(macroId, content);
+          // Marker-inclusive copy for the drilled canvas (shows in/out boundary).
+          this.macroDisplayCache.set(macroId, this.macroService.macroDetailToWorkflow(detail).content);
           return this.walkAndCacheNestedMacros(content.operators, new Set([...visited, macroId]));
         }),
         // Can't fetch (deleted / no access): skip that branch, don't fail the form.
@@ -915,6 +926,41 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   }
 
   /**
+   * Run the whole generated workflow from a drilled nested scope, so a biologist
+   * can edit nested params and run without manually navigating back out.
+   *
+   * A nested body isn't standalone-runnable (its input is the macro boundary, so
+   * it has no data source), so "run here" necessarily means "run the full graph".
+   * Drilled edits already flow live into paramOverrides (subscribeToDrillFormChanges),
+   * so we just return to root scope — syncPreviewCanvasToScope bakes those
+   * overrides into the root graph and loads it into the shared model — then
+   * trigger the same in-place preview Run the root view uses. The canvas returns
+   * to root because that is the graph being executed.
+   */
+  public runWholeWorkflowFromNested(): void {
+    if (this.drillStack.length === 0) return;
+    this.drillStack = [];
+    this.rebuildScope();
+    this.syncPreviewCanvasToScope();
+    this.triggerPreviewRunWhenReady();
+  }
+
+  /**
+   * Fire the embedded preview Run once it's runnable (the [previewRunnable] input
+   * flips true after returning to root, and the CU websocket must be connected).
+   * Polls briefly rather than assuming a single tick is enough.
+   */
+  private triggerPreviewRunWhenReady(attemptsLeft = 20): void {
+    const ws = this.previewWorkspace;
+    if (ws?.previewCanRun) {
+      ws.runPreview();
+      return;
+    }
+    if (attemptsLeft <= 0) return; // stays at root with its own Run button as fallback
+    setTimeout(() => this.triggerPreviewRunWhenReady(attemptsLeft - 1), 100);
+  }
+
+  /**
    * When drilled, (re)compile the full expanded plan and capture the path-keyed
    * inner-op input schemas, then re-enrich the drilled sections so their
    * attribute-selector fields become column dropdowns. Async: the dropdowns
@@ -953,7 +999,11 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       this.injectNestedParamOverrides(rootContent);
       content = rootContent;
     } else {
-      content = this.macroContentCache.get(this.drillStack[this.drillStack.length - 1].macroId);
+      // Prefer the marker-inclusive body so the canvas shows the macro's in/out
+      // boundary (MacroInput/MacroOutput). Fall back to the stripped body if a
+      // display copy wasn't cached (older prefetch path).
+      const drilledMacroId = this.drillStack[this.drillStack.length - 1].macroId;
+      content = this.macroDisplayCache.get(drilledMacroId) ?? this.macroContentCache.get(drilledMacroId);
     }
     if (!content) return;
     this.workflowActionService.reloadWorkflow({ ...this.rootPreviewWorkflow, content });

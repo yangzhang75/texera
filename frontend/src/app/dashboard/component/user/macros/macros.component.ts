@@ -28,8 +28,9 @@ import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
 import { NzDropDownModule } from "ng-zorro-antd/dropdown";
+import { NzListModule } from "ng-zorro-antd/list";
+import { NzAvatarModule } from "ng-zorro-antd/avatar";
 import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
-import { UserAvatarComponent } from "../user-avatar/user-avatar.component";
 import { ShareAccessComponent } from "../share-access/share-access.component";
 import { formatRelativeTime } from "src/app/common/util/format.util";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
@@ -60,7 +61,8 @@ import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constan
     NzIconDirective,
     NzTooltipModule,
     NzDropDownModule,
-    UserAvatarComponent,
+    NzListModule,
+    NzAvatarModule,
   ],
 })
 export class MacrosComponent implements OnInit {

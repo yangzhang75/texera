@@ -27,87 +27,89 @@
     No macros match your search.
   </div>
 
-  <!-- one bordered container; rows split by thin dividers (not separate cards) -->
-  <div class="macros-list" *ngIf="!isLoading && filteredMacros.length > 0">
-    <div
+  <!-- Same nz-list row look as the Workflows list (grey avatar, matching row
+       height / dividers / hover); macro-specific Runnable badge + Edit / Generate
+       / More-actions kept. -->
+  <nz-list *ngIf="!isLoading && filteredMacros.length > 0" class="macros-list" [nzSplit]="true">
+    <nz-list-item
       *ngFor="let m of filteredMacros"
-      class="macro-row"
+      class="macro-list-item"
       (click)="onOpen(m)"
       [title]="runnableTooltip(m)">
-      <!-- flask icon (matches the left-nav Macros icon) -->
-      <i class="macro-row__icon" nz-icon nzType="experiment" nzTheme="outline"></i>
-
-      <!-- main: name + runnable pill, then one muted meta line -->
-      <div class="macro-row__main">
-        <div class="macro-row__titleline">
-          <span class="macro-row__name">{{ m.name }}</span>
+      <nz-list-item-meta>
+        <nz-list-item-meta-avatar>
+          <nz-avatar class="macro-id-avatar" nzIcon="experiment"></nz-avatar>
+        </nz-list-item-meta-avatar>
+        <nz-list-item-meta-title>
+          <span class="macro-name">{{ m.name }}</span>
           <span class="runnable-label" [class.runnable]="isRunnable(m)">
             {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
           </span>
-        </div>
-        <div class="macro-row__meta">{{ metaLine(m) }}</div>
-      </div>
+          <i
+            class="macro-owner-icon"
+            nz-icon
+            [nzType]="m.isOwner ? 'user' : 'team'"
+            nzTheme="outline"
+            nz-tooltip
+            [nzTooltipTitle]="m.isOwner ? 'You are the owner' : ('Shared by ' + (m.ownerName || 'another user'))"></i>
+        </nz-list-item-meta-title>
+        <nz-list-item-meta-description>{{ metaLine(m) }}</nz-list-item-meta-description>
+      </nz-list-item-meta>
 
-      <!-- owner avatar (carries the owner star), de-emphasized -->
-      <texera-user-avatar
-        class="macro-row__avatar"
-        userColor="#1E90FF"
-        [userName]="m.ownerName || 'User'"
-        [isOwner]="!!m.isOwner">
-      </texera-user-avatar>
-
-      <!-- Edit (ghost) + Generate (blue when runnable, grey/weak when not) -->
-      <div class="macro-row__actions">
-        <button
-          nz-button
-          nzType="text"
-          class="macro-row__edit"
-          title="Edit macro — edit its body and configurable properties"
-          (click)="onEditMacro(m); $event.stopPropagation()">
-          <i nz-icon nzType="edit" nzTheme="outline"></i> Edit
-        </button>
-        <button
-          nz-button
-          [nzType]="isRunnable(m) ? 'primary' : 'default'"
-          class="macro-row__generate"
-          [class.weak]="!isRunnable(m)"
-          [title]="
-            isRunnable(m)
-              ? 'Generate a workflow from this macro'
-              : 'Generate — not runnable, so it produces an Invalid Workflow you complete by adding a source'
-          "
-          (click)="onGenerate(m); $event.stopPropagation()">
-          <i nz-icon nzType="thunderbolt" nzTheme="outline"></i> Generate
-        </button>
-        <!-- Management actions (Share / Change description / Delete), mirroring
-             the Workflows list's per-row overflow menu. -->
-        <button
-          nz-button
-          nzType="text"
-          class="macro-row__more"
-          title="More actions"
-          nz-dropdown
-          nzTrigger="click"
-          [nzDropdownMenu]="macroMenu"
-          nzPlacement="bottomRight"
-          (click)="$event.stopPropagation()">
-          <i nz-icon nzType="ellipsis" nzTheme="outline"></i>
-        </button>
-        <nz-dropdown-menu #macroMenu="nzDropdownMenu">
-          <ul nz-menu>
-            <li nz-menu-item (click)="onShareMacro(m); $event.stopPropagation()">
-              <i nz-icon nzType="share-alt" nzTheme="outline"></i> Share
-            </li>
-            <li nz-menu-item (click)="onChangeDescription(m); $event.stopPropagation()">
-              <i nz-icon nzType="edit" nzTheme="outline"></i> Change description
-            </li>
-            <li nz-menu-divider></li>
-            <li nz-menu-item nzDanger (click)="onDeleteMacro(m); $event.stopPropagation()">
-              <i nz-icon nzType="delete" nzTheme="outline"></i> Delete
-            </li>
-          </ul>
-        </nz-dropdown-menu>
-      </div>
-    </div>
-  </div>
+      <ul nz-list-item-actions>
+        <nz-list-item-action>
+          <button
+            nz-button
+            nzType="text"
+            class="macro-action-edit"
+            title="Edit macro — edit its body and configurable properties"
+            (click)="onEditMacro(m); $event.stopPropagation()">
+            <i nz-icon nzType="edit" nzTheme="outline"></i> Edit
+          </button>
+        </nz-list-item-action>
+        <nz-list-item-action>
+          <button
+            nz-button
+            [nzType]="isRunnable(m) ? 'primary' : 'default'"
+            class="macro-action-generate"
+            [class.weak]="!isRunnable(m)"
+            [title]="
+              isRunnable(m)
+                ? 'Generate a workflow from this macro'
+                : 'Generate — not runnable, so it produces an Invalid Workflow you complete by adding a source'
+            "
+            (click)="onGenerate(m); $event.stopPropagation()">
+            <i nz-icon nzType="thunderbolt" nzTheme="outline"></i> Generate
+          </button>
+        </nz-list-item-action>
+        <nz-list-item-action>
+          <button
+            nz-button
+            nzType="text"
+            title="More actions"
+            nz-dropdown
+            nzTrigger="click"
+            [nzDropdownMenu]="macroMenu"
+            nzPlacement="bottomRight"
+            (click)="$event.stopPropagation()">
+            <i nz-icon nzType="ellipsis" nzTheme="outline"></i>
+          </button>
+          <nz-dropdown-menu #macroMenu="nzDropdownMenu">
+            <ul nz-menu>
+              <li nz-menu-item (click)="onShareMacro(m); $event.stopPropagation()">
+                <i nz-icon nzType="share-alt" nzTheme="outline"></i> Share
+              </li>
+              <li nz-menu-item (click)="onChangeDescription(m); $event.stopPropagation()">
+                <i nz-icon nzType="edit" nzTheme="outline"></i> Change description
+              </li>
+              <li nz-menu-divider></li>
+              <li nz-menu-item nzDanger (click)="onDeleteMacro(m); $event.stopPropagation()">
+                <i nz-icon nzType="delete" nzTheme="outline"></i> Delete
+              </li>
+            </ul>
+          </nz-dropdown-menu>
+        </nz-list-item-action>
+      </ul>
+    </nz-list-item>
+  </nz-list>
 </div>

@@ -90,102 +90,75 @@
 }
 
 /* --------------------------------------------------------------------------
- * The list is ONE bordered, rounded container; rows are split by thin
- * dividers rather than a stack of separate cards.
+ * Rows use ng-zorro nz-list (same primitive as the Workflows list) so the row
+ * height, dividers, and hover match. One bordered, rounded container wraps them.
  * ------------------------------------------------------------------------ */
 .macros-list {
   border: 1px solid #ebebeb;
   border-radius: 12px;
   overflow: hidden;
   background: #fff;
+  padding: 0 8px;
 }
 
-.macro-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
+.macro-list-item {
   cursor: pointer;
   transition: background 0.15s ease;
-
-  &:not(:last-child) {
-    border-bottom: 1px solid #f0f0f0;
-  }
 
   &:hover {
     background: #fafafa;
   }
+}
 
-  &__icon {
-    font-size: 22px;
-    color: rgba(0, 0, 0, 0.45);
-    flex: 0 0 auto;
+// Grey avatar like the Workflows list-item's id-avatar, holding the macro flask.
+.macro-id-avatar {
+  background: #8c8c8c;
+  color: #fff;
+  flex: 0 0 auto;
+}
+
+// Title line: name + Runnable pill + owner indicator, inline like Workflows.
+::ng-deep .macro-list-item nz-list-item-meta-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.macro-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60vh;
+}
+
+.macro-owner-icon {
+  color: rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.macro-action-edit {
+  color: rgba(0, 0, 0, 0.6);
+
+  &:hover {
+    color: #1890ff;
   }
+}
 
-  &__main {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
+// Not-runnable Generate: weakened grey so colour alone signals "can't generate
+// cleanly" (runnable stays the accent-blue nzType=primary).
+.macro-action-generate.weak {
+  background: #f5f5f5;
+  border-color: #ebebeb;
+  color: rgba(0, 0, 0, 0.4);
+  box-shadow: none;
 
-  &__titleline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  &__name {
-    font-size: 15px;
-    font-weight: 500;
-    color: rgba(0, 0, 0, 0.88);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 60vh;
-  }
-
-  &__meta {
-    margin-top: 2px;
-    font-size: 13px;
-    color: rgba(0, 0, 0, 0.45);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  &__avatar {
-    flex: 0 0 auto;
-    opacity: 0.85;
-  }
-
-  &__actions {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  // Quiet ghost Edit button.
-  &__edit {
-    color: rgba(0, 0, 0, 0.6);
-
-    &:hover {
-      color: #1890ff;
-    }
-  }
-
-  // Not-runnable Generate: weakened grey so colour alone signals "can't
-  // generate cleanly" (runnable stays the accent-blue nzType=primary).
-  &__generate.weak {
-    background: #f5f5f5;
-    border-color: #ebebeb;
-    color: rgba(0, 0, 0, 0.4);
-    box-shadow: none;
-
-    &:hover {
-      background: #eee;
-      border-color: #e0e0e0;
-      color: rgba(0, 0, 0, 0.55);
-    }
+  &:hover {
+    background: #eee;
+    border-color: #e0e0e0;
+    color: rgba(0, 0, 0, 0.55);
   }
 }
 

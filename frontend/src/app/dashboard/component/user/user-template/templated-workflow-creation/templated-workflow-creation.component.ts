@@ -172,6 +172,15 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   // just-submitted = grey (and clicking it does not create a duplicate), edited = bright again.
   private lastSubmittedPayload: Record<string, Record<string, unknown>> | null = null;
 
+  // "Run produces a workflow": when the user runs the macro preview, we also
+  // persist a real (listed) workflow from the current params. Reused across runs
+  // with identical params (keyed by the generated-content signature) so repeated
+  // runs don't pile up duplicates; a param change produces a new one. Reset per
+  // Generate entry (initFromMacro).
+  private runGeneratedWid?: number;
+  private runGeneratedSignature?: string;
+  private prevExecutionState?: ExecutionState;
+
   // Signature of the schemas the configurable sections were last built from. Used to skip
   // redundant rebuilds (which would otherwise destroy the field being edited and drop focus).
   private lastEnrichedSignature = "";
@@ -209,7 +218,50 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       .getExecutionStateStream()
       .pipe(untilDestroyed(this))
       .subscribe(event => {
-        this.executionState = event.current.state;
+        const state = event.current.state;
+        // A run just STARTED (transitioned into a running state): persist a real
+        // listed workflow from the current params so "Run produces a workflow".
+        const running = state === ExecutionState.Initializing || state === ExecutionState.Running;
+        const wasRunning =
+          this.prevExecutionState === ExecutionState.Initializing ||
+          this.prevExecutionState === ExecutionState.Running;
+        if (running && !wasRunning) {
+          this.ensureGeneratedWorkflowForRun();
+        }
+        this.prevExecutionState = state;
+        this.executionState = state;
+      });
+  }
+
+  /**
+   * "Run produces a workflow": persist a real (listed) workflow from the current
+   * params when the macro preview runs — but only create a NEW one when the
+   * generated content actually changed. Repeated runs with the same params reuse
+   * the one already created (no duplicate pile-up). Root scope + macro mode only;
+   * fire-and-forget so it never blocks or affects the run itself.
+   */
+  private ensureGeneratedWorkflowForRun(): void {
+    if (!this.macroId || this.drillStack.length > 0 || !this.template) {
+      return;
+    }
+    const content = this.buildMacroContentWithParams();
+    const signature = JSON.stringify(content);
+    if (this.runGeneratedWid !== undefined && this.runGeneratedSignature === signature) {
+      return; // unchanged since the last run -> reuse the existing workflow
+    }
+    const name = this.genName?.trim() || "Generated workflow";
+    this.macroService
+      .generateWorkflowFromMacro(this.macroId, content, name, false, this.genDescription?.trim() || undefined)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: wid => {
+          this.runGeneratedWid = wid;
+          this.runGeneratedSignature = signature;
+          this.notificationService.success(`Workflow "${name}" saved to Your Work › Workflows.`);
+        },
+        error: () => {
+          /* best-effort; the run itself is unaffected */
+        },
       });
   }
 
@@ -664,6 +716,8 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         this.macroContentCache.clear();
         this.macroDisplayCache.clear();
         this.macroMeta.clear();
+        this.runGeneratedWid = undefined;
+        this.runGeneratedSignature = undefined;
         this.rootLabel = `${detail.name} v${detail.version}`;
         const content = this.macroService.macroDetailToGeneratedContent(detail);
         // Runnable gate: 0 external inputs AND a body source op. Metadata is

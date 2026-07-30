@@ -315,19 +315,35 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
   /** The macro's expanded body content with the current form values applied. */
   private buildMacroContentWithParams(): WorkflowContent {
-    const payload = this.getConfigurablePropertyUpdatePayload();
     const content = cloneDeep(this.template!);
-    for (const [opId, props] of Object.entries(payload.operatorProperties)) {
-      const op = content.operators.find(o => o.operatorID === opId);
-      if (op) {
+    this.applyTopLevelSectionValues(content);
+    this.injectNestedParamOverrides(content);
+    return content;
+  }
+
+  /**
+   * Apply the CURRENT top-level configurable-property VALUES (e.g. ImageVisualizer's
+   * image-content column) onto `content`'s matching operators. Shared by Create
+   * (buildMacroContentWithParams) and the preview canvas (syncPreviewCanvasToScope)
+   * so the form, the embedded canvas, and the in-place Run are ONE source of truth
+   * — without this the preview keeps the macro's default values and diverges from
+   * what the form shows.
+   *
+   * Reads from the draft service (operatorIdToProperties), NOT section.form: the
+   * draft service is the live merged source of edits (it drives the schema
+   * compile), whereas the section FormGroups can be mid-rebuild — and thus empty
+   * — at the moment this runs from the form-change handler.
+   */
+  private applyTopLevelSectionValues(content: WorkflowContent): void {
+    for (const op of content.operators) {
+      const draftProps = this.templatedWorkflowDraftService.getOperatorProperties(op.operatorID);
+      if (draftProps) {
         (op as { operatorProperties: Record<string, unknown> }).operatorProperties = {
           ...op.operatorProperties,
-          ...props,
+          ...cloneDeep(draftProps),
         };
       }
     }
-    this.injectNestedParamOverrides(content);
-    return content;
   }
 
   /**
@@ -999,6 +1015,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       // Create and the preview runs stale defaults. Deterministic from the
       // paramOverrides state, so no dependency on form-render timing.
       const rootContent = cloneDeep(this.rootPreviewWorkflow.content);
+      this.applyTopLevelSectionValues(rootContent);
       this.injectNestedParamOverrides(rootContent);
       content = rootContent;
     } else {
@@ -1057,10 +1074,18 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
         untilDestroyed(this)
       )
       .subscribe(response => {
-        if (!response.operatorOutputSchemas) {
-          return;
+        if (response.operatorOutputSchemas) {
+          this.applyDraftSchemaPropagationResult(response.operatorOutputSchemas);
         }
-        this.applyDraftSchemaPropagationResult(response.operatorOutputSchemas);
+        // Reflect the top-level form edits on the embedded preview canvas (and
+        // therefore the in-place Run, which executes the shared graph) so the
+        // form and the canvas can't drift apart. Only at root scope — the drilled
+        // canvas shows a nested body whose params live in paramOverrides. The
+        // form inputs are a separate component, so reloading the canvas does not
+        // disturb form focus.
+        if (this.drillStack.length === 0) {
+          this.syncPreviewCanvasToScope();
+        }
       });
   }
 

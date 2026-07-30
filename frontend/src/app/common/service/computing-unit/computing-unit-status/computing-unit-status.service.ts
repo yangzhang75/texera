@@ -117,10 +117,19 @@ export class ComputingUnitStatusService implements OnDestroy {
 
     if (updatedSelectedUnit) {
       this.selectedUnitSubject.next(updatedSelectedUnit);
-    } else if (this.selectedUnitSubject.value) {
-      // The selected unit is no longer in the list
-      this.selectedUnitSubject.next(null);
-      this.stopPollingSelectedUnit();
+    } else {
+      // No valid current selection: either the previously-selected unit is gone
+      // (terminated, or a stale selection after a backend restart — a common
+      // cause of "Run does nothing"), or nothing was selected yet. Fall back to
+      // an available Running unit so Run is never silently disabled by a
+      // missing/stale computing unit. Only clear if there are truly no units.
+      const fallback = units.find(u => u.status === "Running") ?? units[0] ?? null;
+      if (fallback) {
+        this.selectedUnitSubject.next(fallback);
+      } else if (this.selectedUnitSubject.value) {
+        this.selectedUnitSubject.next(null);
+        this.stopPollingSelectedUnit();
+      }
     }
   }
 

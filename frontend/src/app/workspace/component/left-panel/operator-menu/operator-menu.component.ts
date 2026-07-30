@@ -314,7 +314,9 @@ export class OperatorMenuComponent {
       operatorProperties: {
         macroId: String(m.wid),
         macroVersion: m.version ?? 1,
-        linkMode: "LIVE",
+        // Snapshot-only MVP: every inserted macro is a frozen copy. LIVE
+        // (auto-update on a newer version) is cut for now.
+        linkMode: "SNAPSHOT",
         inputPortCount,
         outputPortCount,
         displayName: m.name,

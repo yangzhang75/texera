@@ -625,25 +625,19 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         );
       }
 
-      // A macro REFERENCE is read-only except the two fields a user legitimately
-      // adjusts: Link Mode (SNAPSHOT/LIVE) and Display Name. The binding fields
-      // (macroId / macroVersion / port counts / embedded snapshot / fusion) are
-      // managed by insert + the LIVE update flow; hand-editing them corrupts the
-      // reference (mismatched version/ports -> broken expansion). Disabling only
-      // gates the FORM control -- programmatic setOperatorProperty (insert-time
-      // writes, the LIVE prompt bumping macroVersion) is unaffected.
+      // Snapshot-only MVP: a macro REFERENCE is read-only except Display Name.
+      // Link Mode (SNAPSHOT/LIVE) is cut — every macro is a frozen snapshot — so
+      // that field is hidden along with the binding fields (macroId /
+      // macroVersion / port counts / embedded snapshot / fusion), which are
+      // managed by insert; hand-editing them corrupts the reference (mismatched
+      // version/ports -> broken expansion). Hiding only gates the FORM control;
+      // resetOnHide is false so model values are preserved and programmatic
+      // setOperatorProperty (insert-time writes) is unaffected.
       if (
         this.currentOperatorSchema?.operatorType === "Macro" &&
         typeof mappedField.key === "string" &&
-        !["linkMode", "displayName"].includes(mappedField.key)
+        !["displayName"].includes(mappedField.key)
       ) {
-        // A macro REFERENCE is user-adjustable only via Link Mode + Display Name.
-        // The binding fields (macroId / macroVersion / port counts / embedded
-        // snapshot / fusion) are managed by insert + the LIVE update flow;
-        // hand-editing them corrupts the reference. Hide them (proven reliable
-        // in this panel, unlike formly's disabled/readonly here). resetOnHide is
-        // false so the model value is preserved -- macroId/macroVersion are NOT
-        // dropped, and programmatic setOperatorProperty is unaffected.
         mappedField.hide = true;
         mappedField.resetOnHide = false;
       }

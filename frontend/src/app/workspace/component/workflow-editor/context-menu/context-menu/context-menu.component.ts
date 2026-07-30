@@ -633,9 +633,10 @@ export class ContextMenuComponent {
       operatorVersion: "",
       operatorProperties: {
         macroId: detail.wid.toString(),
-        // Pin the macro definition's current version (LIVE prompts on a newer one).
         macroVersion: detail.version,
-        linkMode: "LIVE",
+        // Snapshot-only MVP: every inserted macro is a frozen copy. LIVE
+        // (auto-update on a newer version) is cut for now.
+        linkMode: "SNAPSHOT",
         inputPortCount: built.inputPortCount,
         outputPortCount: built.outputPortCount,
         displayName: detail.name,

@@ -706,7 +706,10 @@ export class WorkspaceComponent implements OnInit, AfterViewInit, OnDestroy {
     this.registerAutoPersistWorkflow();
     this.triggerCenter();
 
-    this.checkLiveMacroUpdates(workflow);
+    // Snapshot-only MVP: LIVE mode is cut, so no open-time macro-update prompt.
+    // Every macro node is a frozen copy. (checkLiveMacroUpdates is left in place
+    // but no longer called; the LIVE plumbing is removed in a later cleanup.)
+    // this.checkLiveMacroUpdates(workflow);
 
     this.workspaceReady.emit(workflow.wid ?? this.wid);
   }

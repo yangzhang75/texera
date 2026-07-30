@@ -50,7 +50,8 @@ import { ResultExportationComponent } from "../result-exportation/result-exporta
 import { ReportGenerationService } from "../../service/report-generation/report-generation.service";
 import { ShareAccessComponent } from "src/app/dashboard/component/user/share-access/share-access.component";
 import { PanelService } from "../../service/panel/panel.service";
-import { USER_TEMPLATE, USER_WORKFLOW } from "../../../app-routing.constant";
+import { USER_TEMPLATE, USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
+import { MacroService } from "../../service/macro/macro.service";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
@@ -197,6 +198,7 @@ export class MenuComponent implements OnInit, OnDestroy {
     private computingUnitStatusService: ComputingUnitStatusService,
     protected config: GuiConfigService,
     private adminSettingsService: AdminSettingsService,
+    private macroService: MacroService,
     private router: Router,
     private route: ActivatedRoute
   ) {
@@ -701,17 +703,38 @@ export class MenuComponent implements OnInit, OnDestroy {
     });
   }
 
-  public onClickCreateTemplateFromWorkflow(): void {
-    const workflow = this.workflowActionService.getWorkflow();
-    if (!workflow.wid) {
+  /**
+   * "Create macro": turn the ENTIRE current workflow into a macro definition
+   * (kind=MACRO). Reuses buildMacroFromSelection over all operators (boundary
+   * ports derived from the graph's dangling ports; a full source→sink workflow
+   * yields a runnable, 0-input macro), POSTs via createMacro, then opens the
+   * Edit-macro page so the user picks which parameters are configurable and
+   * Saves. The macro then appears on the Macros page. Snapshot-only, so the new
+   * macro is a self-contained copy of the workflow.
+   */
+  public onClickCreateMacroFromWorkflow(): void {
+    const allOpIds = this.workflowActionService
+      .getTexeraGraph()
+      .getAllOperators()
+      .map(o => o.operatorID);
+    if (allOpIds.length === 0) {
+      this.notificationService.warning("Add at least one operator before creating a macro.");
       return;
     }
-
-    this.templateService
-      .createTemplateFromWorkflow(workflow.wid)
+    const name = this.workflowActionService.getWorkflow().name?.trim() || "New macro";
+    const built = this.macroService.buildMacroFromSelection(this.workflowActionService, allOpIds, name);
+    this.macroService
+      .createMacro(built.request)
       .pipe(untilDestroyed(this))
-      .subscribe(template => {
-        this.router.navigate([`${USER_TEMPLATE}/${template.template.tid}`]);
+      .subscribe({
+        next: detail => {
+          this.notificationService.success("Macro created — choose which parameters are configurable, then Save.");
+          // Edit-macro page hosts the configurable-property selection; a hard nav
+          // (not router) for the same embedded-workspace-singleton reason as the
+          // macro drill-down. The macro is already listed on the Macros page.
+          window.location.href = `${USER_WORKSPACE}/${detail.wid}/macro/${detail.wid}`;
+        },
+        error: () => this.notificationService.error("Failed to create macro."),
       });
   }
 
@@ -920,8 +943,10 @@ export class MenuComponent implements OnInit, OnDestroy {
     return !this.isTemplateMode;
   }
 
-  public get showTemplateCreationButton(): boolean {
-    return this.isWorkflowMode && this.templateFeatureEnabled;
+  /** The "Create macro" toolbar button shows for any real workflow (not gated on
+   * the legacy template_enabled admin toggle — macros are the first-class feature). */
+  public get showMacroCreationButton(): boolean {
+    return this.isWorkflowMode;
   }
 
   protected readonly Privilege = Privilege;

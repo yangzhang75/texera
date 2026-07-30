@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import { of } from "rxjs";
 import { MacrosComponent } from "./macros.component";
 import { MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
@@ -38,21 +39,24 @@ describe("MacrosComponent", () => {
   let runnable: boolean;
   let navigate: ReturnType<typeof vi.fn>;
   let component: MacrosComponent;
+  let notif: any;
+  let persist: any;
+  let modal: any;
 
   beforeEach(() => {
     runnable = true;
     navigate = vi.fn();
     const macroServiceStub = { isMacroRunnable: () => runnable } as any;
+    notif = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
+    persist = {
+      retrieveOwners: vi.fn(() => of(["a@b.c"])),
+      deleteWorkflow: vi.fn(() => of({})),
+      updateWorkflowDescription: vi.fn(() => of({})),
+    };
+    modal = { create: vi.fn(), confirm: vi.fn() };
     // constructor: (macroService, notificationService, operatorMetadataService,
     //   workflowPersistService, modalService, router)
-    component = new MacrosComponent(
-      macroServiceStub,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      { navigate } as any
-    );
+    component = new MacrosComponent(macroServiceStub, notif, {} as any, persist, modal, { navigate } as any);
   });
 
   it("runnable macro opens the Generate (fill) page by default", () => {
@@ -107,5 +111,31 @@ describe("MacrosComponent", () => {
     expect(line).toContain("CSVFileScan → Filter"); // markers dropped
     expect(line).toContain("2 ops");
     expect(line).toContain("edited");
+  });
+
+  it("Share opens ShareAccessComponent for the macro (type=workflow, macro wid, owner write access)", async () => {
+    await component.onShareMacro(macro({ wid: 7, isOwner: true } as Partial<MacroSummary>));
+    expect(modal.create).toHaveBeenCalledTimes(1);
+    const opts = modal.create.mock.calls[0][0];
+    expect(opts.nzData).toMatchObject({ type: "workflow", id: 7, writeAccess: true });
+  });
+
+  it("Delete confirms, calls deleteWorkflow, and drops the row from the list", async () => {
+    const m = macro({ wid: 9 });
+    component.macros = [m, macro({ wid: 10 })];
+    component.onDeleteMacro(m);
+    const opts = modal.confirm.mock.calls[0][0];
+    await opts.nzOnOk(); // run the confirm handler
+    expect(persist.deleteWorkflow).toHaveBeenCalledWith([9]);
+    expect(component.macros.map(x => x.wid)).toEqual([10]);
+  });
+
+  it("Change description persists via updateWorkflowDescription and updates the model", async () => {
+    const m = macro({ wid: 11, description: "old" });
+    component.onChangeDescription(m);
+    const opts = modal.confirm.mock.calls[0][0];
+    await opts.nzOnOk({ value: "new desc" }); // stub the inline editor component
+    expect(persist.updateWorkflowDescription).toHaveBeenCalledWith(11, "new desc");
+    expect(m.description).toBe("new desc");
   });
 });

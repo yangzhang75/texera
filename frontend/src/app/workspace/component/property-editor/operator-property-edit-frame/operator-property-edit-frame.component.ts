@@ -289,6 +289,28 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
     const baseSchema = cloneDeep(this.currentOperatorSchema.jsonSchema);
 
+    // A macro REFERENCE exposes only Display Name to the user. Its other schema
+    // properties (macroId / macroVersion / linkMode / port counts / fusion and
+    // especially `snapshot`, which embeds the full — possibly deeply nested —
+    // macro body, plus `paramOverrides`) are machine-managed. Building Formly
+    // fields for `snapshot`/`paramOverrides` recurses over the whole body and
+    // HANGS the UI (the freeze on selecting a nested macro node). Strip them
+    // from the schema BEFORE field generation — hiding them afterward (in the
+    // jsonSchemaMapIntercept below) is too late, the freeze is IN the build.
+    // Display-only: formData (the operator's real properties) is untouched, and
+    // ajv.validate still runs against the full unstripped schema below.
+    if (
+      this.currentOperatorSchema.operatorType === "Macro" &&
+      baseSchema.properties &&
+      typeof baseSchema.properties !== "boolean"
+    ) {
+      for (const key of Object.keys(baseSchema.properties)) {
+        if (key !== "displayName") {
+          delete (baseSchema.properties as Record<string, unknown>)[key];
+        }
+      }
+    }
+
     if (isPythonUdf) {
       this.computingUnitStatusService
         .getSelectedComputingUnit()

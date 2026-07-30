@@ -17,20 +17,24 @@
  * under the License.
  */
 
-import { Component, OnInit } from "@angular/core";
+import { Component, inject, OnInit } from "@angular/core";
 import { NgFor, NgIf } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
-import { forkJoin } from "rxjs";
+import { firstValueFrom, forkJoin } from "rxjs";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
 import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
+import { NzDropDownModule } from "ng-zorro-antd/dropdown";
+import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
 import { UserAvatarComponent } from "../user-avatar/user-avatar.component";
+import { ShareAccessComponent } from "../share-access/share-access.component";
 import { formatRelativeTime } from "src/app/common/util/format.util";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
+import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
 import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
@@ -48,7 +52,16 @@ import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constan
   templateUrl: "./macros.component.html",
   styleUrls: ["./macros.component.scss"],
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule, NzButtonComponent, NzIconDirective, NzTooltipModule, UserAvatarComponent],
+  imports: [
+    NgFor,
+    NgIf,
+    FormsModule,
+    NzButtonComponent,
+    NzIconDirective,
+    NzTooltipModule,
+    NzDropDownModule,
+    UserAvatarComponent,
+  ],
 })
 export class MacrosComponent implements OnInit {
   macros: MacroSummary[] = [];
@@ -67,6 +80,8 @@ export class MacrosComponent implements OnInit {
     private macroService: MacroService,
     private notificationService: NotificationService,
     private operatorMetadataService: OperatorMetadataService,
+    private workflowPersistService: WorkflowPersistService,
+    private modalService: NzModalService,
     private router: Router
   ) {}
 
@@ -186,5 +201,85 @@ export class MacrosComponent implements OnInit {
    */
   onEditMacro(m: MacroSummary): void {
     this.router.navigate([USER_WORKSPACE, m.wid, "macro", m.wid]);
+  }
+
+  /**
+   * Row action "Share" — a macro is a `workflow` row (kind=MACRO), so it reuses
+   * the exact ShareAccessComponent the Workflows list + workspace use.
+   */
+  async onShareMacro(m: MacroSummary): Promise<void> {
+    this.modalService.create({
+      nzContent: ShareAccessComponent,
+      nzData: {
+        writeAccess: !!m.isOwner,
+        type: "workflow",
+        id: m.wid,
+        allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
+        inWorkspace: false,
+      },
+      nzFooter: null,
+      nzTitle: "Share this macro with others",
+      nzCentered: true,
+      nzWidth: "800px",
+    });
+  }
+
+  /** Row action "Change description" — edits the macro's description in place. */
+  onChangeDescription(m: MacroSummary): void {
+    let value = m.description ?? "";
+    this.modalService.confirm({
+      nzTitle: "Change description",
+      nzContent: DescriptionEditComponent,
+      nzData: { value },
+      nzOnOk: (comp: DescriptionEditComponent) => {
+        value = comp.value ?? "";
+        firstValueFrom(this.workflowPersistService.updateWorkflowDescription(m.wid, value))
+          .then(() => {
+            m.description = value;
+            this.notificationService.success("Description updated.");
+          })
+          .catch(() => this.notificationService.error("Failed to update description."));
+      },
+    });
+  }
+
+  /** Row action "Delete" — snapshot-only, so no LIVE references to worry about. */
+  onDeleteMacro(m: MacroSummary): void {
+    this.modalService.confirm({
+      nzTitle: `Delete macro "${m.name}"?`,
+      nzContent: "This removes the macro definition. Workflows already generated from it are unaffected.",
+      nzOkText: "Delete",
+      nzOkDanger: true,
+      nzOnOk: () =>
+        firstValueFrom(this.workflowPersistService.deleteWorkflow([m.wid]))
+          .then(() => {
+            this.macros = this.macros.filter(x => x.wid !== m.wid);
+            this.notificationService.success("Macro deleted.");
+          })
+          .catch(() => this.notificationService.error("Failed to delete macro.")),
+    });
+  }
+}
+
+/**
+ * Tiny inline editor mounted inside the "Change description" confirm modal — a
+ * single textarea bound to `value`, read back by the modal's OK handler.
+ */
+@Component({
+  selector: "texera-macro-description-edit",
+  standalone: true,
+  imports: [FormsModule],
+  template: `<textarea
+    class="tw-desc-edit"
+    rows="4"
+    style="width:100%"
+    [(ngModel)]="value"
+    placeholder="Macro description"></textarea>`,
+})
+export class DescriptionEditComponent {
+  value = "";
+  constructor() {
+    const data = inject(NZ_MODAL_DATA) as { value?: string } | null;
+    this.value = data?.value ?? "";
   }
 }

@@ -43,8 +43,16 @@ describe("MacrosComponent", () => {
     runnable = true;
     navigate = vi.fn();
     const macroServiceStub = { isMacroRunnable: () => runnable } as any;
-    // constructor: (macroService, notificationService, operatorMetadataService, router)
-    component = new MacrosComponent(macroServiceStub, {} as any, {} as any, { navigate } as any);
+    // constructor: (macroService, notificationService, operatorMetadataService,
+    //   workflowPersistService, modalService, router)
+    component = new MacrosComponent(
+      macroServiceStub,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { navigate } as any
+    );
   });
 
   it("runnable macro opens the Generate (fill) page by default", () => {

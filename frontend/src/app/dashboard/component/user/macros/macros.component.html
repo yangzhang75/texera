@@ -79,6 +79,34 @@
           (click)="onGenerate(m); $event.stopPropagation()">
           <i nz-icon nzType="thunderbolt" nzTheme="outline"></i> Generate
         </button>
+        <!-- Management actions (Share / Change description / Delete), mirroring
+             the Workflows list's per-row overflow menu. -->
+        <button
+          nz-button
+          nzType="text"
+          class="macro-row__more"
+          title="More actions"
+          nz-dropdown
+          nzTrigger="click"
+          [nzDropdownMenu]="macroMenu"
+          nzPlacement="bottomRight"
+          (click)="$event.stopPropagation()">
+          <i nz-icon nzType="ellipsis" nzTheme="outline"></i>
+        </button>
+        <nz-dropdown-menu #macroMenu="nzDropdownMenu">
+          <ul nz-menu>
+            <li nz-menu-item (click)="onShareMacro(m); $event.stopPropagation()">
+              <i nz-icon nzType="share-alt" nzTheme="outline"></i> Share
+            </li>
+            <li nz-menu-item (click)="onChangeDescription(m); $event.stopPropagation()">
+              <i nz-icon nzType="edit" nzTheme="outline"></i> Change description
+            </li>
+            <li nz-menu-divider></li>
+            <li nz-menu-item nzDanger (click)="onDeleteMacro(m); $event.stopPropagation()">
+              <i nz-icon nzType="delete" nzTheme="outline"></i> Delete
+            </li>
+          </ul>
+        </nz-dropdown-menu>
       </div>
     </div>
   </div>

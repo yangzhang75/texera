@@ -109,11 +109,20 @@
   }
 }
 
-// Grey avatar like the Workflows list-item's id-avatar, holding the macro flask.
+// Grey #wid avatar, identical to the Workflows list-item's id-avatar (the wid
+// number is set inline via [nzText]); this keeps both lists visually one system.
 .macro-id-avatar {
-  background: #8c8c8c;
-  color: #fff;
   flex: 0 0 auto;
+}
+
+// Right-aligned Created / Last-Modified column, matching the Workflows list.
+.metadata-container {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+
+  span {
+    margin: 0 1rem 0 0;
+  }
 }
 
 // Title line: name + Runnable pill + owner indicator, inline like Workflows.
@@ -143,27 +152,24 @@
   font-size: 13px;
 }
 
-.macro-action-edit {
-  color: rgba(0, 0, 0, 0.6);
-
-  &:hover {
-    color: #1890ff;
-  }
+/* --------------------------------------------------------------------------
+ * Icon-only actions (Edit · Share · Change description · Delete), hover-revealed
+ * like the Workflows list feel — they stay hidden until the row is hovered or
+ * keyboard-focused, keeping the resting list clean for biologists.
+ * ------------------------------------------------------------------------ */
+.macro-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
-// Not-runnable Generate: weakened grey so colour alone signals "can't generate
-// cleanly" (runnable stays the accent-blue nzType=primary).
-.macro-action-generate.weak {
-  background: #f5f5f5;
-  border-color: #ebebeb;
-  color: rgba(0, 0, 0, 0.4);
-  box-shadow: none;
+.macro-list-item:hover .macro-actions,
+.macro-list-item:focus-within .macro-actions {
+  opacity: 1;
+}
 
-  &:hover {
-    background: #eee;
-    border-color: #e0e0e0;
-    color: rgba(0, 0, 0, 0.55);
-  }
+// Destructive action reads red on hover, same cue as the Workflows Delete.
+.macro-action-delete:hover i {
+  color: #ff4d4f;
 }
 
 /* runnable state — one pill spec, colour-only difference (green vs grey). */

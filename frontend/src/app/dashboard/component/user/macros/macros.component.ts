@@ -18,7 +18,7 @@
  */
 
 import { Component, inject, OnInit } from "@angular/core";
-import { NgFor, NgIf } from "@angular/common";
+import { DatePipe, NgFor, NgIf, NgStyle } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
 import { firstValueFrom, forkJoin } from "rxjs";
@@ -27,12 +27,10 @@ import { OperatorMetadataService } from "../../../../workspace/service/operator-
 import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
-import { NzDropDownModule } from "ng-zorro-antd/dropdown";
 import { NzListModule } from "ng-zorro-antd/list";
 import { NzAvatarModule } from "ng-zorro-antd/avatar";
 import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
 import { ShareAccessComponent } from "../share-access/share-access.component";
-import { formatRelativeTime } from "src/app/common/util/format.util";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
@@ -56,11 +54,12 @@ import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constan
   imports: [
     NgFor,
     NgIf,
+    NgStyle,
+    DatePipe,
     FormsModule,
     NzButtonComponent,
     NzIconDirective,
     NzTooltipModule,
-    NzDropDownModule,
     NzListModule,
     NzAvatarModule,
   ],
@@ -71,12 +70,11 @@ export class MacrosComponent implements OnInit {
 
   // View-only list controls (no server round-trip): name search + an
   // All / Runnable segmented filter. Pure client-side view of `macros`.
+  // Defaults to "runnable": this page is biologist-facing and the runnable
+  // macros are the ones they can Generate straight away; the "All" tab reveals
+  // not-runnable ones too.
   searchText = "";
-  filterMode: "all" | "runnable" = "all";
-
-  // Shared relative-time formatter (same one the Workflows list uses) so the
-  // "edited" time reads identically across both pages.
-  readonly formatRelativeTime = formatRelativeTime;
+  filterMode: "all" | "runnable" = "runnable";
 
   constructor(
     private macroService: MacroService,
@@ -147,20 +145,15 @@ export class MacrosComponent implements OnInit {
   }
 
   /**
-   * The single muted meta line under a macro name: op chain · op count · edited
-   * time, e.g. "CSVFileScan → Projection → Filter · 5 ops · edited 5 hours ago".
-   * All the secondary info folded into one row (no Ports/Created/Edited columns).
+   * The muted description line under a macro name: op chain · op count, e.g.
+   * "CSVFileScan → Projection → Filter · 5 ops". Mirrors the Workflows list's
+   * description slot; the Created / Last-Modified times sit in their own right
+   * column (metadata-container), exactly like the Workflows list.
    */
   metaLine(m: MacroSummary): string {
-    const parts: string[] = [];
     const ops = this.bodyOps(m);
-    if (ops.length > 0) {
-      parts.push(ops.join(" → "));
-      parts.push(`${ops.length} ${ops.length === 1 ? "op" : "ops"}`);
-    }
-    const edited = this.epoch(m.lastModifiedTime);
-    if (edited !== undefined) parts.push(`edited ${this.formatRelativeTime(edited)}`);
-    return parts.join(" · ");
+    if (ops.length === 0) return "Empty macro";
+    return `${ops.join(" → ")} · ${ops.length} ${ops.length === 1 ? "op" : "ops"}`;
   }
 
   /**

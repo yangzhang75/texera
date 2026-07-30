@@ -108,11 +108,18 @@ describe("MacrosComponent", () => {
     expect(component.filteredMacros.length).toBe(0);
   });
 
-  it("metaLine folds the op chain, op count, and edited time into one line", () => {
+  it("metaLine renders the op chain + op count (markers dropped); edited/created live in their own column", () => {
     const line = component.metaLine(macro({ bodyOperatorTypes: ["CSVFileScan", "Filter", "MacroOutput"] }));
-    expect(line).toContain("CSVFileScan → Filter"); // markers dropped
-    expect(line).toContain("2 ops");
-    expect(line).toContain("edited");
+    expect(line).toBe("CSVFileScan → Filter · 2 ops"); // MacroOutput marker dropped
+    expect(line).not.toContain("edited"); // times moved to the metadata column
+  });
+
+  it("metaLine reads 'Empty macro' when the body has only boundary markers", () => {
+    expect(component.metaLine(macro({ bodyOperatorTypes: ["MacroInput", "MacroOutput"] }))).toBe("Empty macro");
+  });
+
+  it("defaults the filter to Runnable (biologist-facing page)", () => {
+    expect(component.filterMode).toBe("runnable");
   });
 
   it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {

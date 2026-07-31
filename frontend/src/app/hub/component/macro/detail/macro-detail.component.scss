@@ -1,0 +1,154 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.container {
+  width: 82%;
+  margin: 24px auto 40px;
+  padding: 24px 28px;
+  background-color: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+h1 {
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+}
+
+h2 {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.header-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 18px;
+}
+
+.macro-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.macro-info {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.macro-info div {
+  flex: 1;
+  padding: 12px 14px;
+  background-color: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+
+  p {
+    margin: 0;
+    color: rgba(0, 0, 0, 0.88);
+    font-size: 14px;
+    word-break: break-word;
+  }
+}
+
+.macro-description {
+  padding: 12px 14px;
+  background-color: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.preview-box {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 20px 22px;
+}
+
+.ports-summary {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.port-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1677ff;
+  background: #e6f4ff;
+  border-radius: 100px;
+  padding: 3px 12px;
+}
+
+.chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.op-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 7px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.arrow {
+  color: rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+}
+
+.chain-empty {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.go-back-button {
+  position: absolute;
+  left: 20px;
+  top: 16px;
+}

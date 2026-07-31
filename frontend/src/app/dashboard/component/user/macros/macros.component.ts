@@ -31,7 +31,7 @@ import { ShareAccessComponent } from "../share-access/share-access.component";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
+import { HUB_MACRO_RESULT_DETAIL, USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
  * The unified "Macros" dashboard tab. Lists every macro definition (kind=MACRO
@@ -168,9 +168,12 @@ export class MacrosComponent implements OnInit {
    * to Generate a not-runnable macro still can.
    */
   onOpen(m: MacroSummary): void {
-    // In the public Hub catalogue you're browsing other people's macros — Edit
-    // isn't yours to do, so a click always goes to Generate.
-    if (this.publicBrowse || this.isRunnable(m)) {
+    // In the public Hub catalogue, a click opens the read-only preview/detail
+    // page (where you can Clone or Generate) — like the workflow Hub. On your
+    // own list it goes straight to Generate (runnable) or Edit.
+    if (this.publicBrowse) {
+      this.router.navigate([HUB_MACRO_RESULT_DETAIL, m.wid]);
+    } else if (this.isRunnable(m)) {
       this.onGenerate(m);
     } else {
       this.onEditMacro(m);

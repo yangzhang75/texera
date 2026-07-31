@@ -44,6 +44,7 @@ import { HubWorkflowDetailComponent } from "./hub/component/workflow/detail/hub-
 import { LandingPageComponent } from "./hub/component/landing-page/landing-page.component";
 import { USER_WORKFLOW } from "./app-routing.constant";
 import { HubSearchResultComponent } from "./hub/component/hub-search-result/hub-search-result.component";
+import { MacroDetailComponent } from "./hub/component/macro/detail/macro-detail.component";
 import { AdminSettingsComponent } from "./dashboard/component/admin/settings/admin-settings.component";
 import { TemplatedWorkflowCreationComponent } from "./dashboard/component/user/user-template/templated-workflow-creation/templated-workflow-creation.component";
 
@@ -103,6 +104,11 @@ routes.push({
               path: "result",
               component: MacrosComponent,
               data: { publicBrowse: true },
+            },
+            {
+              // Read-only preview/detail of a public macro (Clone / Generate).
+              path: "result/detail/:id",
+              component: MacroDetailComponent,
             },
           ],
         },

@@ -20,7 +20,7 @@
 import { of } from "rxjs";
 import { MacrosComponent } from "./macros.component";
 import { MacroSummary } from "../../../../workspace/service/macro/macro.service";
-import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
+import { HUB_MACRO_RESULT_DETAIL, USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 function macro(overrides: Partial<MacroSummary> = {}): MacroSummary {
   return {
@@ -141,10 +141,10 @@ describe("MacrosComponent", () => {
     expect(c.filterMode).toBe("all");
     expect(pub).toHaveBeenCalled();
     expect(listOwn).not.toHaveBeenCalled();
-    // even a not-runnable macro opens Generate (not Edit) when browsing others' public macros
+    // in the public Hub a click opens the read-only preview/detail page
     runnable = false;
     c.onOpen(macro({ wid: 3 }));
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, 3]);
+    expect(navigate).toHaveBeenCalledWith([HUB_MACRO_RESULT_DETAIL, 3]);
   });
 
   it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {

@@ -1,0 +1,88 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+
+<div class="macro-detail-container">
+  <button
+    nz-button
+    nzType="text"
+    nzSize="large"
+    class="go-back-button"
+    nz-tooltip="Back to Public Macros"
+    (click)="goBack()">
+    <span nz-icon nzType="arrow-left"></span>
+  </button>
+
+  <div class="container">
+    <div class="header-info">
+      <div class="detail-title">
+        <h1>Macro Detail</h1>
+      </div>
+      <div class="macro-panel">
+        <button nz-button class="action-btn" (click)="onClone()">
+          <i nz-icon nzType="copy" nzTheme="outline"></i>
+          <span>Clone</span>
+        </button>
+        <button nz-button nzType="primary" class="action-btn" (click)="onGenerate()">
+          <i nz-icon nzType="thunderbolt" nzTheme="outline"></i>
+          <span>Generate workflow</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="macro-info">
+      <div>
+        <h2>ID</h2>
+        <p>{{ wid }}</p>
+      </div>
+      <div>
+        <h2>Macro Name</h2>
+        <p>{{ macroName }}</p>
+      </div>
+      <div>
+        <h2>Created By</h2>
+        <p>{{ ownerName }}</p>
+      </div>
+    </div>
+
+    <div class="macro-description">
+      <h2>Description</h2>
+      <texera-markdown-description
+        [description]="macroDescription"
+        [enableViewMore]="true">
+      </texera-markdown-description>
+    </div>
+
+    <h2>Preview</h2>
+    <div class="preview-box">
+      <div class="ports-summary">
+        <span class="port-pill"><i nz-icon nzType="login" nzTheme="outline"></i> {{ inPorts }} input{{ inPorts === 1 ? "" : "s" }}</span>
+        <span class="port-pill"><i nz-icon nzType="logout" nzTheme="outline"></i> {{ outPorts }} output{{ outPorts === 1 ? "" : "s" }}</span>
+      </div>
+      <div class="chain" *ngIf="operatorChain.length > 0; else emptyChain">
+        <ng-container *ngFor="let op of operatorChain; let last = last">
+          <span class="op-chip">{{ op }}</span>
+          <i *ngIf="!last" class="arrow" nz-icon nzType="arrow-right" nzTheme="outline"></i>
+        </ng-container>
+      </div>
+      <ng-template #emptyChain>
+        <div class="chain-empty">This macro has no body operators.</div>
+      </ng-template>
+    </div>
+  </div>
+</div>

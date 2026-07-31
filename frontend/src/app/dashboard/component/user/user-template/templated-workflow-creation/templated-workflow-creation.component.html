@@ -79,7 +79,7 @@
     <button nz-button nzSize="small" class="tw-back" (click)="drillBack()">← Back</button>
   </nav>
 
-  <div *ngIf="sections.length === 0 && drillRows.length === 0" class="empty-state">
+  <div *ngIf="sections.length === 0" class="empty-state">
     No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
   </div>
 
@@ -96,19 +96,14 @@
     </form>
   </div>
 
-  <!-- P2.3 — nested macro nodes at the current scope: drill in to configure their
-       params for THIS generation (injected at Create). A→B→A cycles are disabled. -->
-  <div *ngFor="let row of drillRows" class="tw-drill-row" [class.tw-drill-row-cycle]="row.cycle">
-    <span class="tw-drill-label">
-      {{ row.label }}
-      <span *ngIf="row.cycle" class="tw-drill-cyclenote">reference cycle — not expandable</span>
-    </span>
-    <button nz-button nzSize="small" [disabled]="row.cycle" (click)="drillInto(row)">
-      Configure nested params →
-    </button>
-  </div>
+  <!-- Nested-macro params are surfaced above (tagged by macro), so no separate
+       "Configure nested params" rows here. To inspect/edit a nested macro in a
+       focused view, DOUBLE-CLICK its node in the preview canvas below (handled
+       via MacroService.previewDrillRequested$ -> drillIntoNodeFromCanvas).
+       drillRows is still built (data only) so that canvas drill can resolve the
+       node. -->
 
-  <div class="tw-actionbar" *ngIf="sections.length > 0 || drillRows.length > 0 || macroId">
+  <div class="tw-actionbar" *ngIf="sections.length > 0 || macroId">
     <button
       nz-button
       nzType="primary"

@@ -69,20 +69,9 @@
     </div>
 
     <h2>Preview</h2>
-    <div class="preview-box">
-      <div class="ports-summary">
-        <span class="port-pill"><i nz-icon nzType="login" nzTheme="outline"></i> {{ inPorts }} input{{ inPorts === 1 ? "" : "s" }}</span>
-        <span class="port-pill"><i nz-icon nzType="logout" nzTheme="outline"></i> {{ outPorts }} output{{ outPorts === 1 ? "" : "s" }}</span>
-      </div>
-      <div class="chain" *ngIf="operatorChain.length > 0; else emptyChain">
-        <ng-container *ngFor="let op of operatorChain; let last = last">
-          <span class="op-chip">{{ op }}</span>
-          <i *ngIf="!last" class="arrow" nz-icon nzType="arrow-right" nzTheme="outline"></i>
-        </ng-container>
-      </div>
-      <ng-template #emptyChain>
-        <div class="chain-empty">This macro has no body operators.</div>
-      </ng-template>
+    <div class="preview-containers">
+      <texera-workflow-editor></texera-workflow-editor>
+      <texera-mini-map class="box"></texera-mini-map>
     </div>
   </div>
 </div>

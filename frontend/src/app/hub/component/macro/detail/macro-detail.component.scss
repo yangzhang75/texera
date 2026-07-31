@@ -92,59 +92,18 @@ h2 {
   margin-bottom: 20px;
 }
 
-.preview-box {
+.preview-containers {
+  position: relative;
+  height: 560px;
   border: 1px solid #e8e8e8;
   border-radius: 8px;
-  background: #fafafa;
-  padding: 20px 22px;
+  overflow: hidden;
 }
 
-.ports-summary {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.port-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #1677ff;
-  background: #e6f4ff;
-  border-radius: 100px;
-  padding: 3px 12px;
-}
-
-.chain {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.op-chip {
-  display: inline-flex;
-  align-items: center;
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.85);
-  background: #fff;
-  border: 1px solid #d9d9d9;
-  border-radius: 8px;
-  padding: 7px 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-.arrow {
-  color: rgba(0, 0, 0, 0.35);
-  font-size: 14px;
-}
-
-.chain-empty {
-  color: rgba(0, 0, 0, 0.45);
-  font-size: 13px;
+texera-mini-map {
+  position: absolute;
+  bottom: 0;
+  right: 0;
 }
 
 .go-back-button {

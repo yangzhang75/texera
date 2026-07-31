@@ -24,53 +24,51 @@ import { HUB_MACRO_RESULT, USER_MACRO_OPEN } from "../../../../app-routing.const
 describe("MacroDetailComponent", () => {
   let navigate: ReturnType<typeof vi.fn>;
   let navigateByUrl: ReturnType<typeof vi.fn>;
+  let wfAction: any;
+  let metadata: any;
   let persist: any;
   let macroSvc: any;
   let notif: any;
+  let positionedWorkflow: any;
   let c: MacroDetailComponent;
 
   beforeEach(() => {
     navigate = vi.fn(() => Promise.resolve(true));
     navigateByUrl = vi.fn(() => Promise.resolve(true));
-    persist = {
-      retrievePublicWorkflow: vi.fn(() =>
-        of({
-          name: "m",
-          description: "d",
-          content: {
-            operators: [
-              { operatorType: "MacroInput" },
-              { operatorType: "Filter" },
-              { operatorType: "Limit" },
-              { operatorType: "MacroOutput" },
-            ],
-          },
-        })
-      ),
-      getOwnerName: vi.fn(() => of("owner")),
+    wfAction = {
+      disableWorkflowModification: vi.fn(),
+      reloadWorkflow: vi.fn(),
+      getTexeraGraph: () => ({ triggerCenterEvent: vi.fn() }),
+      clearWorkflow: vi.fn(),
     };
-    macroSvc = { cloneMacro: vi.fn(() => of(999)) };
+    metadata = { getOperatorMetadata: () => of({}) };
+    persist = { getOwnerName: vi.fn(() => of("owner")) };
+    positionedWorkflow = { content: { operators: [], operatorPositions: {} } };
+    macroSvc = {
+      getMacro: vi.fn(() => of({ wid: 7, name: "m", description: "d" })),
+      macroDetailToWorkflow: vi.fn(() => positionedWorkflow),
+      cloneMacro: vi.fn(() => of(999)),
+    };
     notif = { success: vi.fn(), error: vi.fn() };
     const route = { snapshot: { params: { id: "7" } } };
     const router = { navigate, navigateByUrl };
-    c = new MacroDetailComponent(persist, macroSvc, route as any, router as any, notif);
+    c = new MacroDetailComponent(wfAction, metadata, persist, macroSvc, route as any, router as any, notif);
   });
 
-  it("reads the wid from the route", () => {
+  it("reads the wid from the route and makes the preview read-only", () => {
     expect(c.wid).toBe(7);
+    expect(wfAction.disableWorkflowModification).toHaveBeenCalled();
   });
 
-  it("ngOnInit loads the macro and builds the operator chain (markers become port counts)", () => {
-    c.ngOnInit();
-    expect(persist.retrievePublicWorkflow).toHaveBeenCalledWith(7);
+  it("ngAfterViewInit loads the macro via getMacro + macroDetailToWorkflow (positioned) and reloads the canvas", () => {
+    c.ngAfterViewInit();
+    expect(macroSvc.getMacro).toHaveBeenCalledWith(7);
+    expect(macroSvc.macroDetailToWorkflow).toHaveBeenCalled();
+    expect(wfAction.reloadWorkflow).toHaveBeenCalledWith(positionedWorkflow);
     expect(c.macroName).toBe("m");
-    expect(c.ownerName).toBe("owner");
-    expect(c.operatorChain).toEqual(["Filter", "Limit"]); // markers dropped
-    expect(c.inPorts).toBe(1);
-    expect(c.outPorts).toBe(1);
   });
 
-  it("onClone clones the macro and navigates to the user's Macros", async () => {
+  it("onClone clones the macro and navigates to the user's Macros tab", async () => {
     c.onClone();
     expect(macroSvc.cloneMacro).toHaveBeenCalledWith(7);
     await new Promise(res => setTimeout(res, 0));

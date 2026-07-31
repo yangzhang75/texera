@@ -17,51 +17,62 @@
  * under the License.
  */
 
-import { Component, OnInit } from "@angular/core";
+import { AfterViewInit, Component, HostListener, OnDestroy, OnInit } from "@angular/core";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { ActivatedRoute, Router } from "@angular/router";
-import { NgFor, NgIf } from "@angular/common";
+import { NgIf } from "@angular/common";
 import { firstValueFrom } from "rxjs";
 import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
+import { WorkflowActionService } from "../../../../workspace/service/workflow-graph/model/workflow-action.service";
+import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
 import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
-import { MacroService } from "../../../../workspace/service/macro/macro.service";
+import { MacroService, MacroDetail } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
-import { Workflow } from "../../../../common/type/workflow";
 import { isDefined } from "../../../../common/util/predicate";
 import { HUB_MACRO_RESULT, USER_MACRO_OPEN } from "../../../../app-routing.constant";
+import { WorkflowEditorComponent } from "../../../../workspace/component/workflow-editor/workflow-editor.component";
+import { MiniMapComponent } from "../../../../workspace/component/workflow-editor/mini-map/mini-map.component";
 import { MarkdownDescriptionComponent } from "../../../../dashboard/component/user/markdown-description/markdown-description.component";
 
 /**
  * Read-only detail / preview page for a PUBLIC macro in the Hub "Macros" tab —
- * the macro analogue of {@link HubWorkflowDetailComponent}. It shows the macro's
- * identity, description, and a light operator-chain preview of its body, and
- * offers the two things a browsing user wants: Clone (take a private copy into
- * their own Macros) and Generate (open the fill-parameters page). Reached at
- * /hub/macro/result/detail/:id.
+ * the macro analogue of {@link HubWorkflowDetailComponent}. It renders the macro
+ * body in the SAME read-only JointJS canvas the workflow Hub uses, and offers
+ * Clone (copy into your own Macros) and Generate (open the fill-parameters
+ * page). Reached at /hub/macro/result/detail/:id.
  *
- * The preview is a chip chain (not the JointJS canvas): a macro body carries
- * MacroInput/MacroOutput boundary nodes that the standalone editor can't draw
- * reliably here, so a chip chain is the robust way to show the structure.
+ * A macro body is stored WITHOUT operator positions, so we load it through
+ * MacroService.macroDetailToWorkflow, which auto-lays-out the operators (and
+ * keeps the MacroInput/MacroOutput boundary nodes) — that positioned content is
+ * what reloadWorkflow needs to draw the canvas (raw public content has no
+ * positions and renders empty).
  */
 @UntilDestroy()
 @Component({
   selector: "texera-macro-detail",
   templateUrl: "macro-detail.component.html",
   styleUrls: ["macro-detail.component.scss"],
-  imports: [NgIf, NgFor, NzButtonComponent, NzIconDirective, NzTooltipModule, MarkdownDescriptionComponent],
+  imports: [
+    NgIf,
+    NzButtonComponent,
+    NzIconDirective,
+    NzTooltipModule,
+    WorkflowEditorComponent,
+    MiniMapComponent,
+    MarkdownDescriptionComponent,
+  ],
 })
-export class MacroDetailComponent implements OnInit {
+export class MacroDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   wid: number | undefined;
   macroName = "";
   ownerName = "";
   macroDescription = "";
-  operatorChain: string[] = [];
-  inPorts = 0;
-  outPorts = 0;
 
   constructor(
+    private workflowActionService: WorkflowActionService,
+    private operatorMetadataService: OperatorMetadataService,
     private workflowPersistService: WorkflowPersistService,
     private macroService: MacroService,
     private route: ActivatedRoute,
@@ -70,6 +81,8 @@ export class MacroDetailComponent implements OnInit {
   ) {
     const routeId = this.route.snapshot.params.id;
     this.wid = isDefined(routeId) ? Number(routeId) : undefined;
+    // Preview is read-only: no dragging / editing on the canvas.
+    this.workflowActionService.disableWorkflowModification();
   }
 
   ngOnInit(): void {
@@ -80,27 +93,42 @@ export class MacroDetailComponent implements OnInit {
       .getOwnerName(this.wid)
       .pipe(untilDestroyed(this))
       .subscribe(ownerName => (this.ownerName = ownerName));
+  }
 
-    // A macro is a workflow row, so the public-read path returns its body.
-    this.workflowPersistService
-      .retrievePublicWorkflow(this.wid)
+  ngAfterViewInit(): void {
+    if (!isDefined(this.wid)) {
+      return;
+    }
+    // Operator schemas must be loaded before the editor can draw operator
+    // boxes; in this standalone Hub route nothing else loads them.
+    this.operatorMetadataService
+      .getOperatorMetadata()
       .pipe(untilDestroyed(this))
-      .subscribe({
-        next: (workflow: Workflow) => {
-          this.macroName = workflow.name ?? "";
-          this.macroDescription = workflow.description || "No description available";
-          this.buildPreview(workflow);
-        },
-        error: () => this.notificationService.error(`Failed to load macro ${this.wid}`),
+      .subscribe(() => {
+        if (!isDefined(this.wid)) {
+          return;
+        }
+        this.macroService
+          .getMacro(this.wid)
+          .pipe(untilDestroyed(this))
+          .subscribe({
+            next: (detail: MacroDetail) => {
+              this.macroName = detail.name ?? "";
+              this.macroDescription = detail.description || "No description available";
+              // Positioned + boundary-marker-inclusive body -> reloadWorkflow can
+              // lay it out on the read-only canvas.
+              const workflow = this.macroService.macroDetailToWorkflow(detail);
+              this.workflowActionService.reloadWorkflow(workflow);
+              this.workflowActionService.getTexeraGraph().triggerCenterEvent();
+            },
+            error: () => this.notificationService.error(`Failed to load macro ${this.wid}`),
+          });
       });
   }
 
-  /** Derive the operator-chain chips + port counts from the macro body. */
-  private buildPreview(workflow: Workflow): void {
-    const ops = (workflow.content?.operators ?? []).map(o => o.operatorType);
-    this.inPorts = ops.filter(t => t === "MacroInput").length;
-    this.outPorts = ops.filter(t => t === "MacroOutput").length;
-    this.operatorChain = ops.filter(t => t !== "MacroInput" && t !== "MacroOutput");
+  @HostListener("window:beforeunload")
+  ngOnDestroy(): void {
+    this.workflowActionService.clearWorkflow();
   }
 
   goBack(): void {
@@ -109,7 +137,8 @@ export class MacroDetailComponent implements OnInit {
     });
   }
 
-  /** Clone this public macro into a new private macro the caller owns. */
+  /** Clone this public macro into a new private macro the caller owns, then go
+   * to Your Work > Macros so the copy is visible there. */
   onClone(): void {
     if (!isDefined(this.wid)) {
       return;

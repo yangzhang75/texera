@@ -59,6 +59,12 @@
   color: rgba(0, 0, 0, 0.45);
 }
 
+// Source macro name in the subtitle — the accent so it reads as the subject.
+.tw-macro-name {
+  color: #1677ff;
+  font-weight: 600;
+}
+
 // A quiet one-line hint, not a half-screen box.
 .empty-state {
   padding: 4px 2px 12px;
@@ -152,34 +158,8 @@
   margin-left: auto;
 }
 
-.tw-drill-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px 20px;
-  background: #fafbfc;
-  border: 1px dashed #d9dde1;
-  border-radius: 12px;
-}
-
-.tw-drill-row-cycle {
-  opacity: 0.6;
-}
-
-.tw-drill-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.65);
-}
-
-.tw-drill-cyclenote {
-  margin-left: 8px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #d4380d;
-}
+// (The "Configure nested params" drill-row styles were removed with that UI —
+// nested params are surfaced inline now; drilling is via canvas double-click.)
 
 .tw-drill-hint {
   font-size: 12px;

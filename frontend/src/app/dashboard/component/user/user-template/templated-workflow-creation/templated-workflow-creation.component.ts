@@ -124,6 +124,10 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
   public returnUrl: string | undefined;
   // Basic info for the workflow that "Create Workflow" will produce.
   public genName = "";
+  // The SOURCE macro's own name (immutable display), shown in the subtitle so
+  // it's clear which macro is being generated from — distinct from genName (the
+  // editable name of the OUTPUT workflow).
+  public macroName = "";
   public genDescription = "";
   // Runnable gate (D3): only a runnable macro can be generated. Create Workflow
   // is disabled with a reason when the macro can't run standalone.
@@ -712,6 +716,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
       .subscribe(({ detail }) => {
         // Defaults for the workflow that Create will produce.
         this.genName = detail.name;
+        this.macroName = detail.name;
         this.genDescription = detail.description ?? "";
         this.macroIsOwner = detail.isOwner;
         // P2.3 — fresh drill state per Generate entry. Clearing the caches here is

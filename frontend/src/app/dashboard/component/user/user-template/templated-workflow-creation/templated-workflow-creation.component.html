@@ -57,7 +57,11 @@
         </button>
       </div>
     </div>
-    <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow.</p>
+    <p class="tw-subtitle" *ngIf="macroId">
+      From macro <strong class="tw-macro-name">{{ macroName }}</strong> — set the parameters below (including any from
+      nested macros), then name and generate an independent workflow.
+    </p>
+    <p class="tw-subtitle" *ngIf="!macroId">Set the parameters below, then submit to generate an independent workflow.</p>
   </header>
 
   <!-- Name for the generated workflow (macro flow): defaults to the macro name, editable. -->

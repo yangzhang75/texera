@@ -46,30 +46,13 @@
   -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :host {
-    --card: #1d1d1d;
-    --hairline: #303030;
-    --card-border: #303030;
-    --row-hover: #262626;
-    --ink: rgba(255, 255, 255, 0.85);
-    --muted: rgba(255, 255, 255, 0.45);
-    --muted-2: rgba(255, 255, 255, 0.35);
-    --accent: #1668dc;
-    --accent-weak: #111a2c;
-    --good-bg: #162312;
-    --good-ink: #6abe39;
-    --idle-bg: #262626;
-    --idle-ink: rgba(255, 255, 255, 0.35);
-    --seg-track: #262626;
-    --danger-bg: #2a1215;
-    --danger-ink: #e84749;
-  }
-}
+/* No prefers-color-scheme dark override on purpose: the rest of Texera does not
+ * follow the OS dark preference, so switching only this page to a dark palette
+ * made it black-on-black while every other page stayed light — jarring and
+ * off-brand. Keep one light palette, consistent with the whole app. */
 
 .macros-page {
   padding: 28px 32px 56px;
-  max-width: 1240px;
 }
 
 .page-title {
@@ -171,11 +154,13 @@
 }
 
 .row {
+  position: relative;
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 60px 156px 156px auto;
+  grid-template-columns: 150px minmax(0, 1fr) 64px 172px 172px;
   align-items: center;
   gap: 10px;
-  padding: 14px 20px;
+  padding: 14px 22px;
+  cursor: pointer;
 
   & + .row {
     border-top: 1px solid var(--hairline);
@@ -304,19 +289,28 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* col 6: hover-revealed icon actions */
+/* Hover-revealed icon actions. Absolutely positioned so they reserve NO layout
+ * space at rest (that reserved column was the big empty gap on the right); on
+ * hover they fade in over the right edge, sitting on the hovered-row background. */
 .actions {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 2px;
+  padding-left: 12px;
+  background: var(--row-hover);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.14s ease;
 }
 
 .row:hover .actions,
 .row:focus-within .actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .iconbtn {

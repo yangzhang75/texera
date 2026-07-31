@@ -48,17 +48,19 @@
   </div>
 
   <div class="list" *ngIf="!isLoading && filteredMacros.length > 0">
-    <div class="row" *ngFor="let m of filteredMacros">
+    <!-- The whole row opens the macro (runnable → Generate, else → Edit); the
+         action buttons stop propagation so they don't also open it. -->
+    <div class="row" *ngFor="let m of filteredMacros" (click)="onOpen(m)" [title]="runnableTooltip(m)">
       <!-- col 1: flask glyph + #wid -->
       <div class="idcell">
         <span class="glyph"><i nz-icon nzType="experiment" nzTheme="outline"></i></span>
         <span class="wid">#{{ m.wid }}</span>
       </div>
 
-      <!-- col 2: name + badges, op-chain below. Only the name opens the macro. -->
+      <!-- col 2: name + badges, op-chain below -->
       <div class="titlecell">
         <div class="titleline">
-          <span class="name" [title]="runnableTooltip(m)" (click)="onOpen(m)">{{ m.name }}</span>
+          <span class="name">{{ m.name }}</span>
           <span class="badge" [class.ok]="isRunnable(m)" [class.no]="!isRunnable(m)">
             {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
           </span>
@@ -90,11 +92,12 @@
         <span class="metaval">{{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
       </div>
 
-      <!-- col 6: hover-revealed icon actions -->
+      <!-- col 6: hover-revealed icon actions (stop propagation so they don't
+           also trigger the row's open handler) -->
       <div class="actions">
         <button
           class="iconbtn"
-          (click)="onEditMacro(m)"
+          (click)="$event.stopPropagation(); onEditMacro(m)"
           nz-tooltip="Edit macro — body + configurable properties"
           nzTooltipPlacement="bottom">
           <i nz-icon nzType="edit" nzTheme="outline"></i>
@@ -102,18 +105,30 @@
         <button
           class="iconbtn"
           [class.on]="m.isPublic"
-          (click)="onTogglePublic(m)"
+          (click)="$event.stopPropagation(); onTogglePublic(m)"
           [nz-tooltip]="m.isPublic ? 'Make private' : 'Make public — anyone can find and use it'"
           nzTooltipPlacement="bottom">
           <i nz-icon [nzType]="m.isPublic ? 'global' : 'lock'" nzTheme="outline"></i>
         </button>
-        <button class="iconbtn" (click)="onShareMacro(m)" nz-tooltip="Share with specific people" nzTooltipPlacement="bottom">
+        <button
+          class="iconbtn"
+          (click)="$event.stopPropagation(); onShareMacro(m)"
+          nz-tooltip="Share with specific people"
+          nzTooltipPlacement="bottom">
           <i nz-icon nzType="share-alt" nzTheme="outline"></i>
         </button>
-        <button class="iconbtn" (click)="onChangeDescription(m)" nz-tooltip="Change description" nzTooltipPlacement="bottom">
+        <button
+          class="iconbtn"
+          (click)="$event.stopPropagation(); onChangeDescription(m)"
+          nz-tooltip="Change description"
+          nzTooltipPlacement="bottom">
           <i nz-icon nzType="file-text" nzTheme="outline"></i>
         </button>
-        <button class="iconbtn danger" (click)="onDeleteMacro(m)" nz-tooltip="Delete this macro" nzTooltipPlacement="bottom">
+        <button
+          class="iconbtn danger"
+          (click)="$event.stopPropagation(); onDeleteMacro(m)"
+          nz-tooltip="Delete this macro"
+          nzTooltipPlacement="bottom">
           <i nz-icon nzType="delete" nzTheme="outline"></i>
         </button>
       </div>

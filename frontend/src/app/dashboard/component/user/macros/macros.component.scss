@@ -231,6 +231,77 @@
   text-overflow: ellipsis;
 }
 
+/* inline rename pencil — hover-revealed like the Workflows list */
+.inline-edit-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+
+  &:hover {
+    color: var(--accent);
+    background: var(--idle-bg);
+  }
+}
+
+.row:hover .inline-edit-btn {
+  opacity: 1;
+}
+
+/* inline edit inputs (name + description) */
+.edit-input {
+  font-family: inherit;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  outline: none;
+  background: var(--card);
+  color: var(--ink);
+  padding: 2px 8px;
+}
+
+.name-input {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 220px;
+}
+
+.desc-input {
+  margin-top: 4px;
+  font-size: 12.5px;
+  width: 100%;
+  max-width: 520px;
+}
+
+/* editable description line (Workflows-style click-to-edit) */
+.desc {
+  margin-top: 4px;
+  margin-left: -4px;
+  padding: 1px 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 520px;
+  border-radius: 4px;
+  cursor: text;
+
+  &:hover {
+    background: var(--idle-bg);
+  }
+
+  &.empty {
+    color: var(--muted-2);
+    font-style: italic;
+  }
+}
+
 .badge {
   font-size: 11px;
   font-weight: 600;

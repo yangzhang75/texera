@@ -56,8 +56,8 @@ describe("MacrosComponent", () => {
     persist = {
       retrieveOwners: vi.fn(() => of(["a@b.c"])),
       deleteWorkflow: vi.fn(() => of({})),
+      updateWorkflowName: vi.fn(() => of({})),
       updateWorkflowDescription: vi.fn(() => of({})),
-      updateWorkflowIsPublished: vi.fn(() => of({})),
     };
     modal = { create: vi.fn(), confirm: vi.fn() };
     const metadataStub = { getOperatorMetadata: () => of({}) };
@@ -122,16 +122,6 @@ describe("MacrosComponent", () => {
     expect(component.filteredMacros.length).toBe(0);
   });
 
-  it("metaLine renders the op chain + op count (markers dropped); edited/created live in their own column", () => {
-    const line = component.metaLine(macro({ bodyOperatorTypes: ["CSVFileScan", "Filter", "MacroOutput"] }));
-    expect(line).toBe("CSVFileScan → Filter · 2 ops"); // MacroOutput marker dropped
-    expect(line).not.toContain("edited"); // times moved to the metadata column
-  });
-
-  it("metaLine reads 'Empty macro' when the body has only boundary markers", () => {
-    expect(component.metaLine(macro({ bodyOperatorTypes: ["MacroInput", "MacroOutput"] }))).toBe("Empty macro");
-  });
-
   it("defaults the filter to Runnable (biologist-facing page)", () => {
     expect(component.filterMode).toBe("runnable");
   });
@@ -184,32 +174,49 @@ describe("MacrosComponent", () => {
     expect(component.macros.map(x => x.wid)).toEqual([10]);
   });
 
-  it("Make public confirms, calls updateWorkflowIsPublished(true), and flips the model flag", async () => {
-    const m = macro({ wid: 13, isPublic: false } as Partial<MacroSummary>);
-    component.onTogglePublic(m);
-    const opts = modal.confirm.mock.calls[0][0];
-    expect(opts.nzTitle).toContain("public");
-    await opts.nzOnOk();
-    expect(persist.updateWorkflowIsPublished).toHaveBeenCalledWith(13, true);
-    expect(m.isPublic).toBe(true);
+  it("inline rename: confirmName persists via updateWorkflowName and updates the model", async () => {
+    const m = macro({ wid: 11, name: "old" });
+    component.startEditName(m);
+    expect(component.editingNameWid).toBe(11);
+    component.confirmName(m, "  new name  "); // trimmed
+    expect(component.editingNameWid).toBeNull();
+    expect(persist.updateWorkflowName).toHaveBeenCalledWith(11, "new name");
+    await new Promise(res => setTimeout(res, 0));
+    expect(m.name).toBe("new name");
   });
 
-  it("Make private confirms, calls updateWorkflowIsPublished(false), and flips the model flag", async () => {
-    const m = macro({ wid: 14, isPublic: true } as Partial<MacroSummary>);
-    component.onTogglePublic(m);
-    const opts = modal.confirm.mock.calls[0][0];
-    expect(opts.nzTitle).toContain("private");
-    await opts.nzOnOk();
-    expect(persist.updateWorkflowIsPublished).toHaveBeenCalledWith(14, false);
-    expect(m.isPublic).toBe(false);
+  it("inline rename: blank or unchanged name is a no-op (no API call)", () => {
+    const m = macro({ wid: 12, name: "keep" });
+    component.confirmName(m, "   ");
+    component.confirmName(m, "keep");
+    expect(persist.updateWorkflowName).not.toHaveBeenCalled();
+    expect(m.name).toBe("keep");
   });
 
-  it("Change description persists via updateWorkflowDescription and updates the model", async () => {
-    const m = macro({ wid: 11, description: "old" });
-    component.onChangeDescription(m);
-    const opts = modal.confirm.mock.calls[0][0];
-    await opts.nzOnOk({ value: "new desc" }); // stub the inline editor component
-    expect(persist.updateWorkflowDescription).toHaveBeenCalledWith(11, "new desc");
+  it("inline description: confirmDesc persists via updateWorkflowDescription and updates the model", async () => {
+    const m = macro({ wid: 13, description: "old" });
+    component.startEditDesc(m);
+    expect(component.editingDescWid).toBe(13);
+    component.confirmDesc(m, "new desc");
+    expect(component.editingDescWid).toBeNull();
+    expect(persist.updateWorkflowDescription).toHaveBeenCalledWith(13, "new desc");
+    await new Promise(res => setTimeout(res, 0));
     expect(m.description).toBe("new desc");
+  });
+
+  it("onDescClick edits in place for owner, but lets the row open in public browse", () => {
+    const m = macro({ wid: 14 });
+    const ev = { stopPropagation: vi.fn() } as any;
+    component.publicBrowse = false;
+    component.onDescClick(m, ev);
+    expect(ev.stopPropagation).toHaveBeenCalled();
+    expect(component.editingDescWid).toBe(14);
+
+    component.editingDescWid = null;
+    const ev2 = { stopPropagation: vi.fn() } as any;
+    component.publicBrowse = true;
+    component.onDescClick(m, ev2);
+    expect(ev2.stopPropagation).not.toHaveBeenCalled(); // click bubbles to row -> open
+    expect(component.editingDescWid).toBeNull();
   });
 });

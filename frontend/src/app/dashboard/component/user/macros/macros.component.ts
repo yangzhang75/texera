@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Component, inject, OnInit } from "@angular/core";
+import { Component, OnInit } from "@angular/core";
 import { DatePipe, NgFor, NgIf } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router } from "@angular/router";
@@ -26,7 +26,7 @@ import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
-import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
+import { NzModalService } from "ng-zorro-antd/modal";
 import { ShareAccessComponent } from "../share-access/share-access.component";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
@@ -68,6 +68,11 @@ export class MacrosComponent implements OnInit {
   // and a click always opens Generate (never Edit). Defaults false = the normal
   // "Your Work > Macros" page.
   publicBrowse = false;
+
+  // Inline-edit state (Workflows-style): the wid whose name / description is
+  // currently being edited in place (null = none).
+  editingNameWid: number | null = null;
+  editingDescWid: number | null = null;
 
   constructor(
     private macroService: MacroService,
@@ -135,23 +140,6 @@ export class MacrosComponent implements OnInit {
   epoch(t: string | number | undefined): number | undefined {
     if (t === undefined || t === null) return undefined;
     return typeof t === "number" ? t : new Date(t).getTime();
-  }
-
-  /** Body operator types minus the boundary markers. */
-  private bodyOps(m: MacroSummary): string[] {
-    return (m.bodyOperatorTypes ?? []).filter(t => t !== "MacroInput" && t !== "MacroOutput");
-  }
-
-  /**
-   * The muted description line under a macro name: op chain · op count, e.g.
-   * "CSVFileScan → Projection → Filter · 5 ops". Mirrors the Workflows list's
-   * description slot; the Created / Last-Modified times sit in their own right
-   * column (metadata-container), exactly like the Workflows list.
-   */
-  metaLine(m: MacroSummary): string {
-    const ops = this.bodyOps(m);
-    if (ops.length === 0) return "Empty macro";
-    return `${ops.join(" → ")} · ${ops.length} ${ops.length === 1 ? "op" : "ops"}`;
   }
 
   /**
@@ -225,48 +213,45 @@ export class MacrosComponent implements OnInit {
   }
 
   /**
-   * Row action "Make public / Make private" — a macro is a `workflow` row
-   * (kind=MACRO), so it reuses the workflow public endpoints
-   * (PUT /workflow/public|private/{wid}); those carry no kind guard and only
-   * check write access, so they work unchanged on a macro's wid. Making a macro
-   * public lets anyone find and use it; making it private reverts that.
+   * Inline rename (Workflows-style): the pencil turns the name into an input;
+   * blur / Enter saves via updateWorkflowName (a macro is a workflow row, so the
+   * same endpoint applies). Public/Private itself is handled inside Share.
    */
-  onTogglePublic(m: MacroSummary): void {
-    const next = !m.isPublic;
-    const verb = next ? "public" : "private";
-    this.modalService.confirm({
-      nzTitle: next ? `Make macro "${m.name}" public?` : `Make macro "${m.name}" private?`,
-      nzContent: next
-        ? "Anyone will be able to find and use this macro. You can make it private again at any time."
-        : "This macro will no longer be visible to everyone.",
-      nzOkText: next ? "Make public" : "Make private",
-      nzOnOk: () =>
-        firstValueFrom(this.workflowPersistService.updateWorkflowIsPublished(m.wid, next))
-          .then(() => {
-            m.isPublic = next;
-            this.notificationService.success(`Macro is now ${verb}.`);
-          })
-          .catch(() => this.notificationService.error(`Failed to make macro ${verb}.`)),
-    });
+  startEditName(m: MacroSummary): void {
+    this.editingDescWid = null;
+    this.editingNameWid = m.wid;
   }
 
-  /** Row action "Change description" — edits the macro's description in place. */
-  onChangeDescription(m: MacroSummary): void {
-    let value = m.description ?? "";
-    this.modalService.confirm({
-      nzTitle: "Change description",
-      nzContent: DescriptionEditComponent,
-      nzData: { value },
-      nzOnOk: (comp: DescriptionEditComponent) => {
-        value = comp.value ?? "";
-        firstValueFrom(this.workflowPersistService.updateWorkflowDescription(m.wid, value))
-          .then(() => {
-            m.description = value;
-            this.notificationService.success("Description updated.");
-          })
-          .catch(() => this.notificationService.error("Failed to update description."));
-      },
-    });
+  confirmName(m: MacroSummary, value: string): void {
+    this.editingNameWid = null;
+    const name = (value ?? "").trim();
+    if (!name || name === m.name) return;
+    firstValueFrom(this.workflowPersistService.updateWorkflowName(m.wid, name))
+      .then(() => (m.name = name))
+      .catch(() => this.notificationService.error("Failed to rename macro."));
+  }
+
+  /** Inline description edit (Workflows-style): click the line to edit in place. */
+  startEditDesc(m: MacroSummary): void {
+    this.editingNameWid = null;
+    this.editingDescWid = m.wid;
+  }
+
+  confirmDesc(m: MacroSummary, value: string): void {
+    this.editingDescWid = null;
+    const desc = (value ?? "").trim();
+    if (desc === (m.description ?? "")) return;
+    firstValueFrom(this.workflowPersistService.updateWorkflowDescription(m.wid, desc))
+      .then(() => (m.description = desc))
+      .catch(() => this.notificationService.error("Failed to update description."));
+  }
+
+  /** Description click: edit in place (owner); in the public Hub let it bubble
+   * to the row so the macro opens instead. */
+  onDescClick(m: MacroSummary, event: MouseEvent): void {
+    if (this.publicBrowse) return;
+    event.stopPropagation();
+    this.startEditDesc(m);
   }
 
   /** Row action "Delete" — snapshot-only, so no LIVE references to worry about. */
@@ -284,28 +269,5 @@ export class MacrosComponent implements OnInit {
           })
           .catch(() => this.notificationService.error("Failed to delete macro.")),
     });
-  }
-}
-
-/**
- * Tiny inline editor mounted inside the "Change description" confirm modal — a
- * single textarea bound to `value`, read back by the modal's OK handler.
- */
-@Component({
-  selector: "texera-macro-description-edit",
-  standalone: true,
-  imports: [FormsModule],
-  template: `<textarea
-    class="tw-desc-edit"
-    rows="4"
-    style="width:100%"
-    [(ngModel)]="value"
-    placeholder="Macro description"></textarea>`,
-})
-export class DescriptionEditComponent {
-  value = "";
-  constructor() {
-    const data = inject(NZ_MODAL_DATA) as { value?: string } | null;
-    this.value = data?.value ?? "";
   }
 }

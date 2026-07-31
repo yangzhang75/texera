@@ -157,7 +157,9 @@
           *ngIf="showMacroCreationButton"
           (click)="onClickCreateMacroFromWorkflow()"
           nz-button
-          title="Create macro — turn this whole workflow into a reusable macro">
+          nz-tooltip="Create whole workflow as macro"
+          nzTooltipPlacement="bottom"
+          title="Create whole workflow as macro">
           <i
             nz-icon
             nzType="experiment"></i>

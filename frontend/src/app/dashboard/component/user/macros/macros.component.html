@@ -63,10 +63,31 @@
         <span class="wid">#{{ m.wid }}</span>
       </div>
 
-      <!-- col 2: name + badges, op-chain below -->
+      <!-- col 2: name (inline-rename) + badges; op-chain; inline-editable
+           description — Workflows-style click-to-edit, read-only in the Hub. -->
       <div class="titlecell">
         <div class="titleline">
-          <span class="name">{{ m.name }}</span>
+          <input
+            *ngIf="editingNameWid === m.wid; else nameView"
+            class="edit-input name-input"
+            #nameInput
+            autofocus
+            [value]="m.name"
+            (click)="$event.stopPropagation()"
+            (blur)="confirmName(m, nameInput.value)"
+            (keyup.enter)="nameInput.blur()"
+            (keyup.escape)="editingNameWid = null" />
+          <ng-template #nameView>
+            <span class="name">{{ m.name }}</span>
+            <button
+              *ngIf="!publicBrowse"
+              class="inline-edit-btn"
+              (click)="$event.stopPropagation(); startEditName(m)"
+              nz-tooltip="Rename"
+              nzTooltipPlacement="top">
+              <i nz-icon nzType="edit" nzTheme="outline"></i>
+            </button>
+          </ng-template>
           <span class="badge" [class.ok]="isRunnable(m)" [class.no]="!isRunnable(m)">
             {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
           </span>
@@ -74,7 +95,26 @@
             <i nz-icon nzType="global" nzTheme="outline"></i> Public
           </span>
         </div>
-        <div class="chain">{{ metaLine(m) }}</div>
+        <input
+          *ngIf="editingDescWid === m.wid; else descView"
+          class="edit-input desc-input"
+          #descInput
+          autofocus
+          [value]="m.description || ''"
+          placeholder="Add a description"
+          (click)="$event.stopPropagation()"
+          (blur)="confirmDesc(m, descInput.value)"
+          (keyup.enter)="descInput.blur()"
+          (keyup.escape)="editingDescWid = null" />
+        <ng-template #descView>
+          <div
+            class="desc"
+            [class.empty]="!m.description"
+            *ngIf="m.description || !publicBrowse"
+            (click)="onDescClick(m, $event)">
+            {{ m.description || "Add a description" }}
+          </div>
+        </ng-template>
       </div>
 
       <!-- col 3: owner indicator -->
@@ -98,38 +138,22 @@
         <span class="metaval">{{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
       </div>
 
-      <!-- col 6: hover-revealed icon actions (stop propagation so they don't
-           also trigger the row's open handler). Owner-only, so hidden in the
-           public Hub catalogue. -->
+      <!-- col 6: hover-revealed icon actions (owner-only). Public/Private lives
+           inside Share; rename + description are inline above. -->
       <div class="actions" *ngIf="!publicBrowse">
         <button
           class="iconbtn"
           (click)="$event.stopPropagation(); onEditMacro(m)"
           nz-tooltip="Edit macro — body + configurable properties"
           nzTooltipPlacement="bottom">
-          <i nz-icon nzType="edit" nzTheme="outline"></i>
-        </button>
-        <button
-          class="iconbtn"
-          [class.on]="m.isPublic"
-          (click)="$event.stopPropagation(); onTogglePublic(m)"
-          [nz-tooltip]="m.isPublic ? 'Make private' : 'Make public — anyone can find and use it'"
-          nzTooltipPlacement="bottom">
-          <i nz-icon [nzType]="m.isPublic ? 'global' : 'lock'" nzTheme="outline"></i>
+          <i nz-icon nzType="build" nzTheme="outline"></i>
         </button>
         <button
           class="iconbtn"
           (click)="$event.stopPropagation(); onShareMacro(m)"
-          nz-tooltip="Share with specific people"
+          nz-tooltip="Share / make public"
           nzTooltipPlacement="bottom">
           <i nz-icon nzType="share-alt" nzTheme="outline"></i>
-        </button>
-        <button
-          class="iconbtn"
-          (click)="$event.stopPropagation(); onChangeDescription(m)"
-          nz-tooltip="Change description"
-          nzTooltipPlacement="bottom">
-          <i nz-icon nzType="file-text" nzTheme="outline"></i>
         </button>
         <button
           class="iconbtn danger"

@@ -85,3 +85,79 @@ describe("TemplatedWorkflowCreationComponent (Generate, fill-only)", () => {
     expect(gen).not.toHaveBeenCalled();
   });
 });
+
+describe("TemplatedWorkflowCreationComponent — nested-macro param surfacing", () => {
+  it("recursively surfaces every nested configurable param at root, keyed by full path + group label", () => {
+    const c = make();
+    // stub the heavy schema→formly builder; we only assert the recursion shape
+    (c as any).buildEditableOverrideSection = (op: any, prefix: string) => ({
+      operatorID: op.operatorID,
+      label: op.operatorType,
+      path: `${prefix}/${op.operatorID}`,
+      fields: [],
+      form: {},
+      model: {},
+    });
+    (c as any).macroMeta = new Map([
+      ["100", { name: "macroA", version: 1 }],
+      ["200", { name: "macroB", version: 1 }],
+    ]);
+    (c as any).macroContentCache = new Map<string, any>([
+      [
+        "100",
+        {
+          operators: [
+            { operatorID: "Filter-1", operatorType: "Filter", configurableProperties: ["value"] },
+            { operatorID: "Plain-1", operatorType: "Projection", configurableProperties: [] }, // no params → skipped
+            { operatorID: "inner", operatorType: "Macro", operatorProperties: { macroId: "200" } },
+          ],
+        },
+      ],
+      ["200", { operators: [{ operatorID: "Limit-1", operatorType: "Limit", configurableProperties: ["limit"] }] }],
+    ]);
+    const topOps = [{ operatorID: "node1", operatorType: "Macro", operatorProperties: { macroId: "100" } }];
+
+    const sections = (c as any).buildNestedSectionsRecursive(topOps, "", new Set(["999"]));
+
+    expect(sections.map((s: any) => s.path)).toEqual(["node1/Filter-1", "node1/inner/Limit-1"]);
+    expect(sections.map((s: any) => s.groupLabel)).toEqual(["macroA", "macroB"]);
+  });
+
+  it("is cycle-guarded (A → B → A does not recurse forever)", () => {
+    const c = make();
+    (c as any).buildEditableOverrideSection = (op: any, prefix: string) => ({
+      operatorID: op.operatorID,
+      path: `${prefix}/${op.operatorID}`,
+      fields: [],
+      form: {},
+      model: {},
+    });
+    (c as any).macroMeta = new Map();
+    (c as any).macroContentCache = new Map<string, any>([
+      [
+        "300",
+        {
+          operators: [
+            { operatorID: "L", operatorType: "Limit", configurableProperties: ["limit"] },
+            { operatorID: "self", operatorType: "Macro", operatorProperties: { macroId: "300" } }, // cycle
+          ],
+        },
+      ],
+    ]);
+    const topOps = [{ operatorID: "n", operatorType: "Macro", operatorProperties: { macroId: "300" } }];
+    const sections = (c as any).buildNestedSectionsRecursive(topOps, "", new Set(["root"]));
+    // Only the one leaf param; the self-referencing macro is skipped (no infinite loop).
+    expect(sections.map((s: any) => s.path)).toEqual(["n/L"]);
+  });
+
+  it("getConfigurablePropertyUpdatePayload keeps top-level sections but skips nested (path) sections", () => {
+    const c = make();
+    (c as any).sections = [
+      { operatorID: "top", path: undefined, form: { getRawValue: () => ({ a: 1 }) } },
+      { operatorID: "leaf", path: "node/leaf", form: { getRawValue: () => ({ b: 2 }) } },
+    ];
+    const payload = (c as any).getConfigurablePropertyUpdatePayload();
+    expect(payload.operatorProperties).toEqual({ top: { a: 1 } });
+    expect(payload.operatorProperties.leaf).toBeUndefined();
+  });
+});

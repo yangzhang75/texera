@@ -83,8 +83,14 @@
     No configurable parameters{{ macroId ? " — submit to generate the workflow as-is." : " in this template." }}
   </div>
 
-  <div *ngFor="let section of sections" class="template-section">
-    <h3 class="template-section-title">{{ section.label }}</h3>
+  <div *ngFor="let section of sections" class="template-section" [class.tw-nested-section]="section.path">
+    <h3 class="template-section-title">
+      <!-- Nested-macro params are surfaced here too; the tag shows which nested
+           macro the field belongs to so a biologist can fill everything without
+           drilling in. -->
+      <span *ngIf="section.groupLabel" class="tw-nested-tag">{{ section.groupLabel }}</span>
+      {{ section.label }}
+    </h3>
     <form [formGroup]="section.form" class="template-section-body">
       <formly-form [model]="section.model" [fields]="section.fields" [form]="section.form"> </formly-form>
     </form>

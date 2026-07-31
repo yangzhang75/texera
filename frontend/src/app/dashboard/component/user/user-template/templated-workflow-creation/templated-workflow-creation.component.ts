@@ -72,6 +72,10 @@ interface ConfigurableSection {
   // for display. Absent on root top-level sections.
   path?: string;
   depth?: number;
+  // For a nested-macro param surfaced at the outermost level: the display name
+  // of the containing nested macro (e.g. "limit_filter"), shown as a group tag
+  // so the biologist knows which nested macro the field belongs to.
+  groupLabel?: string;
 }
 
 // P2.3 — one entry per drilled level; the breadcrumb is [root, ...stack.labels].
@@ -501,6 +505,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     // this.sections here are always the top-level editable sections. Nested-macro
     // edits live in paramOverrides and are injected separately at Create (P2.4).
     for (const section of this.sections) {
+      if (section.path) continue; // nested-macro params live in paramOverrides, not here
       // Use the live form-control values, NOT section.model: after a submit/rebuild the Formly
       // `model` object can go stale, so submitting off it would apply the previously-applied value
       // instead of what the user just typed (e.g. Limit looked like it wouldn't update).
@@ -512,6 +517,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
   private mergeFormValuesIntoOperatorProperties(): void {
     for (const section of this.sections) {
+      if (section.path) continue; // nested-macro params are not top-level draft ops
       this.mergeSectionFormValuesIntoOperatorProperties(section);
     }
   }
@@ -523,6 +529,7 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
   private writeOperatorPropertiesToGraph(): void {
     for (const section of this.sections) {
+      if (section.path) continue; // nested-macro params aren't nodes in the top-level graph
       this.workflowActionService.setOperatorProperty(
         section.operatorID,
         this.templatedWorkflowDraftService.getOperatorProperties(section.operatorID)
@@ -816,8 +823,54 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
     this.lastEnrichedSignature = signature;
 
     this.formChangesSub?.unsubscribe();
-    this.sections = this.buildSectionsFromTemplate({ content: this.template }, enriched);
+    const topLevel = this.buildSectionsFromTemplate({ content: this.template }, enriched);
+    // Surface EVERY nested-macro configurable param at this outermost level too,
+    // so a biologist can fill everything without drilling into nested macros.
+    // Their values route to paramOverrides (see subscribeToFormChanges) and are
+    // injected at Create exactly like a drilled edit.
+    const nested = this.buildNestedSectionsRecursive(
+      this.template.operators,
+      "",
+      new Set([String(this.macroId)])
+    );
+    this.sections = [...topLevel, ...nested];
     this.subscribeToFormChanges();
+  }
+
+  /**
+   * Recursively build EDITABLE sections for every configurable leaf param inside
+   * the nested macros reachable from `operators`, so all nested params show at
+   * the outermost Generate page. Each section carries its full root-relative
+   * `path` (nodeId/.../leafOpId) — the same key drilled edits use — so its value
+   * flows to paramOverrides and is injected at Create. Cycle-guarded by macroId;
+   * skips nested macros whose definition hasn't been cached yet (prefetch async).
+   */
+  private buildNestedSectionsRecursive(
+    operators: OperatorPredicate[],
+    pathPrefix: string,
+    visited: Set<string>
+  ): ConfigurableSection[] {
+    const out: ConfigurableSection[] = [];
+    for (const op of operators) {
+      if (op.operatorType !== "Macro" || !op.operatorProperties?.["macroId"]) continue;
+      const macroId = String(op.operatorProperties["macroId"]);
+      if (visited.has(macroId)) continue; // cycle guard (A → B → A)
+      const body = this.macroContentCache.get(macroId);
+      if (!body) continue; // not prefetched yet — a later rebuild will include it
+      const nodePath = pathPrefix ? `${pathPrefix}/${op.operatorID}` : op.operatorID;
+      const groupLabel =
+        this.macroMeta.get(macroId)?.name ??
+        ((op.operatorProperties?.["displayName"] as string)?.trim() || "macro");
+      for (const inner of body.operators) {
+        if (inner.operatorType === "Macro") continue; // deeper macros handled by recursion
+        if ((inner.configurableProperties ?? []).length === 0) continue;
+        const section = this.buildEditableOverrideSection(inner, nodePath);
+        section.groupLabel = groupLabel;
+        out.push(section);
+      }
+      out.push(...this.buildNestedSectionsRecursive(body.operators, nodePath, new Set([...visited, macroId])));
+    }
+    return out;
   }
 
   /**
@@ -1110,12 +1163,17 @@ export class TemplatedWorkflowCreationComponent implements OnInit, AfterViewInit
 
     const valueChangeStreams = this.sections.map(section =>
       section.form.valueChanges.pipe(
-        map(nextModel =>
-          this.templatedWorkflowDraftService.mergeSectionModelIfChanged(
-            section.operatorID,
-            nextModel
-          )
-        ),
+        map(nextModel => {
+          // Nested-macro params surfaced at root carry a `path`: route their
+          // values into paramOverrides (keyed by the leaf's full path), which
+          // injectNestedParamOverrides applies at Create + preview. Top-level
+          // sections go into the draft service by operatorID as before.
+          if (section.path) {
+            this.paramOverrides[section.path] = { ...section.form.getRawValue() };
+            return true;
+          }
+          return this.templatedWorkflowDraftService.mergeSectionModelIfChanged(section.operatorID, nextModel);
+        }),
         filter(changed => changed)
       )
     );

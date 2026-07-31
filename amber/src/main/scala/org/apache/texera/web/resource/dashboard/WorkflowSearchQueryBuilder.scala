@@ -100,11 +100,16 @@ object WorkflowSearchQueryBuilder extends SearchQueryBuilder {
       )
     )
 
-    // Hide macro definitions (kind = MACRO). Macros share the workflow table but
-    // belong in the Macros tab, not the Workflows list. (WorkflowResource's own
-    // baseWorkflowSelect already filters these; the dashboard search grid needs
-    // the same exclusion.)
-    condition = condition.and(WORKFLOW.KIND.eq(WorkflowKindEnum.WORKFLOW))
+    // Macros share the workflow table but belong in the Macros tab, so the
+    // private Workflows grid (uid != null) must still exclude them. The one
+    // place a macro SHOULD appear among workflows is the PUBLIC hub browse
+    // (uid == null): a macro made public is then discoverable exactly like a
+    // public workflow. The public branch above already requires IS_PUBLIC=true,
+    // so we only apply the kind=WORKFLOW exclusion on the private path — the
+    // public path now surfaces public macros alongside public workflows.
+    if (uid != null) {
+      condition = condition.and(WORKFLOW.KIND.eq(WorkflowKindEnum.WORKFLOW))
+    }
 
     baseQuery.where(condition)
   }

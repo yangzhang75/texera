@@ -47,6 +47,7 @@ describe("MacroDetailComponent", () => {
     macroSvc = {
       getMacro: vi.fn(() => of({ wid: 7, name: "m", description: "d" })),
       macroDetailToWorkflow: vi.fn(() => positionedWorkflow),
+      isMacroRunnable: vi.fn(() => false),
       cloneMacro: vi.fn(() => of(999)),
     };
     notif = { success: vi.fn(), error: vi.fn() };
@@ -68,11 +69,11 @@ describe("MacroDetailComponent", () => {
     expect(c.macroName).toBe("m");
   });
 
-  it("onClone clones the macro and navigates to the user's Macros tab", async () => {
-    c.onClone();
+  it("onClone clones the macro and navigates to the Macros tab on a filter that shows it", async () => {
+    c.onClone(); // not-runnable by default -> All tab
     expect(macroSvc.cloneMacro).toHaveBeenCalledWith(7);
     await new Promise(res => setTimeout(res, 0));
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN]);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN], { queryParams: { filter: "all" } });
   });
 
   it("onGenerate opens the Generate page for this macro", () => {

@@ -86,9 +86,17 @@ export class MacrosComponent implements OnInit {
 
   ngOnInit(): void {
     this.publicBrowse = this.route.snapshot.data["publicBrowse"] === true;
-    // In the public Hub catalogue, "All" is the sensible default (you're
-    // browsing everything shared, not filtering your own runnable ones).
-    if (this.publicBrowse) this.filterMode = "all";
+    if (this.publicBrowse) {
+      // In the public Hub catalogue, "All" is the sensible default (you're
+      // browsing everything shared, not filtering your own runnable ones).
+      this.filterMode = "all";
+    } else {
+      // After a Clone we land here with ?filter=all|runnable so the new copy is
+      // visible under the right tab — a not-runnable clone would otherwise be
+      // hidden by the default Runnable filter.
+      const f = this.route.snapshot.queryParamMap?.get("filter");
+      if (f === "all" || f === "runnable") this.filterMode = f;
+    }
     this.reload();
   }
 
@@ -150,13 +158,6 @@ export class MacrosComponent implements OnInit {
    */
   isRunnable(m: MacroSummary): boolean {
     return this.macroService.isMacroRunnable(this.inCount(m), m.bodyOperatorTypes ?? []);
-  }
-
-  /** Row tooltip: the default open depends on runnability (see onOpen). */
-  runnableTooltip(m: MacroSummary): string {
-    return this.isRunnable(m)
-      ? "Opens in Generate workflow (the primary use case). Use Edit macro to change its body / configurable properties."
-      : "Opens in Edit macro — not runnable on its own (no data source). You can still Generate it, but that produces an Invalid Workflow you complete by adding a source.";
   }
 
   /**
@@ -265,25 +266,55 @@ export class MacrosComponent implements OnInit {
     firstValueFrom(this.macroService.cloneMacro(m.wid))
       .then(() => {
         this.notificationService.success(`Cloned "${m.name}" to your Macros.`);
-        this.router.navigate([USER_MACRO_OPEN]);
+        // Land on the tab that shows the copy: a not-runnable clone is hidden by
+        // the default Runnable filter, so send it to All.
+        this.router.navigate([USER_MACRO_OPEN], {
+          queryParams: { filter: this.isRunnable(m) ? "runnable" : "all" },
+        });
       })
       .catch(() => this.notificationService.error("Failed to clone macro."));
   }
 
-  /** Row action "Delete" — snapshot-only, so no LIVE references to worry about. */
+  /** Row action "Download" — export the macro (+ nested deps) as a JSON file. */
+  onDownloadMacro(m: MacroSummary): void {
+    firstValueFrom(this.macroService.exportMacroToFile(m.wid)).catch(() =>
+      this.notificationService.error("Failed to download macro.")
+    );
+  }
+
+  /**
+   * Toolbar "Upload macro" (Macros tab only) — read a macro JSON file produced
+   * by Download and import it as a new macro, then refresh. Macros can only be
+   * uploaded here, not on the Workflows tab.
+   */
+  onUploadMacro(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      firstValueFrom(this.macroService.importMacroFromJson(reader.result as string))
+        .then(() => {
+          this.notificationService.success("Macro uploaded.");
+          this.reload();
+        })
+        .catch(() => this.notificationService.error("Failed to upload macro. Is it a valid macro export file?"));
+    };
+    reader.readAsText(file);
+    input.value = ""; // let the same file be re-selected later
+  }
+
+  /**
+   * Row action "Delete" — deletes immediately, no confirm dialog (per product
+   * preference). Snapshot-only, so workflows already generated from the macro
+   * are unaffected. The row is dropped from the list on success.
+   */
   onDeleteMacro(m: MacroSummary): void {
-    this.modalService.confirm({
-      nzTitle: `Delete macro "${m.name}"?`,
-      nzContent: "This removes the macro definition. Workflows already generated from it are unaffected.",
-      nzOkText: "Delete",
-      nzOkDanger: true,
-      nzOnOk: () =>
-        firstValueFrom(this.workflowPersistService.deleteWorkflow([m.wid]))
-          .then(() => {
-            this.macros = this.macros.filter(x => x.wid !== m.wid);
-            this.notificationService.success("Macro deleted.");
-          })
-          .catch(() => this.notificationService.error("Failed to delete macro.")),
-    });
+    firstValueFrom(this.workflowPersistService.deleteWorkflow([m.wid]))
+      .then(() => {
+        this.macros = this.macros.filter(x => x.wid !== m.wid);
+        this.notificationService.success(`Deleted "${m.name}".`);
+      })
+      .catch(() => this.notificationService.error("Failed to delete macro."));
   }
 }

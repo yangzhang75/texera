@@ -69,6 +69,7 @@ export class MacroDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   macroName = "";
   ownerName = "";
   macroDescription = "";
+  private runnable = false;
 
   constructor(
     private workflowActionService: WorkflowActionService,
@@ -118,6 +119,10 @@ export class MacroDetailComponent implements OnInit, AfterViewInit, OnDestroy {
               // Positioned + boundary-marker-inclusive body -> reloadWorkflow can
               // lay it out on the read-only canvas.
               const workflow = this.macroService.macroDetailToWorkflow(detail);
+              // Same runnable gate the Macros list uses — decides which filter
+              // tab a Clone should land on.
+              const opTypes = (workflow.content?.operators ?? []).map(o => o.operatorType);
+              this.runnable = this.macroService.isMacroRunnable(detail.portSpec?.inputs?.length ?? 0, opTypes);
               this.workflowActionService.reloadWorkflow(workflow);
               this.workflowActionService.getTexeraGraph().triggerCenterEvent();
             },
@@ -146,7 +151,10 @@ export class MacroDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     firstValueFrom(this.macroService.cloneMacro(this.wid))
       .then(() => {
         this.notificationService.success(`Cloned "${this.macroName}" to your Macros.`);
-        this.router.navigate([USER_MACRO_OPEN]);
+        // Land on the tab that shows the copy (not-runnable → All).
+        this.router.navigate([USER_MACRO_OPEN], {
+          queryParams: { filter: this.runnable ? "runnable" : "all" },
+        });
       })
       .catch(() => this.notificationService.error("Failed to clone macro."));
   }

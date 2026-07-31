@@ -40,6 +40,18 @@
       <span [class.on]="filterMode === 'all'" (click)="filterMode = 'all'">All</span>
       <span [class.on]="filterMode === 'runnable'" (click)="filterMode = 'runnable'">Runnable</span>
     </span>
+    <!-- Upload lives ONLY on the Macros tab (not the Workflows tab): import a
+         macro exported via Download. -->
+    <button
+      *ngIf="!publicBrowse"
+      class="upload-btn"
+      (click)="macroFileInput.click()"
+      nz-tooltip="Upload a macro (.json exported from Download)"
+      nzTooltipPlacement="bottom">
+      <i nz-icon nzType="cloud-upload" nzTheme="outline"></i>
+      <span>Upload</span>
+    </button>
+    <input #macroFileInput type="file" accept=".json,application/json" hidden (change)="onUploadMacro($event)" />
   </div>
 
   <div *ngIf="isLoading" class="macros-empty">Loading…</div>
@@ -56,7 +68,7 @@
   <div class="list" *ngIf="!isLoading && filteredMacros.length > 0">
     <!-- The whole row opens the macro (runnable → Generate, else → Edit); the
          action buttons stop propagation so they don't also open it. -->
-    <div class="row" *ngFor="let m of filteredMacros" (click)="onOpen(m)" [title]="runnableTooltip(m)">
+    <div class="row" *ngFor="let m of filteredMacros" (click)="onOpen(m)">
       <!-- col 1: flask glyph + #wid -->
       <div class="idcell">
         <span class="glyph"><i nz-icon nzType="experiment" nzTheme="outline"></i></span>
@@ -165,6 +177,13 @@
           nz-tooltip="Share / make public"
           nzTooltipPlacement="bottom">
           <i nz-icon nzType="share-alt" nzTheme="outline"></i>
+        </button>
+        <button
+          class="iconbtn"
+          (click)="$event.stopPropagation(); onDownloadMacro(m)"
+          nz-tooltip="Download macro (.json)"
+          nzTooltipPlacement="bottom">
+          <i nz-icon nzType="cloud-download" nzTheme="outline"></i>
         </button>
         <button
           class="iconbtn danger"

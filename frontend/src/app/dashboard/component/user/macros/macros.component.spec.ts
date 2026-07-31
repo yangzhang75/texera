@@ -52,6 +52,8 @@ describe("MacrosComponent", () => {
       listMacros: () => of([]),
       listPublicMacros: () => of([]),
       cloneMacro: vi.fn(() => of(999)),
+      exportMacroToFile: vi.fn(() => of(undefined)),
+      importMacroFromJson: vi.fn(() => of({ wid: 42 })),
     };
     notif = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
     persist = {
@@ -165,13 +167,13 @@ describe("MacrosComponent", () => {
     expect(opts.nzData).toMatchObject({ type: "workflow", id: 7, writeAccess: true });
   });
 
-  it("Delete confirms, calls deleteWorkflow, and drops the row from the list", async () => {
+  it("Delete removes the macro immediately (no confirm dialog) and drops the row", async () => {
     const m = macro({ wid: 9 });
     component.macros = [m, macro({ wid: 10 })];
     component.onDeleteMacro(m);
-    const opts = modal.confirm.mock.calls[0][0];
-    await opts.nzOnOk(); // run the confirm handler
+    expect(modal.confirm).not.toHaveBeenCalled(); // deletes directly, no popup
     expect(persist.deleteWorkflow).toHaveBeenCalledWith([9]);
+    await new Promise(res => setTimeout(res, 0));
     expect(component.macros.map(x => x.wid)).toEqual([10]);
   });
 
@@ -205,13 +207,50 @@ describe("MacrosComponent", () => {
     expect(m.description).toBe("new desc");
   });
 
-  it("Hub clone: onCloneMacro clones the macro and navigates to the user's Macros", async () => {
+  it("Hub clone: a runnable clone lands on the Runnable tab, a not-runnable clone on All", async () => {
     const cloneSpy = vi.fn(() => of(999));
     macroSvc.cloneMacro = cloneSpy;
+
+    runnable = true;
     component.onCloneMacro(macro({ wid: 7, name: "shared" }));
     expect(cloneSpy).toHaveBeenCalledWith(7);
     await new Promise(res => setTimeout(res, 0));
-    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN]);
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN], { queryParams: { filter: "runnable" } });
+
+    runnable = false;
+    component.onCloneMacro(macro({ wid: 8, name: "shared2" }));
+    await new Promise(res => setTimeout(res, 0));
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN], { queryParams: { filter: "all" } });
+  });
+
+  it("onDownloadMacro exports the macro to a JSON file", () => {
+    component.onDownloadMacro(macro({ wid: 5 }));
+    expect(macroSvc.exportMacroToFile).toHaveBeenCalledWith(5);
+  });
+
+  it("onUploadMacro reads the file, imports it, resets the input, and reloads", async () => {
+    const reloadSpy = vi.spyOn(component, "reload").mockImplementation(() => {});
+    const file = new File(['{"name":"x"}'], "m.json", { type: "application/json" });
+    const event = { target: { files: [file], value: "keep" } } as any;
+    component.onUploadMacro(event);
+    expect(event.target.value).toBe(""); // input reset so the same file can be re-picked
+    await new Promise(res => setTimeout(res, 30)); // let FileReader.onload fire
+    expect(macroSvc.importMacroFromJson).toHaveBeenCalledWith('{"name":"x"}');
+    expect(reloadSpy).toHaveBeenCalled();
+  });
+
+  it("onUploadMacro is a no-op when no file is selected", () => {
+    component.onUploadMacro({ target: { files: [] } } as any);
+    expect(macroSvc.importMacroFromJson).not.toHaveBeenCalled();
+  });
+
+  it("reads ?filter from the query params on the owner Macros page", () => {
+    const routeStub = { snapshot: { data: {}, queryParamMap: { get: () => "all" } } };
+    const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
+      navigate,
+    } as any, routeStub as any);
+    c.ngOnInit();
+    expect(c.filterMode).toBe("all");
   });
 
   it("onDescClick edits in place for owner, but lets the row open in public browse", () => {

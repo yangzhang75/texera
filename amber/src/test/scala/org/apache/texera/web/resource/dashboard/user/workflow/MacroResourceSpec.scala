@@ -90,13 +90,15 @@ class MacroResourceSpec
     s"""{"operators":[$ops],"links":[],"inputs":[],"outputs":[]}"""
   }
 
-  // Insert a kind=MACRO workflow owned by testUid with WRITE access, return its wid.
-  private def createTestMacro(content: String): Integer = {
+  // Insert a kind=MACRO workflow owned by testUid with WRITE access, return its
+  // wid. Only testUid gets an access row; otherUid never does, so a public
+  // macro is readable by otherUid solely via the IS_PUBLIC gate.
+  private def createTestMacro(content: String, isPublic: Boolean = false): Integer = {
     val macroWf = new Workflow
     macroWf.setName("macro_spec")
     macroWf.setDescription("d")
     macroWf.setContent(content)
-    macroWf.setIsPublic(false)
+    macroWf.setIsPublic(isPublic)
     macroWf.setKind(WorkflowKindEnum.MACRO)
     workflowDao.insert(macroWf)
     val wid = macroWf.getWid
@@ -223,6 +225,48 @@ class MacroResourceSpec
     }
     // No workflow was generated for the rejected caller.
     realWidsFor(macroWid) shouldBe empty
+  }
+
+  it should "allow a NON-owner to generate from a PUBLIC macro (Hub catalogue)" in {
+    val publicMacro = createTestMacro(macroBody("CSVFileScan"), isPublic = true)
+
+    // otherUid has no access row, but the macro is public -> allowed.
+    val newWid = resource.generateWorkflow(publicMacro, generateReq(), sessionUser(otherUid))
+
+    workflowDao.fetchOneByWid(newWid).getKind shouldBe WorkflowKindEnum.WORKFLOW
+    realWidsFor(publicMacro) should contain(newWid)
+  }
+
+  it should "still reject a NON-owner generating from a PRIVATE macro" in {
+    val privateMacro = createTestMacro(macroBody("CSVFileScan")) // isPublic = false
+
+    assertThrows[ForbiddenException] {
+      resource.generateWorkflow(privateMacro, generateReq(), sessionUser(otherUid))
+    }
+    realWidsFor(privateMacro) shouldBe empty
+  }
+
+  "get" should "let a NON-owner read a PUBLIC macro (readonly), but reject a private one" in {
+    val publicMacro = createTestMacro(macroBody("Filter"), isPublic = true)
+
+    val detail = resource.get(publicMacro, sessionUser(otherUid))
+    detail.isOwner shouldBe false
+    detail.readonly shouldBe true // read-only: public grants read, never write
+
+    val privateMacro = createTestMacro(macroBody("Filter"))
+    assertThrows[ForbiddenException] {
+      resource.get(privateMacro, sessionUser(otherUid))
+    }
+  }
+
+  "listPublic" should "return public macros regardless of the requester's access, and exclude private ones" in {
+    val pub = createTestMacro(macroBody("CSVFileScan"), isPublic = true)
+    val priv = createTestMacro(macroBody("Filter")) // not public
+
+    val wids = resource.listPublic(sessionUser(otherUid)).map(_.wid)
+
+    wids should contain(pub)
+    wids should not contain priv
   }
 
   "list" should "surface the macro body's operator types (the backend half of the runnable gate)" in {

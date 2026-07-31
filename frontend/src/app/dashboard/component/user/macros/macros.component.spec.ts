@@ -51,6 +51,7 @@ describe("MacrosComponent", () => {
       isMacroRunnable: () => runnable,
       listMacros: () => of([]),
       listPublicMacros: () => of([]),
+      cloneMacro: vi.fn(() => of(999)),
     };
     notif = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
     persist = {
@@ -202,6 +203,15 @@ describe("MacrosComponent", () => {
     expect(persist.updateWorkflowDescription).toHaveBeenCalledWith(13, "new desc");
     await new Promise(res => setTimeout(res, 0));
     expect(m.description).toBe("new desc");
+  });
+
+  it("Hub clone: onCloneMacro clones the macro and navigates to the user's Macros", async () => {
+    const cloneSpy = vi.fn(() => of(999));
+    macroSvc.cloneMacro = cloneSpy;
+    component.onCloneMacro(macro({ wid: 7, name: "shared" }));
+    expect(cloneSpy).toHaveBeenCalledWith(7);
+    await new Promise(res => setTimeout(res, 0));
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN]);
   });
 
   it("onDescClick edits in place for owner, but lets the row open in public browse", () => {

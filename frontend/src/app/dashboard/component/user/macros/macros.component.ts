@@ -254,6 +254,19 @@ export class MacrosComponent implements OnInit {
     this.startEditDesc(m);
   }
 
+  /**
+   * Hub action "Clone to my Macros" — copies a public macro into a new private
+   * macro the caller owns, then jumps to Your Work > Macros so they see the copy.
+   */
+  onCloneMacro(m: MacroSummary): void {
+    firstValueFrom(this.macroService.cloneMacro(m.wid))
+      .then(() => {
+        this.notificationService.success(`Cloned "${m.name}" to your Macros.`);
+        this.router.navigate([USER_MACRO_OPEN]);
+      })
+      .catch(() => this.notificationService.error("Failed to clone macro."));
+  }
+
   /** Row action "Delete" — snapshot-only, so no LIVE references to worry about. */
   onDeleteMacro(m: MacroSummary): void {
     this.modalService.confirm({

@@ -138,8 +138,19 @@
         <span class="metaval">{{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
       </div>
 
-      <!-- col 6: hover-revealed icon actions (owner-only). Public/Private lives
-           inside Share; rename + description are inline above. -->
+      <!-- col 6 (public Hub catalogue): Clone the macro into your own Macros. -->
+      <div class="actions" *ngIf="publicBrowse">
+        <button
+          class="iconbtn"
+          (click)="$event.stopPropagation(); onCloneMacro(m)"
+          nz-tooltip="Clone to my Macros"
+          nzTooltipPlacement="bottom">
+          <i nz-icon nzType="copy" nzTheme="outline"></i>
+        </button>
+      </div>
+
+      <!-- col 6 (your own list): hover-revealed icon actions (owner-only).
+           Public/Private lives inside Share; rename + description are inline above. -->
       <div class="actions" *ngIf="!publicBrowse">
         <button
           class="iconbtn"

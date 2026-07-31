@@ -1113,6 +1113,15 @@ export class MacroService {
   }
 
   /**
+   * Clone a macro (own / shared / public) into a new PRIVATE macro owned by the
+   * caller (POST /macro/{wid}/clone) — the "take a copy" action on the Hub
+   * Macros tab. Resolves to the new macro's wid.
+   */
+  public cloneMacro(wid: number): Observable<number> {
+    return this.http.post<number>(`${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/${wid}/clone`, {});
+  }
+
+  /**
    * Map of `macroId → most recently seen lastModifiedTime` (epoch ms),
    * populated by every `listMacros` response. Used by the "refresh macro
    * instance" context-menu action to decide whether a canvas instance is

@@ -267,6 +267,51 @@ class MacroResource extends LazyLogging {
   }
 
   /**
+    * Clone a macro the caller can read (their own, shared, or PUBLIC) into a NEW
+    * macro they own (private). This is the "take a copy" action for the Hub
+    * "Macros" tab: browse someone's public macro, then clone it into your own
+    * Macros to customize. Content + macro_metadata are copied verbatim; the copy
+    * starts private. Returns the new macro's wid.
+    */
+  @POST
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/{wid}/clone")
+  def clone(@PathParam("wid") wid: Integer, @Auth sessionUser: SessionUser): Integer = {
+    val uid = sessionUser.getUser.getUid
+    if (!canReadMacro(wid, uid)) {
+      throw new ForbiddenException("No sufficient access privilege.")
+    }
+    val src = Option(workflowDao.fetchOneByWid(wid))
+      .filter(_.getKind == WorkflowKindEnum.MACRO)
+      .getOrElse(throw new NotFoundException(s"Macro $wid not found"))
+    val srcMeta = Option(macroMetadataDao.fetchOneByWid(wid))
+      .getOrElse(throw new NotFoundException(s"Macro $wid metadata missing"))
+
+    val copy = new Workflow()
+    copy.setName(src.getName + " (copy)")
+    copy.setDescription(src.getDescription)
+    copy.setContent(src.getContent)
+    copy.setIsPublic(false) // a clone is private to its new owner
+    copy.setKind(WorkflowKindEnum.MACRO)
+    workflowDao.insert(copy)
+
+    workflowOfUserDao.insert(new WorkflowOfUser(uid, copy.getWid))
+    workflowUserAccessDao.insert(new WorkflowUserAccess(uid, copy.getWid, PrivilegeEnum.WRITE))
+    WorkflowVersionResource.insertVersion(copy, insertingNewWorkflow = true)
+
+    macroMetadataDao.insert(
+      new MacroMetadata(
+        copy.getWid,
+        srcMeta.getPortSpec,
+        srcMeta.getParamSpec,
+        srcMeta.getCategory,
+        srcMeta.getIcon
+      )
+    )
+    copy.getWid
+  }
+
+  /**
     * Generate an independent, normal (kind=WORKFLOW) workflow from a macro
     * definition (= the unified "Template" flow). The caller sends the already
     * expanded + param-patched content; this persists it as a new workflow the

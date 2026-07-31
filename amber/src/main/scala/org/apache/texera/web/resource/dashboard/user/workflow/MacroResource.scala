@@ -285,7 +285,7 @@ class MacroResource extends LazyLogging {
       @Auth sessionUser: SessionUser
   ): Integer = {
     val user = sessionUser.getUser
-    if (!hasReadAccess(wid, user.getUid)) {
+    if (!canReadMacro(wid, user.getUid)) {
       throw new ForbiddenException("No sufficient access privilege.")
     }
     // By design this endpoint does NOT validate "runnable". The runnable gate
@@ -479,12 +479,25 @@ class MacroResource extends LazyLogging {
     counts.toMap
   }
 
+  /**
+    * Read gate for macro endpoints: the normal per-user read access, OR the
+    * macro being public (kind=MACRO AND IS_PUBLIC=true). Lets anyone open and
+    * generate from a macro shared in the Hub "Macros" tab, while writes still
+    * require hasWriteAccess. Read-only: never grants edit/save.
+    */
+  private def canReadMacro(wid: Integer, uid: Integer): Boolean = {
+    hasReadAccess(wid, uid) || {
+      val wf = workflowDao.fetchOneByWid(wid)
+      wf != null && wf.getKind == WorkflowKindEnum.MACRO && java.lang.Boolean.TRUE.equals(wf.getIsPublic)
+    }
+  }
+
   @GET
   @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/{wid}")
   def get(@PathParam("wid") wid: Integer, @Auth sessionUser: SessionUser): MacroDetail = {
     val uid = sessionUser.getUser.getUid
-    if (!hasReadAccess(wid, uid)) {
+    if (!canReadMacro(wid, uid)) {
       throw new ForbiddenException("No sufficient access privilege.")
     }
     val workflow = Option(workflowDao.fetchOneByWid(wid))
@@ -522,7 +535,7 @@ class MacroResource extends LazyLogging {
       @Auth sessionUser: SessionUser
   ): MacroSchema = {
     val uid = sessionUser.getUser.getUid
-    if (!hasReadAccess(wid, uid)) {
+    if (!canReadMacro(wid, uid)) {
       throw new ForbiddenException("No sufficient access privilege.")
     }
     val metadata = Option(macroMetadataDao.fetchOneByWid(wid))

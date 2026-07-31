@@ -22,10 +22,13 @@
      [owner] · [Created] · [Edited] · [hover actions]. Right-aligned date columns,
      hover-revealed icon actions, Runnable + Public pills. -->
 <div class="macros-page">
-  <h1 class="page-title">Macros</h1>
-  <p class="subtitle">
+  <h1 class="page-title">{{ publicBrowse ? "Public Macros" : "Macros" }}</h1>
+  <p class="subtitle" *ngIf="!publicBrowse">
     Reusable, encapsulated sub-workflows. Generate an independent workflow from a runnable one, or Edit a macro to
     change its body and configurable properties.
+  </p>
+  <p class="subtitle" *ngIf="publicBrowse">
+    Macros shared by everyone. Open one to generate an independent workflow from it.
   </p>
 
   <div class="toolbar">
@@ -40,7 +43,10 @@
   </div>
 
   <div *ngIf="isLoading" class="macros-empty">Loading…</div>
-  <div *ngIf="!isLoading && macros.length === 0" class="macros-empty">
+  <div *ngIf="!isLoading && macros.length === 0 && publicBrowse" class="macros-empty">
+    No public macros yet. Make one of your macros public and it will appear here for everyone.
+  </div>
+  <div *ngIf="!isLoading && macros.length === 0 && !publicBrowse" class="macros-empty">
     No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
   </div>
   <div *ngIf="!isLoading && macros.length > 0 && filteredMacros.length === 0" class="macros-empty">
@@ -93,8 +99,9 @@
       </div>
 
       <!-- col 6: hover-revealed icon actions (stop propagation so they don't
-           also trigger the row's open handler) -->
-      <div class="actions">
+           also trigger the row's open handler). Owner-only, so hidden in the
+           public Hub catalogue. -->
+      <div class="actions" *ngIf="!publicBrowse">
         <button
           class="iconbtn"
           (click)="$event.stopPropagation(); onEditMacro(m)"

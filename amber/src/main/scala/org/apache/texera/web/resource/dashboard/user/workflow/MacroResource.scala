@@ -383,6 +383,66 @@ class MacroResource extends LazyLogging {
   }
 
   /**
+    * Public macro catalogue for the Hub "Macros" tab: every macro
+    * (kind=MACRO) that its owner has made public (WORKFLOW.IS_PUBLIC=true),
+    * regardless of who is asking. Mirrors `list` but swaps the per-user access
+    * join for an IS_PUBLIC filter, so anyone can browse shared macros the same
+    * way the Hub browses public workflows. `isOwner` is still computed against
+    * the requester so the frontend can tell which public macros are their own.
+    */
+  @GET
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/public")
+  def listPublic(@Auth sessionUser: SessionUser): List[MacroSummary] = {
+    val uid = sessionUser.getUser.getUid
+    val rows = context
+      .selectDistinct(
+        WORKFLOW.WID,
+        WORKFLOW.NAME,
+        WORKFLOW.DESCRIPTION,
+        WORKFLOW.CREATION_TIME,
+        WORKFLOW.LAST_MODIFIED_TIME,
+        MACRO_METADATA.PORT_SPEC,
+        MACRO_METADATA.CATEGORY,
+        MACRO_METADATA.ICON,
+        WORKFLOW_OF_USER.UID,
+        USER.NAME,
+        WORKFLOW.CONTENT,
+        WORKFLOW.IS_PUBLIC
+      )
+      .from(WORKFLOW)
+      .leftJoin(MACRO_METADATA)
+      .on(MACRO_METADATA.WID.eq(WORKFLOW.WID))
+      .leftJoin(WORKFLOW_OF_USER)
+      .on(WORKFLOW_OF_USER.WID.eq(WORKFLOW.WID))
+      .leftJoin(USER)
+      .on(USER.UID.eq(WORKFLOW_OF_USER.UID))
+      .where(WORKFLOW.KIND.eq(WorkflowKindEnum.MACRO))
+      .and(WORKFLOW.IS_PUBLIC.eq(true))
+      .fetch()
+
+    val usageMap = computeMacroUsage(uid)
+    rows.asScala.map { r =>
+      MacroSummary(
+        r.value1(),
+        r.value2(),
+        r.value3(),
+        r.value4(),
+        r.value5(),
+        parsePortSpec(r.value6()),
+        Option(r.value7()),
+        Option(r.value8()),
+        usageMap.getOrElse(r.value1().intValue(), 0),
+        isOwner = r.value9() != null && r.value9() == uid,
+        ownerName = Option(r.value10()).getOrElse(""),
+        isPublic = r.value12() != null && r.value12().booleanValue(),
+        bodyOperatorTypes = bodyOperatorTypesOf(r.value11()),
+        version = WorkflowVersionResource.getLatestVersion(r.value1())
+      )
+    }.toList
+  }
+
+  /**
     * For each macro the user can see, count the distinct non-macro workflows
     * (also user-visible) whose `content` JSON embeds the macro's wid via
     * `"macroId":"<wid>"`. The regex is robust to whitespace variants Jackson

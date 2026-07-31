@@ -20,7 +20,7 @@
 import { Component, inject, OnInit } from "@angular/core";
 import { DatePipe, NgFor, NgIf } from "@angular/common";
 import { FormsModule } from "@angular/forms";
-import { Router } from "@angular/router";
+import { ActivatedRoute, Router } from "@angular/router";
 import { firstValueFrom, forkJoin } from "rxjs";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
@@ -62,16 +62,28 @@ export class MacrosComponent implements OnInit {
   searchText = "";
   filterMode: "all" | "runnable" = "runnable";
 
+  // publicBrowse (set from route data on the Hub "Macros" tab) turns this page
+  // into a read-only catalogue of everyone's public macros: it fetches
+  // /macro/public instead of the user's own list, hides the owner-only actions,
+  // and a click always opens Generate (never Edit). Defaults false = the normal
+  // "Your Work > Macros" page.
+  publicBrowse = false;
+
   constructor(
     private macroService: MacroService,
     private notificationService: NotificationService,
     private operatorMetadataService: OperatorMetadataService,
     private workflowPersistService: WorkflowPersistService,
     private modalService: NzModalService,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
+    this.publicBrowse = this.route.snapshot.data["publicBrowse"] === true;
+    // In the public Hub catalogue, "All" is the sensible default (you're
+    // browsing everything shared, not filtering your own runnable ones).
+    if (this.publicBrowse) this.filterMode = "all";
     this.reload();
   }
 
@@ -80,7 +92,7 @@ export class MacrosComponent implements OnInit {
     // Load operator metadata alongside the macro list: isRunnable() needs the
     // operator schemas (input-port counts) to detect body source operators.
     forkJoin({
-      macros: this.macroService.listMacros(),
+      macros: this.publicBrowse ? this.macroService.listPublicMacros() : this.macroService.listMacros(),
       _metadata: this.operatorMetadataService.getOperatorMetadata(),
     })
       .pipe(untilDestroyed(this))
@@ -168,7 +180,9 @@ export class MacrosComponent implements OnInit {
    * to Generate a not-runnable macro still can.
    */
   onOpen(m: MacroSummary): void {
-    if (this.isRunnable(m)) {
+    // In the public Hub catalogue you're browsing other people's macros — Edit
+    // isn't yours to do, so a click always goes to Generate.
+    if (this.publicBrowse || this.isRunnable(m)) {
       this.onGenerate(m);
     } else {
       this.onEditMacro(m);

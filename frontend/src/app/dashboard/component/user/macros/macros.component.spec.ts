@@ -47,7 +47,11 @@ describe("MacrosComponent", () => {
   beforeEach(() => {
     runnable = true;
     navigate = vi.fn();
-    macroSvc = { isMacroRunnable: () => runnable, listMacros: () => of([]) };
+    macroSvc = {
+      isMacroRunnable: () => runnable,
+      listMacros: () => of([]),
+      listPublicMacros: () => of([]),
+    };
     notif = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
     persist = {
       retrieveOwners: vi.fn(() => of(["a@b.c"])),
@@ -59,7 +63,16 @@ describe("MacrosComponent", () => {
     const metadataStub = { getOperatorMetadata: () => of({}) };
     // constructor: (macroService, notificationService, operatorMetadataService,
     //   workflowPersistService, modalService, router)
-    component = new MacrosComponent(macroSvc, notif, metadataStub as any, persist, modal, { navigate } as any);
+    const routeStub = { snapshot: { data: {} } };
+    component = new MacrosComponent(
+      macroSvc,
+      notif,
+      metadataStub as any,
+      persist,
+      modal,
+      { navigate } as any,
+      routeStub as any
+    );
   });
 
   it("runnable macro opens the Generate (fill) page by default", () => {
@@ -121,6 +134,26 @@ describe("MacrosComponent", () => {
 
   it("defaults the filter to Runnable (biologist-facing page)", () => {
     expect(component.filterMode).toBe("runnable");
+  });
+
+  it("publicBrowse mode (Hub tab): fetches public macros, defaults filter to All, click always Generates", () => {
+    const pub = vi.fn(() => of([macro({ wid: 3, isPublic: true } as Partial<MacroSummary>)]));
+    macroSvc.listPublicMacros = pub;
+    const listOwn = vi.fn(() => of([]));
+    macroSvc.listMacros = listOwn;
+    const routeStub = { snapshot: { data: { publicBrowse: true } } };
+    const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
+      navigate,
+    } as any, routeStub as any);
+    c.ngOnInit();
+    expect(c.publicBrowse).toBe(true);
+    expect(c.filterMode).toBe("all");
+    expect(pub).toHaveBeenCalled();
+    expect(listOwn).not.toHaveBeenCalled();
+    // even a not-runnable macro opens Generate (not Edit) when browsing others' public macros
+    runnable = false;
+    c.onOpen(macro({ wid: 3 }));
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, 3]);
   });
 
   it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {

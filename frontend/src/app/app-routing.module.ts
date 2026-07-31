@@ -95,6 +95,17 @@ routes.push({
             },
           ],
         },
+        {
+          path: "macro",
+          children: [
+            {
+              // Public macro catalogue: the Macros page in read-only browse mode.
+              path: "result",
+              component: MacrosComponent,
+              data: { publicBrowse: true },
+            },
+          ],
+        },
       ],
     },
     {

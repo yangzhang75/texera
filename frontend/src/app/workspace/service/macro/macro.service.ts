@@ -75,6 +75,7 @@ export interface MacroProvenanceEntry {
 export const MACRO_BASE_URL = "macro";
 export const MACRO_CREATE_URL = MACRO_BASE_URL + "/create";
 export const MACRO_LIST_URL = MACRO_BASE_URL + "/list";
+export const MACRO_PUBLIC_URL = MACRO_BASE_URL + "/public";
 
 // Mirrors the case classes on `MacroResource` (amber). Keeping the shapes
 // hand-typed (rather than generating) so the dev loop stays simple.
@@ -1100,6 +1101,15 @@ export class MacroService {
           }
         })
       );
+  }
+
+  /**
+   * Public macro catalogue for the Hub "Macros" tab — every macro any owner
+   * has made public (GET /macro/public). Same shape as listMacros; used by the
+   * Macros page in publicBrowse mode.
+   */
+  public listPublicMacros(): Observable<MacroSummary[]> {
+    return this.http.get<MacroSummary[]>(`${AppSettings.getApiEndpoint()}/${MACRO_PUBLIC_URL}`);
   }
 
   /**

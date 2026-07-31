@@ -169,10 +169,11 @@ export class MacrosComponent implements OnInit {
    * to Generate a not-runnable macro still can.
    */
   onOpen(m: MacroSummary): void {
-    // In the public Hub catalogue, a click opens the read-only preview/detail
-    // page (where you can Clone or Generate) — like the workflow Hub. On your
-    // own list it goes straight to Generate (runnable) or Edit.
-    if (this.publicBrowse) {
+    // Someone ELSE's public macro in the Hub → read-only preview/detail page
+    // (where you can Clone or Generate), like the workflow Hub. Your OWN macro —
+    // whether on your list OR in the Hub browse — goes straight to Generate
+    // (runnable) or Edit, since it's yours to use directly.
+    if (this.publicBrowse && !m.isOwner) {
       this.router.navigate([HUB_MACRO_RESULT_DETAIL, m.wid]);
     } else if (this.isRunnable(m)) {
       this.onGenerate(m);

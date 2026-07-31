@@ -143,10 +143,14 @@ describe("MacrosComponent", () => {
     expect(c.filterMode).toBe("all");
     expect(pub).toHaveBeenCalled();
     expect(listOwn).not.toHaveBeenCalled();
-    // in the public Hub a click opens the read-only preview/detail page
+    // someone else's public macro (not owner) → read-only preview/detail page
     runnable = false;
-    c.onOpen(macro({ wid: 3 }));
+    c.onOpen(macro({ wid: 3, isOwner: false } as Partial<MacroSummary>));
     expect(navigate).toHaveBeenCalledWith([HUB_MACRO_RESULT_DETAIL, 3]);
+    // your OWN public macro in the Hub, runnable → straight to Generate
+    runnable = true;
+    c.onOpen(macro({ wid: 4, isOwner: true } as Partial<MacroSummary>));
+    expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, 4]);
   });
 
   it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {

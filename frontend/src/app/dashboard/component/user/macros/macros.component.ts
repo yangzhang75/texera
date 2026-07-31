@@ -18,18 +18,14 @@
  */
 
 import { Component, inject, OnInit } from "@angular/core";
-import { DatePipe, NgFor, NgIf, NgStyle } from "@angular/common";
+import { DatePipe, NgFor, NgIf } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
 import { firstValueFrom, forkJoin } from "rxjs";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { OperatorMetadataService } from "../../../../workspace/service/operator-metadata/operator-metadata.service";
-import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzIconDirective } from "ng-zorro-antd/icon";
 import { NzTooltipModule } from "ng-zorro-antd/tooltip";
-import { NzListModule } from "ng-zorro-antd/list";
-import { NzAvatarModule } from "ng-zorro-antd/avatar";
-import { NzCardModule } from "ng-zorro-antd/card";
 import { NZ_MODAL_DATA, NzModalService } from "ng-zorro-antd/modal";
 import { ShareAccessComponent } from "../share-access/share-access.component";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
@@ -52,19 +48,7 @@ import { USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constan
   templateUrl: "./macros.component.html",
   styleUrls: ["./macros.component.scss"],
   standalone: true,
-  imports: [
-    NgFor,
-    NgIf,
-    NgStyle,
-    DatePipe,
-    FormsModule,
-    NzButtonComponent,
-    NzIconDirective,
-    NzTooltipModule,
-    NzListModule,
-    NzAvatarModule,
-    NzCardModule,
-  ],
+  imports: [NgFor, NgIf, DatePipe, FormsModule, NzIconDirective, NzTooltipModule],
 })
 export class MacrosComponent implements OnInit {
   macros: MacroSummary[] = [];

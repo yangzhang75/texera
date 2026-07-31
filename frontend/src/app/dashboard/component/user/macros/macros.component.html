@@ -17,139 +17,106 @@
  under the License.
 -->
 
-<!-- Same 3-row grid shell as the Workflows page (.section-container:
-     title card / search bar / list container) so the title, search bar, and
-     list rows sit at the exact same positions across both pages. -->
-<div class="section-container subsection-grid-container">
-  <nz-card class="section-title">
-    <h2 class="page-title">Macros</h2>
-    <div class="button-group">
-      <!-- All / Runnable filter, right-aligned like the Workflows view toggles.
-           Defaults to Runnable (this page is biologist-facing). -->
-      <span class="macros-filter">
-        <button [class.active]="filterMode === 'all'" (click)="filterMode = 'all'">All</button>
-        <button [class.active]="filterMode === 'runnable'" (click)="filterMode = 'runnable'">Runnable</button>
-      </span>
-    </div>
-  </nz-card>
+<!-- Layout ported 1:1 from the approved prototype (macros-proto v3): a bordered
+     card whose rows are a CSS grid — [flask #wid] · [name + badges / op-chain] ·
+     [owner] · [Created] · [Edited] · [hover actions]. Right-aligned date columns,
+     hover-revealed icon actions, Runnable + Public pills. -->
+<div class="macros-page">
+  <h1 class="page-title">Macros</h1>
+  <p class="subtitle">
+    Reusable, encapsulated sub-workflows. Generate an independent workflow from a runnable one, or Edit a macro to
+    change its body and configurable properties.
+  </p>
 
-  <!-- Row 2: search, in the same .section-search-bar slot as Workflows. -->
-  <div class="section-search-bar">
-    <span class="macros-search">
+  <div class="toolbar">
+    <span class="search">
       <i nz-icon nzType="search" nzTheme="outline"></i>
       <input [(ngModel)]="searchText" placeholder="Search macros" />
     </span>
+    <span class="seg">
+      <span [class.on]="filterMode === 'all'" (click)="filterMode = 'all'">All</span>
+      <span [class.on]="filterMode === 'runnable'" (click)="filterMode = 'runnable'">Runnable</span>
+    </span>
   </div>
 
-  <!-- Row 3: the list, inside the same bordered scroll container as Workflows. -->
-  <div class="section-list-container">
-    <div class="virtual-scroll-container">
-      <div *ngIf="isLoading" class="macros-empty">Loading…</div>
-      <div *ngIf="!isLoading && macros.length === 0" class="macros-empty">
-        No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
-      </div>
-      <div *ngIf="!isLoading && macros.length > 0 && filteredMacros.length === 0" class="macros-empty">
-        No macros match your search.
+  <div *ngIf="isLoading" class="macros-empty">Loading…</div>
+  <div *ngIf="!isLoading && macros.length === 0" class="macros-empty">
+    No macros yet. Create one from a canvas: select 2+ operators → right-click → Create Macro.
+  </div>
+  <div *ngIf="!isLoading && macros.length > 0 && filteredMacros.length === 0" class="macros-empty">
+    No macros match your search.
+  </div>
+
+  <div class="list" *ngIf="!isLoading && filteredMacros.length > 0">
+    <div class="row" *ngFor="let m of filteredMacros">
+      <!-- col 1: flask glyph + #wid -->
+      <div class="idcell">
+        <span class="glyph"><i nz-icon nzType="experiment" nzTheme="outline"></i></span>
+        <span class="wid">#{{ m.wid }}</span>
       </div>
 
-      <!-- Rows mirror the Workflows list-item one-for-one: grey #wid avatar,
-           name + owner icon, op-chain description, a right-aligned Created /
-           Last-Modified metadata column, and icon-only actions. Macro-specific
-           bits: the Runnable badge, and actions that are hover-revealed (see
-           .scss) rather than an always-on toolbar. The NAME opens the macro;
-           clicking elsewhere does nothing (no accidental navigation). -->
-      <nz-list *ngIf="!isLoading && filteredMacros.length > 0" class="macros-list" [nzSplit]="true">
-        <nz-list-item *ngFor="let m of filteredMacros" class="macro-list-item">
-          <nz-list-item-meta>
-            <nz-list-item-meta-avatar>
-              <nz-avatar
-                class="macro-id-avatar"
-                [ngStyle]="{ 'background-color': 'grey', 'vertical-align': 'middle', 'margin-left': '16px' }"
-                [nzGap]="4"
-                [nzText]="'' + m.wid"
-                nzSize="default"></nz-avatar>
-            </nz-list-item-meta-avatar>
-            <nz-list-item-meta-title>
-              <span class="macro-name" [title]="runnableTooltip(m)" (click)="onOpen(m)">{{ m.name }}</span>
-              <span class="runnable-label" [class.runnable]="isRunnable(m)">
-                {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
-              </span>
-              <span *ngIf="m.isPublic" class="public-label" nz-tooltip="Public — visible to everyone">
-                <i nz-icon nzType="global" nzTheme="outline"></i> Public
-              </span>
-              <i
-                class="macro-owner-icon"
-                nz-icon
-                [nzType]="m.isOwner ? 'user' : 'team'"
-                nzTheme="outline"
-                nz-tooltip
-                [nzTooltipTitle]="m.isOwner ? 'You are the owner' : ('Shared by ' + (m.ownerName || 'another user'))"></i>
-            </nz-list-item-meta-title>
-            <nz-list-item-meta-description>{{ metaLine(m) }}</nz-list-item-meta-description>
-            <nz-list-item-meta-description class="metadata-container">
-              <span>Last Modified: {{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
-              <span>Created: {{ m.creationTime | date: "yyyy-MM-dd HH:mm" }}</span>
-            </nz-list-item-meta-description>
-          </nz-list-item-meta>
+      <!-- col 2: name + badges, op-chain below. Only the name opens the macro. -->
+      <div class="titlecell">
+        <div class="titleline">
+          <span class="name" [title]="runnableTooltip(m)" (click)="onOpen(m)">{{ m.name }}</span>
+          <span class="badge" [class.ok]="isRunnable(m)" [class.no]="!isRunnable(m)">
+            {{ isRunnable(m) ? "Runnable" : "Not runnable" }}
+          </span>
+          <span *ngIf="m.isPublic" class="badge pub" nz-tooltip="Public — visible to everyone">
+            <i nz-icon nzType="global" nzTheme="outline"></i> Public
+          </span>
+        </div>
+        <div class="chain">{{ metaLine(m) }}</div>
+      </div>
 
-          <!-- Hover-revealed, icon-only actions styled like the Workflows list. -->
-          <ul nz-list-item-actions class="macro-actions">
-            <nz-list-item-action>
-              <button
-                nz-button
-                nz-tooltip="Edit macro — edit its body and configurable properties"
-                nzTooltipPlacement="bottom"
-                type="button"
-                (click)="onEditMacro(m)">
-                <i nz-icon nzType="edit" nzTheme="outline"></i>
-              </button>
-            </nz-list-item-action>
-            <nz-list-item-action>
-              <button
-                nz-button
-                [nz-tooltip]="m.isPublic ? 'Make private' : 'Make public — anyone can find and use this macro'"
-                nzTooltipPlacement="bottom"
-                class="macro-action-public"
-                [class.on]="m.isPublic"
-                type="button"
-                (click)="onTogglePublic(m)">
-                <i nz-icon [nzType]="m.isPublic ? 'global' : 'lock'" nzTheme="outline"></i>
-              </button>
-            </nz-list-item-action>
-            <nz-list-item-action>
-              <button
-                nz-button
-                nz-tooltip="Share this macro with specific people"
-                nzTooltipPlacement="bottom"
-                type="button"
-                (click)="onShareMacro(m)">
-                <i nz-icon nzType="share-alt" nzTheme="outline"></i>
-              </button>
-            </nz-list-item-action>
-            <nz-list-item-action>
-              <button
-                nz-button
-                nz-tooltip="Change description"
-                nzTooltipPlacement="bottom"
-                type="button"
-                (click)="onChangeDescription(m)">
-                <i nz-icon nzType="file-text" nzTheme="outline"></i>
-              </button>
-            </nz-list-item-action>
-            <nz-list-item-action>
-              <button
-                nz-button
-                nz-tooltip="Delete this macro"
-                nzTooltipPlacement="bottom"
-                class="macro-action-delete"
-                type="button"
-                (click)="onDeleteMacro(m)">
-                <i nz-icon nzType="delete" nzTheme="outline"></i>
-              </button>
-            </nz-list-item-action>
-          </ul>
-        </nz-list-item>
-      </nz-list>
+      <!-- col 3: owner indicator -->
+      <div class="ownercell">
+        <i
+          class="owner-ic"
+          nz-icon
+          [nzType]="m.isOwner ? 'user' : 'team'"
+          nzTheme="outline"
+          nz-tooltip
+          [nzTooltipTitle]="m.isOwner ? 'You are the owner' : ('Shared by ' + (m.ownerName || 'another user'))"></i>
+      </div>
+
+      <!-- col 4/5: Created / Edited, right-aligned columns -->
+      <div class="metacol">
+        <span class="metalabel">Created</span>
+        <span class="metaval">{{ m.creationTime | date: "yyyy-MM-dd HH:mm" }}</span>
+      </div>
+      <div class="metacol">
+        <span class="metalabel">Edited</span>
+        <span class="metaval">{{ m.lastModifiedTime | date: "yyyy-MM-dd HH:mm" }}</span>
+      </div>
+
+      <!-- col 6: hover-revealed icon actions -->
+      <div class="actions">
+        <button
+          class="iconbtn"
+          (click)="onEditMacro(m)"
+          nz-tooltip="Edit macro — body + configurable properties"
+          nzTooltipPlacement="bottom">
+          <i nz-icon nzType="edit" nzTheme="outline"></i>
+        </button>
+        <button
+          class="iconbtn"
+          [class.on]="m.isPublic"
+          (click)="onTogglePublic(m)"
+          [nz-tooltip]="m.isPublic ? 'Make private' : 'Make public — anyone can find and use it'"
+          nzTooltipPlacement="bottom">
+          <i nz-icon [nzType]="m.isPublic ? 'global' : 'lock'" nzTheme="outline"></i>
+        </button>
+        <button class="iconbtn" (click)="onShareMacro(m)" nz-tooltip="Share with specific people" nzTooltipPlacement="bottom">
+          <i nz-icon nzType="share-alt" nzTheme="outline"></i>
+        </button>
+        <button class="iconbtn" (click)="onChangeDescription(m)" nz-tooltip="Change description" nzTooltipPlacement="bottom">
+          <i nz-icon nzType="file-text" nzTheme="outline"></i>
+        </button>
+        <button class="iconbtn danger" (click)="onDeleteMacro(m)" nz-tooltip="Delete this macro" nzTooltipPlacement="bottom">
+          <i nz-icon nzType="delete" nzTheme="outline"></i>
+        </button>
+      </div>
     </div>
   </div>
 </div>

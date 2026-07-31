@@ -30,7 +30,7 @@ import { HubComponent } from "./hub.component";
 import { commonTestProviders } from "../../common/testing/test-utils";
 import { GuiConfigService } from "../../common/service/gui-config.service";
 import { SidebarTabs } from "../../common/type/gui-config";
-import { HOME, HUB_DATASET_RESULT, HUB_WORKFLOW_RESULT } from "../../app-routing.constant";
+import { HOME, HUB_DATASET_RESULT, HUB_MACRO_RESULT, HUB_WORKFLOW_RESULT } from "../../app-routing.constant";
 
 // Full SidebarTabs with all flags off; tests enable only the ones they need.
 function makeSidebarTabs(overrides: Partial<SidebarTabs> = {}): SidebarTabs {
@@ -125,11 +125,12 @@ describe("HubComponent", () => {
     expect(labels[0]).toContain("Home");
   });
 
-  it("renders only the Workflows item when workflow_enabled is the only flag set", () => {
+  it("renders Workflows AND Macros when workflow_enabled is set (Macros is gated on the same flag)", () => {
     setup(false, makeSidebarTabs({ workflow_enabled: true }));
     const labels = renderedMenuLabels();
-    expect(labels.length).toBe(1);
-    expect(labels[0]).toContain("Workflows");
+    expect(labels.length).toBe(2);
+    expect(labels.some(l => l.includes("Workflows"))).toBe(true);
+    expect(labels.some(l => l.includes("Macros"))).toBe(true);
   });
 
   it("renders only the Datasets item when dataset_enabled is the only flag set", () => {
@@ -139,13 +140,14 @@ describe("HubComponent", () => {
     expect(labels[0]).toContain("Datasets");
   });
 
-  it("renders all three menu items when home, workflow, and dataset flags are enabled", () => {
+  it("renders Home, Workflows, Datasets, and Macros when those flags are enabled", () => {
     setup(false, makeSidebarTabs({ home_enabled: true, workflow_enabled: true, dataset_enabled: true }));
     const labels = renderedMenuLabels();
-    expect(labels.length).toBe(3);
+    expect(labels.length).toBe(4); // + Macros (gated on workflow_enabled)
     expect(labels.some(l => l.includes("Home"))).toBe(true);
     expect(labels.some(l => l.includes("Workflows"))).toBe(true);
     expect(labels.some(l => l.includes("Datasets"))).toBe(true);
+    expect(labels.some(l => l.includes("Macros"))).toBe(true);
   });
 
   it("excludes disabled tabs while rendering enabled ones", () => {
@@ -162,5 +164,6 @@ describe("HubComponent", () => {
     expect(routerLinkFor("Home")).toBe(HOME);
     expect(routerLinkFor("Workflows")).toBe(HUB_WORKFLOW_RESULT);
     expect(routerLinkFor("Datasets")).toBe(HUB_DATASET_RESULT);
+    expect(routerLinkFor("Macros")).toBe(HUB_MACRO_RESULT);
   });
 });

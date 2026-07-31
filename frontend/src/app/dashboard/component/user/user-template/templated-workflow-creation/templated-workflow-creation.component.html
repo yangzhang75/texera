@@ -57,21 +57,18 @@
         </button>
       </div>
     </div>
-    <p class="tw-subtitle" *ngIf="macroId">
-      From macro <strong class="tw-macro-name">{{ macroName }}</strong> — set the parameters below (including any from
-      nested macros), then name and generate an independent workflow.
-    </p>
-    <p class="tw-subtitle" *ngIf="!macroId">Set the parameters below, then submit to generate an independent workflow.</p>
+    <p class="tw-subtitle">Set the parameters below, then submit to generate an independent workflow.</p>
   </header>
 
-  <!-- Name for the generated workflow (macro flow): defaults to the macro name, editable. -->
+  <!-- Name field (macro flow): defaults to the macro name, editable. Labeled
+       "Macro name" per product preference. -->
   <label class="tw-name-field" *ngIf="macroId">
-    <span class="tw-name-label">Workflow name</span>
+    <span class="tw-name-label">Macro name</span>
     <input
       class="tw-name-input"
       [value]="genName"
       (input)="genName = $any($event.target).value"
-      placeholder="Workflow name" />
+      placeholder="Macro name" />
   </label>
 
   <!-- P2.3 — drill breadcrumb (name + version per level); click a crumb to jump back. -->

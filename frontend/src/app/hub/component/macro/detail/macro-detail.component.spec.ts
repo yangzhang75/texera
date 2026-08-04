@@ -45,7 +45,8 @@ describe("MacroDetailComponent", () => {
     persist = { getOwnerName: vi.fn(() => of("owner")) };
     positionedWorkflow = { content: { operators: [], operatorPositions: {} } };
     macroSvc = {
-      getMacro: vi.fn(() => of({ wid: 7, name: "m", description: "d" })),
+      // The preview uses the guest-accessible public read, not the authed getMacro.
+      getPublicMacro: vi.fn(() => of({ wid: 7, name: "m", description: "d" })),
       macroDetailToWorkflow: vi.fn(() => positionedWorkflow),
       isMacroRunnable: vi.fn(() => false),
       cloneMacro: vi.fn(() => of(999)),
@@ -61,9 +62,9 @@ describe("MacroDetailComponent", () => {
     expect(wfAction.disableWorkflowModification).toHaveBeenCalled();
   });
 
-  it("ngAfterViewInit loads the macro via getMacro + macroDetailToWorkflow (positioned) and reloads the canvas", () => {
+  it("ngAfterViewInit loads the macro via getPublicMacro + macroDetailToWorkflow (positioned) and reloads the canvas", () => {
     c.ngAfterViewInit();
-    expect(macroSvc.getMacro).toHaveBeenCalledWith(7);
+    expect(macroSvc.getPublicMacro).toHaveBeenCalledWith(7);
     expect(macroSvc.macroDetailToWorkflow).toHaveBeenCalled();
     expect(wfAction.reloadWorkflow).toHaveBeenCalledWith(positionedWorkflow);
     expect(c.macroName).toBe("m");

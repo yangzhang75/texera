@@ -110,7 +110,10 @@ export class MacroDetailComponent implements OnInit, AfterViewInit, OnDestroy {
           return;
         }
         this.macroService
-          .getMacro(this.wid)
+          // Public read: this preview is only reached for a non-owner's public
+          // macro, so use the guest-accessible endpoint (works logged-out, like
+          // the public-workflow preview) rather than the authed getMacro.
+          .getPublicMacro(this.wid)
           .pipe(untilDestroyed(this))
           .subscribe({
             next: (detail: MacroDetail) => {

@@ -46,7 +46,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import javax.ws.rs.ForbiddenException
+import javax.ws.rs.{ForbiddenException, NotFoundException}
 import java.util.UUID
 import scala.jdk.CollectionConverters._
 
@@ -259,14 +259,45 @@ class MacroResourceSpec
     }
   }
 
+  "getPublic" should "read a PUBLIC macro without auth (readonly, not owned)" in {
+    val publicMacro = createTestMacro(macroBody("Filter"), isPublic = true)
+
+    // No requester argument — guest-accessible, mirroring the public-workflow read.
+    val detail = resource.getPublic(publicMacro)
+    detail.wid shouldBe publicMacro
+    detail.isOwner shouldBe false
+    detail.readonly shouldBe true // public read never grants edit
+  }
+
+  it should "404 a private (non-public) macro so it is never exposed to guests" in {
+    val privateMacro = createTestMacro(macroBody("Filter")) // not public
+    assertThrows[NotFoundException] {
+      resource.getPublic(privateMacro)
+    }
+  }
+
   "listPublic" should "return public macros regardless of the requester's access, and exclude private ones" in {
     val pub = createTestMacro(macroBody("CSVFileScan"), isPublic = true)
     val priv = createTestMacro(macroBody("Filter")) // not public
 
-    val wids = resource.listPublic(sessionUser(otherUid)).map(_.wid)
+    // Guest-accessible: no requester argument (a logged-out Hub visitor must be
+    // able to browse the catalogue).
+    val wids = resource.listPublic().map(_.wid)
 
     wids should contain(pub)
     wids should not contain priv
+  }
+
+  it should "leave isOwner=false and ship ownerUid so the frontend can resolve ownership" in {
+    val pub = createTestMacro(macroBody("CSVFileScan"), isPublic = true)
+
+    val summary = resource.listPublic().find(_.wid == pub)
+
+    summary should be(defined)
+    // The catalogue cannot resolve a requester server-side, so ownership is
+    // never asserted here; the owner's uid is shipped for the frontend to match.
+    summary.get.isOwner shouldBe false
+    summary.get.ownerUid shouldBe Some(testUid)
   }
 
   "list" should "surface the macro body's operator types (the backend half of the runnable gate)" in {

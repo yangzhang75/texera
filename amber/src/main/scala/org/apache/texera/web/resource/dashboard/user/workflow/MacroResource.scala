@@ -160,6 +160,11 @@ object MacroResource {
       usageCount: Int,
       isOwner: Boolean,
       ownerName: String,
+      // The owner's uid. The public catalogue is guest-accessible and therefore
+      // cannot resolve the requester server-side, so it ships ownerUid and lets
+      // the frontend compute "is this mine?" against the logged-in user. None
+      // when the owner is unknown.
+      ownerUid: Option[Integer],
       // Whether the macro is public (WORKFLOW.IS_PUBLIC) — visible to everyone.
       // Mirrors the workflow public flag and is toggled through the shared
       // /workflow/public|private/{wid} endpoints (which carry no kind guard).
@@ -420,6 +425,7 @@ class MacroResource extends LazyLogging {
         usageMap.getOrElse(r.value1().intValue(), 0),
         isOwner = r.value9() != null && r.value9() == uid,
         ownerName = Option(r.value10()).getOrElse(""),
+        ownerUid = Option(r.value9()),
         isPublic = r.value12() != null && r.value12().booleanValue(),
         bodyOperatorTypes = bodyOperatorTypesOf(r.value11()),
         version = WorkflowVersionResource.getLatestVersion(r.value1())
@@ -432,14 +438,15 @@ class MacroResource extends LazyLogging {
     * (kind=MACRO) that its owner has made public (WORKFLOW.IS_PUBLIC=true),
     * regardless of who is asking. Mirrors `list` but swaps the per-user access
     * join for an IS_PUBLIC filter, so anyone can browse shared macros the same
-    * way the Hub browses public workflows. `isOwner` is still computed against
-    * the requester so the frontend can tell which public macros are their own.
+    * way the Hub browses public workflows. Guest-accessible (no `@Auth`, like
+    * `DashboardResource./publicSearch`): a logged-out Hub visitor must be able
+    * to browse the catalogue. Because there is no server-side requester, this
+    * ships `ownerUid` and leaves `isOwner=false`; the frontend marks a macro as
+    * the viewer's own by matching `ownerUid` to the logged-in user's uid.
     */
   @GET
-  @RolesAllowed(Array("REGULAR", "ADMIN"))
   @Path("/public")
-  def listPublic(@Auth sessionUser: SessionUser): List[MacroSummary] = {
-    val uid = sessionUser.getUser.getUid
+  def listPublic(): List[MacroSummary] = {
     val rows = context
       .selectDistinct(
         WORKFLOW.WID,
@@ -466,7 +473,6 @@ class MacroResource extends LazyLogging {
       .and(WORKFLOW.IS_PUBLIC.eq(true))
       .fetch()
 
-    val usageMap = computeMacroUsage(uid)
     rows.asScala.map { r =>
       MacroSummary(
         r.value1(),
@@ -477,9 +483,13 @@ class MacroResource extends LazyLogging {
         parsePortSpec(r.value6()),
         Option(r.value7()),
         Option(r.value8()),
-        usageMap.getOrElse(r.value1().intValue(), 0),
-        isOwner = r.value9() != null && r.value9() == uid,
+        // No per-user usage here: the catalogue is guest-accessible, so there is
+        // no requester to count "used in N of your workflows" against.
+        usageCount = 0,
+        // Ownership is resolved on the frontend via ownerUid (see the doc above).
+        isOwner = false,
         ownerName = Option(r.value10()).getOrElse(""),
+        ownerUid = Option(r.value9()),
         isPublic = r.value12() != null && r.value12().booleanValue(),
         bodyOperatorTypes = bodyOperatorTypesOf(r.value11()),
         version = WorkflowVersionResource.getLatestVersion(r.value1())
@@ -551,6 +561,27 @@ class MacroResource extends LazyLogging {
     val metadata = Option(macroMetadataDao.fetchOneByWid(wid))
       .getOrElse(throw new NotFoundException(s"Macro $wid metadata missing"))
     toDetail(workflow, metadata, isOwner = isOwner(wid, uid), readonly = !hasWriteAccess(wid, uid))
+  }
+
+  /**
+    * Guest-accessible read of a PUBLIC macro, mirroring
+    * `WorkflowResource./publicised/{wid}`: no `@Auth` (a logged-out Hub visitor
+    * must be able to open the read-only preview), IS_PUBLIC gated in the lookup
+    * so only public macros are ever returned, and `readonly=true`/`isOwner=false`
+    * because there is no requester to own it. The authed `/{wid}` endpoint above
+    * is left untouched, so logged-in owner detection on the Generate page is
+    * unaffected. A literal path segment wins over `/{wid}` in JAX-RS matching.
+    */
+  @GET
+  @Path("/publicised/{wid}")
+  def getPublic(@PathParam("wid") wid: Integer): MacroDetail = {
+    val workflow = Option(workflowDao.fetchOneByWid(wid))
+      .filter(_.getKind == WorkflowKindEnum.MACRO)
+      .filter(wf => java.lang.Boolean.TRUE.equals(wf.getIsPublic))
+      .getOrElse(throw new NotFoundException(s"Public macro $wid not found"))
+    val metadata = Option(macroMetadataDao.fetchOneByWid(wid))
+      .getOrElse(throw new NotFoundException(s"Macro $wid metadata missing"))
+    toDetail(workflow, metadata, isOwner = false, readonly = true)
   }
 
   /**

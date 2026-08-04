@@ -71,6 +71,123 @@
   max-width: 620px;
 }
 
+/* --- intro + tutorial banner (new): a light Ant-blue card above the toolbar
+ * carrying the one-line intro, the 3-step summary, and the "How to use Macros"
+ * entry (opens the full guide in a new tab). Dismissible; once hidden, a compact
+ * button in the toolbar keeps the guide reachable. Uses the page's own tokens. */
+.intro-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 0 0 20px;
+  padding: 16px 20px;
+  border: 1px solid #91caff;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--accent-weak), #f4fbff);
+}
+.ib-new {
+  position: absolute;
+  top: -10px;
+  left: 16px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.ib-x {
+  position: absolute;
+  top: 9px;
+  right: 13px;
+  color: var(--muted-2);
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+
+  &:hover {
+    color: var(--ink);
+  }
+}
+.ib-text {
+  flex: 1;
+  min-width: 240px;
+}
+.ib-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 3px;
+}
+.ib-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.ib-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ib-step {
+  background: #fff;
+  border: 1px solid #91caff;
+  border-radius: 100px;
+  padding: 3px 11px;
+
+  b {
+    color: var(--accent);
+  }
+}
+.ib-arw {
+  color: var(--accent);
+  font-weight: 700;
+}
+.ib-btn {
+  flex: 0 0 auto;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: #4096ff;
+  }
+}
+.ib-ext {
+  font-size: 12px;
+}
+
+/* Compact guide entry in the toolbar, shown after the banner is dismissed. */
+.guide-btn {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--accent);
+  }
+}
+
 /* --- toolbar: search + macOS-style segmented control --- */
 .toolbar {
   display: flex;

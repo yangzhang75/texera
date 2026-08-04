@@ -31,6 +31,7 @@ import { ShareAccessComponent } from "../share-access/share-access.component";
 import { MacroService, MacroSummary } from "../../../../workspace/service/macro/macro.service";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { WorkflowPersistService } from "../../../../common/service/workflow-persist/workflow-persist.service";
+import { UserService } from "../../../../common/service/user/user.service";
 import { HUB_MACRO_RESULT_DETAIL, USER_MACRO_OPEN, USER_WORKSPACE } from "../../../../app-routing.constant";
 
 /**
@@ -74,6 +75,12 @@ export class MacrosComponent implements OnInit {
   editingNameWid: number | null = null;
   editingDescWid: number | null = null;
 
+  // Whether the intro/tutorial banner has been dismissed (remembered per browser).
+  // When true the banner is hidden and a compact guide button shows in the toolbar.
+  guideDismissed = false;
+  // Static asset (served from src/assets); opened in a new tab.
+  private static readonly GUIDE_URL = "assets/tutorials/macro-guide.html";
+
   constructor(
     private macroService: MacroService,
     private notificationService: NotificationService,
@@ -81,10 +88,12 @@ export class MacrosComponent implements OnInit {
     private workflowPersistService: WorkflowPersistService,
     private modalService: NzModalService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
+    this.guideDismissed = localStorage.getItem("macroGuideDismissed") === "1";
     this.publicBrowse = this.route.snapshot.data["publicBrowse"] === true;
     if (this.publicBrowse) {
       // In the public Hub catalogue, "All" is the sensible default (you're
@@ -100,6 +109,17 @@ export class MacrosComponent implements OnInit {
     this.reload();
   }
 
+  /** Open the Macros tutorial (static asset) in a new browser tab. */
+  openGuide(): void {
+    window.open(MacrosComponent.GUIDE_URL, "_blank", "noopener");
+  }
+
+  /** Hide the intro banner and remember it (a toolbar button keeps the guide reachable). */
+  dismissGuide(): void {
+    this.guideDismissed = true;
+    localStorage.setItem("macroGuideDismissed", "1");
+  }
+
   reload(): void {
     this.isLoading = true;
     // Load operator metadata alongside the macro list: isRunnable() needs the
@@ -111,6 +131,15 @@ export class MacrosComponent implements OnInit {
       .pipe(untilDestroyed(this))
       .subscribe({
         next: ({ macros }) => {
+          // The public Hub catalogue is guest-accessible, so its backend cannot
+          // resolve the requester and always returns isOwner=false. Derive it
+          // here by matching ownerUid to the logged-in user's uid, so an owner
+          // browsing the Hub still gets the straight-to-Generate path (and a
+          // logged-out guest, with no uid, correctly owns nothing).
+          if (this.publicBrowse) {
+            const myUid = this.userService.getCurrentUser()?.uid;
+            macros = macros.map(m => ({ ...m, isOwner: myUid != null && m.ownerUid === myUid }));
+          }
           // Newest first: the macro a user just created shows at the top. Sort by
           // last-modified time, tie-broken by wid (the backend returns no order).
           this.macros = [...macros].sort(

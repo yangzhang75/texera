@@ -31,11 +31,35 @@
     Macros shared by everyone. Open one to preview it, then Clone it into your Macros or Generate a workflow from it.
   </p>
 
+  <!-- Intro + tutorial entry. The full guide opens in a new tab (static asset
+       under assets/tutorials). The banner is dismissible (remembered per browser
+       via localStorage); once dismissed, a compact "How to use Macros" button
+       stays in the toolbar so the guide is always easy to find. -->
+  <div class="intro-banner" *ngIf="!guideDismissed">
+    <span class="ib-new">NEW</span>
+    <span class="ib-x" (click)="dismissGuide()" title="Hide this">✕</span>
+    <div class="ib-text">
+      <p class="ib-title">Run a full analysis with a Macro — no coding</p>
+      <p class="ib-desc">Pick a ready-made analysis, fill in a few settings, and press Run. Results appear right there.</p>
+      <div class="ib-steps">
+        <span class="ib-step"><b>①</b> Find</span><span class="ib-arw">→</span>
+        <span class="ib-step"><b>②</b> Fill in</span><span class="ib-arw">→</span>
+        <span class="ib-step"><b>③</b> Run &amp; read results</span>
+      </div>
+    </div>
+    <button class="ib-btn" (click)="openGuide()">📖 How to use Macros <span class="ib-ext">↗</span></button>
+  </div>
+
   <div class="toolbar">
     <span class="search">
       <i nz-icon nzType="search" nzTheme="outline"></i>
       <input [(ngModel)]="searchText" placeholder="Search macros" />
     </span>
+    <!-- Persistent guide entry: shown once the banner is dismissed, so the
+         tutorial stays reachable from the page at all times. -->
+    <button *ngIf="guideDismissed" class="guide-btn" (click)="openGuide()" title="Open the Macros tutorial in a new tab">
+      📖 How to use Macros <span class="ib-ext">↗</span>
+    </button>
     <span class="seg">
       <span [class.on]="filterMode === 'all'" (click)="filterMode = 'all'">All</span>
       <span [class.on]="filterMode === 'runnable'" (click)="filterMode = 'runnable'">Runnable</span>

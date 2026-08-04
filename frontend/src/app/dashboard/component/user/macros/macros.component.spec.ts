@@ -43,10 +43,12 @@ describe("MacrosComponent", () => {
   let persist: any;
   let modal: any;
   let macroSvc: any;
+  let userSvc: any;
 
   beforeEach(() => {
     runnable = true;
     navigate = vi.fn();
+    userSvc = { getCurrentUser: () => ({ uid: 100 }) };
     macroSvc = {
       isMacroRunnable: () => runnable,
       listMacros: () => of([]),
@@ -65,7 +67,7 @@ describe("MacrosComponent", () => {
     modal = { create: vi.fn(), confirm: vi.fn() };
     const metadataStub = { getOperatorMetadata: () => of({}) };
     // constructor: (macroService, notificationService, operatorMetadataService,
-    //   workflowPersistService, modalService, router)
+    //   workflowPersistService, modalService, router, route, userService)
     const routeStub = { snapshot: { data: {} } };
     component = new MacrosComponent(
       macroSvc,
@@ -74,7 +76,8 @@ describe("MacrosComponent", () => {
       persist,
       modal,
       { navigate } as any,
-      routeStub as any
+      routeStub as any,
+      userSvc
     );
   });
 
@@ -137,7 +140,7 @@ describe("MacrosComponent", () => {
     const routeStub = { snapshot: { data: { publicBrowse: true } } };
     const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
       navigate,
-    } as any, routeStub as any);
+    } as any, routeStub as any, userSvc);
     c.ngOnInit();
     expect(c.publicBrowse).toBe(true);
     expect(c.filterMode).toBe("all");
@@ -151,6 +154,33 @@ describe("MacrosComponent", () => {
     runnable = true;
     c.onOpen(macro({ wid: 4, isOwner: true } as Partial<MacroSummary>));
     expect(navigate).toHaveBeenCalledWith([USER_MACRO_OPEN, 4]);
+  });
+
+  it("publicBrowse reload derives isOwner by matching ownerUid to the logged-in user", () => {
+    userSvc.getCurrentUser = () => ({ uid: 100 });
+    macroSvc.listPublicMacros = () =>
+      of([
+        macro({ wid: 1, ownerUid: 100, isOwner: false } as Partial<MacroSummary>), // mine
+        macro({ wid: 2, ownerUid: 200, isOwner: false } as Partial<MacroSummary>), // someone else's
+      ]);
+    const routeStub = { snapshot: { data: { publicBrowse: true } } };
+    const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
+      navigate,
+    } as any, routeStub as any, userSvc);
+    c.ngOnInit();
+    expect(c.macros.find(m => m.wid === 1)?.isOwner).toBe(true);
+    expect(c.macros.find(m => m.wid === 2)?.isOwner).toBe(false);
+  });
+
+  it("publicBrowse reload: a logged-out guest owns nothing (isOwner stays false)", () => {
+    userSvc.getCurrentUser = () => undefined;
+    macroSvc.listPublicMacros = () => of([macro({ wid: 1, ownerUid: 100, isOwner: false } as Partial<MacroSummary>)]);
+    const routeStub = { snapshot: { data: { publicBrowse: true } } };
+    const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
+      navigate,
+    } as any, routeStub as any, userSvc);
+    c.ngOnInit();
+    expect(c.macros.find(m => m.wid === 1)?.isOwner).toBe(false);
   });
 
   it("reload sorts macros newest-first (by lastModifiedTime, then wid)", () => {
@@ -252,7 +282,7 @@ describe("MacrosComponent", () => {
     const routeStub = { snapshot: { data: {}, queryParamMap: { get: () => "all" } } };
     const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
       navigate,
-    } as any, routeStub as any);
+    } as any, routeStub as any, userSvc);
     c.ngOnInit();
     expect(c.filterMode).toBe("all");
   });
@@ -271,5 +301,32 @@ describe("MacrosComponent", () => {
     component.onDescClick(m, ev2);
     expect(ev2.stopPropagation).not.toHaveBeenCalled(); // click bubbles to row -> open
     expect(component.editingDescWid).toBeNull();
+  });
+
+  it("openGuide opens the tutorial static asset in a new tab", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    component.openGuide();
+    expect(openSpy).toHaveBeenCalledWith("assets/tutorials/macro-guide.html", "_blank", "noopener");
+    openSpy.mockRestore();
+  });
+
+  it("dismissGuide hides the banner and remembers it", () => {
+    localStorage.removeItem("macroGuideDismissed");
+    expect(component.guideDismissed).toBe(false);
+    component.dismissGuide();
+    expect(component.guideDismissed).toBe(true);
+    expect(localStorage.getItem("macroGuideDismissed")).toBe("1");
+    localStorage.removeItem("macroGuideDismissed");
+  });
+
+  it("ngOnInit restores the dismissed banner state from localStorage", () => {
+    localStorage.setItem("macroGuideDismissed", "1");
+    const routeStub = { snapshot: { data: {} } };
+    const c = new MacrosComponent(macroSvc, notif, { getOperatorMetadata: () => of({}) } as any, persist, modal, {
+      navigate,
+    } as any, routeStub as any, userSvc);
+    c.ngOnInit();
+    expect(c.guideDismissed).toBe(true);
+    localStorage.removeItem("macroGuideDismissed");
   });
 });

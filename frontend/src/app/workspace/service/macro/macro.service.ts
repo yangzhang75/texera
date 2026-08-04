@@ -132,6 +132,11 @@ export interface MacroSummary {
   // shows owner + shared-by. Optional so older backends still parse.
   isOwner?: boolean;
   ownerName?: string;
+  // The owner's uid. The public Hub catalogue is guest-accessible, so its
+  // backend cannot resolve the requester and always returns isOwner=false; the
+  // frontend derives ownership by matching ownerUid to the logged-in user's uid.
+  // Optional so older backends (without the field) still parse.
+  ownerUid?: number;
   // Whether the macro is public (WORKFLOW.IS_PUBLIC) — visible to everyone.
   // Toggled from the Macros list via the shared workflow public endpoints.
   // Optional so older backends (without the field) still parse.
@@ -1110,6 +1115,16 @@ export class MacroService {
    */
   public listPublicMacros(): Observable<MacroSummary[]> {
     return this.http.get<MacroSummary[]>(`${AppSettings.getApiEndpoint()}/${MACRO_PUBLIC_URL}`);
+  }
+
+  /**
+   * Guest-accessible read of a PUBLIC macro (GET /macro/publicised/{wid}),
+   * mirroring the public-workflow read. Used by the Hub read-only preview so a
+   * logged-out visitor can open a shared macro; the authed getMacro stays for
+   * the owner/Generate flow. Backend returns readonly=true, isOwner=false.
+   */
+  public getPublicMacro(wid: number): Observable<MacroDetail> {
+    return this.http.get<MacroDetail>(`${AppSettings.getApiEndpoint()}/${MACRO_BASE_URL}/publicised/${wid}`);
   }
 
   /**

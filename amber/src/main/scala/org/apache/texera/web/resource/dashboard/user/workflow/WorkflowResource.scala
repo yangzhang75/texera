@@ -137,7 +137,10 @@ object WorkflowResource {
       creationTime: Timestamp,
       lastModifiedTime: Timestamp,
       isPublished: Boolean,
-      readonly: Boolean
+      readonly: Boolean,
+      // Whether this workflow also offers a parameterized canvas. Both views load
+      // through this endpoint, and each needs to know whether to show the other.
+      isParameterized: Boolean
   )
 
   case class WorkflowIDs(wids: List[Integer], pid: Option[Integer])
@@ -416,7 +419,8 @@ class WorkflowResource extends LazyLogging {
         workflow.getCreationTime,
         workflow.getLastModifiedTime,
         workflow.getIsPublic,
-        !WorkflowAccessResource.hasWriteAccess(wid, user.getUid)
+        !WorkflowAccessResource.hasWriteAccess(wid, user.getUid),
+        workflow.getIsParameterized == true
       )
     } else {
       throw new ForbiddenException("No sufficient access privilege.")
@@ -440,6 +444,14 @@ class WorkflowResource extends LazyLogging {
     val user = sessionUser.getUser
     if (user == org.apache.texera.web.auth.GuestAuthFilter.GUEST) {
       throw new ForbiddenException("Guest user does not have access to db.")
+    }
+
+    // `is_parameterized` is owned by the /parameterized and /unparameterized
+    // endpoints alone. Saving the canvas sends the whole POJO to workflowDao.update,
+    // so without this the payload's default would silently clear the flag.
+    if (workflow.getWid != null) {
+      Option(workflowDao.fetchOneByWid(workflow.getWid))
+        .foreach(stored => workflow.setIsParameterized(stored.getIsParameterized))
     }
 
     if (workflowOfUserExists(workflow.getWid, user.getUid)) {
@@ -510,7 +522,9 @@ class WorkflowResource extends LazyLogging {
               assignNewOperatorIds(oldWorkflow.getContent),
               null,
               null,
-              false
+              false,
+              // the parameterized form is part of the workflow, so a copy keeps it
+              oldWorkflow.getIsParameterized
             ),
             sessionUser
           )
@@ -557,7 +571,9 @@ class WorkflowResource extends LazyLogging {
         assignNewOperatorIds(oldWorkflow.getContent),
         null,
         null,
-        false
+        false,
+        // a biologist's path is hub -> clone -> use, so the clone must stay usable
+        oldWorkflow.getIsParameterized
       ),
       sessionUser
     )
@@ -725,6 +741,37 @@ class WorkflowResource extends LazyLogging {
     workflowDao.update(workflow)
   }
 
+  /**
+    * Turn the Parameterized Canvas on for a workflow: it keeps its operator canvas
+    * and additionally offers a form of the inputs its author exposed, plus Run.
+    *
+    * Only this on/off flag lives in a column. The form's definition travels inside
+    * workflow.content under `parameterization`, which is why turning the flag off
+    * does not erase it -- toggling back on restores the author's previous setup.
+    */
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/parameterized/{wid}")
+  def enableParameterized(@PathParam("wid") wid: Integer, @Auth user: SessionUser): Unit = {
+    setParameterized(wid, user, enabled = true)
+  }
+
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/unparameterized/{wid}")
+  def disableParameterized(@PathParam("wid") wid: Integer, @Auth user: SessionUser): Unit = {
+    setParameterized(wid, user, enabled = false)
+  }
+
+  private def setParameterized(wid: Integer, user: SessionUser, enabled: Boolean): Unit = {
+    if (!WorkflowAccessResource.hasWriteAccess(wid, user.getUid)) {
+      throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
+    }
+    val workflow: Workflow = workflowDao.fetchOneByWid(wid)
+    workflow.setIsParameterized(enabled)
+    workflowDao.update(workflow)
+  }
+
   /** Returns the workflow's cover image; 404 if none set. */
   @GET
   @RolesAllowed(Array("REGULAR", "ADMIN"))
@@ -847,7 +894,8 @@ class WorkflowResource extends LazyLogging {
       workflow.getCreationTime,
       workflow.getLastModifiedTime,
       workflow.getIsPublic,
-      readonly = true
+      readonly = true,
+      isParameterized = workflow.getIsParameterized == true
     )
   }
 

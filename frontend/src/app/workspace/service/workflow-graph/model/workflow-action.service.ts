@@ -21,7 +21,14 @@ import { Injectable } from "@angular/core";
 
 import * as joint from "jointjs";
 import { BehaviorSubject, merge, Observable, Subject } from "rxjs";
-import { ExecutionMode, Workflow, WorkflowContent, WorkflowSettings } from "../../../../common/type/workflow";
+import {
+  ExecutionMode,
+  getDefaultParameterization,
+  ParameterizationConfig,
+  Workflow,
+  WorkflowContent,
+  WorkflowSettings,
+} from "../../../../common/type/workflow";
 import { WorkflowMetadata } from "../../../../dashboard/type/workflow-metadata.interface";
 import {
   Comment,
@@ -97,6 +104,15 @@ export class WorkflowActionService {
 
   private workflowSettings: WorkflowSettings;
   private workflowResetSubject = new Subject<void>();
+
+  // The Parameterized Canvas definition. Kept out of the shared graph on purpose: it
+  // is presentation, not structure, so it needs no collaborative merge and no reaction
+  // in the shared-model change handler. Handled exactly like workflowSettings --
+  // hydrated by reloadWorkflow, emitted by getWorkflowContent.
+  private parameterization: ParameterizationConfig = getDefaultParameterization();
+  private parameterizationChangeSubject = new Subject<ParameterizationConfig>();
+  public readonly parameterizationChanged$: Observable<ParameterizationConfig> =
+    this.parameterizationChangeSubject.asObservable();
 
   constructor(
     private operatorMetadataService: OperatorMetadataService,
@@ -647,6 +663,7 @@ export class WorkflowActionService {
 
       const workflowContent: WorkflowContent = workflow.content;
       this.workflowSettings = workflowContent.settings || this.getDefaultSettings();
+      this.hydrateParameterization(workflowContent.parameterization);
 
       let operatorsAndPositions: { op: OperatorPredicate; pos: Point }[] = [];
       workflowContent.operators.forEach(op => {
@@ -701,6 +718,7 @@ export class WorkflowActionService {
       this.getTexeraGraph().getOperatorVersionChangedStream(),
       this.getTexeraGraph().getPortDisplayNameChangedSubject(),
       this.getTexeraGraph().getPortPropertyChangedStream(),
+      this.parameterizationChanged$,
       this.workflowResetSubject.asObservable()
     );
   }
@@ -736,6 +754,27 @@ export class WorkflowActionService {
     return this.workflowSettings;
   }
 
+  /**
+   * Load a definition without announcing an edit. Used while opening a workflow, so
+   * that merely reading one does not look like a change and trigger a save.
+   */
+  public hydrateParameterization(parameterization: ParameterizationConfig | undefined): void {
+    this.parameterization = parameterization ?? getDefaultParameterization();
+  }
+
+  /**
+   * Replace the definition as an edit: announced on `parameterizationChanged$`, which
+   * feeds workflowChanged() and so reaches the existing autosave.
+   */
+  public setParameterization(parameterization: ParameterizationConfig): void {
+    this.parameterization = parameterization;
+    this.parameterizationChangeSubject.next(this.parameterization);
+  }
+
+  public getParameterization(): ParameterizationConfig {
+    return this.parameterization;
+  }
+
   public getWorkflowMetadata(): WorkflowMetadata {
     return this.workflowMetadata;
   }
@@ -763,6 +802,7 @@ export class WorkflowActionService {
       links,
       commentBoxes,
       settings,
+      parameterization: this.parameterization,
     };
   }
 

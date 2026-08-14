@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, OnDestroy, OnInit } from "@angular/core";
 import { combineLatest, fromEvent, merge, Subject } from "rxjs";
 import { NzModalCommentBoxComponent } from "./comment-box-modal/nz-modal-comment-box.component";
 import { NzModalRef, NzModalService } from "ng-zorro-antd/modal";
@@ -95,7 +95,20 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   editor!: HTMLElement;
   editorWrapper!: HTMLElement;
   paper!: joint.dia.Paper;
-  private interactive: boolean = true;
+  private paperInteractive: boolean = true;
+
+  /**
+   * Set by a view that shows the graph but must never let anyone re-shape it.
+   *
+   * Separate from the workflow-modification lock on purpose: that lock also decides
+   * whether operator properties can be edited, so using it to stop deletions took the
+   * property panel down with it. This gates dragging, linking and deleting only.
+   */
+  @Input() structureLocked = false;
+
+  private get interactive(): boolean {
+    return this.paperInteractive && !this.structureLocked;
+  }
   private _onProcessKeyboardActionObservable: Subject<void> = new Subject();
   private wrapper;
   private currentOpenedOperatorID: string | null = null;
@@ -257,7 +270,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       // marks all the available magnets or elements when a link is dragged
       markAvailable: true,
       // disable jointjs default action of adding vertexes to the link
-      interactive: defaultInteractiveOption,
+      interactive: this.interactive ? defaultInteractiveOption : disableInteractiveOption,
       // set a default link element used by jointjs when user creates a link on UI
       defaultLink: JointUIService.getDefaultLinkCell(),
       // disable jointjs default action that stops propagate click events on jointjs paper
@@ -285,13 +298,8 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       .getWorkflowModificationEnabledStream()
       .pipe(untilDestroyed(this))
       .subscribe(enabled => {
-        if (enabled) {
-          this.interactive = true;
-          this.paper.setInteractivity(defaultInteractiveOption);
-        } else {
-          this.interactive = false;
-          this.paper.setInteractivity(disableInteractiveOption);
-        }
+        this.paperInteractive = enabled;
+        this.paper.setInteractivity(this.interactive ? defaultInteractiveOption : disableInteractiveOption);
         this.changeDetectorRef.detectChanges();
       });
   }
@@ -1039,6 +1047,43 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       .getOperatorValidationStream()
       .pipe(untilDestroyed(this))
       .subscribe(value => this.applyOperatorBorder(value.operatorID, value.validation));
+
+    // Operators already in the graph when this editor was built produced no add event
+    // and will not appear on the validation stream until something about them changes,
+    // so nothing would ever correct the border they were drawn with. On the operator
+    // canvas the editor exists before the workflow is loaded, so this never showed; the
+    // parameterized canvas builds its preview only once opened, and every operator sat
+    // there in the unvalidated red -- and any completed run's colours were missing too.
+    // Only where it is actually needed. The operator canvas builds its editor before the
+    // workflow loads, so it hears every event and already looks right; painting there too
+    // made colours and port counts appear at times main never shows them. A view that
+    // locks the structure is one that mounts its editor late, which is exactly the case
+    // this repair exists for.
+    if (this.structureLocked) {
+      this.paintCurrentOperatorState();
+    }
+  }
+
+  private paintCurrentOperatorState(): void {
+    this.workflowActionService
+      .getTexeraGraph()
+      .getAllOperators()
+      .forEach(operator => {
+        const statistics = this.workflowStatusService.getCurrentStatus()[operator.operatorID];
+        if (statistics) {
+          this.jointUIService.changeOperatorStatistics(
+            this.paper,
+            operator.operatorID,
+            statistics,
+            this.isSource(operator.operatorID),
+            this.isSink(operator.operatorID)
+          );
+        }
+        this.applyOperatorBorder(
+          operator.operatorID,
+          this.validationWorkflowService.validateOperator(operator.operatorID)
+        );
+      });
   }
 
   /**
@@ -1428,6 +1473,13 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
    * Handles mouse events to enable shared cursor.
    */
   private handlePointerEvents(): void {
+    // A shared cursor is for people working on the graph together. A view that only
+    // shows the graph has no business broadcasting one: the parameterized canvas left a
+    // stranded dot with the reader's own name floating on the operator canvas, because
+    // its last mouse position stayed in the awareness state after the page was gone.
+    if (this.structureLocked) {
+      return;
+    }
     fromEvent<MouseEvent>(this.editor, "mousemove")
       .pipe(untilDestroyed(this))
       .subscribe(e => {

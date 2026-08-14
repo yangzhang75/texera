@@ -45,7 +45,8 @@
     <div
       nz-col
       nzFlex="0"
-      class="type-icon">
+      class="type-icon"
+      [class.parameterized]="parameterized">
       <i
         nz-icon
         [nzType]="iconType"></i>
@@ -193,6 +194,17 @@
       <i
         nz-icon
         nzType="eye"></i>
+    </button>
+    <button
+      *ngIf="entry.type==='workflow'"
+      nz-button
+      nzType="text"
+      [title]="parameterized ? 'Turn off the parameterized canvas' : 'Turn on the parameterized canvas'"
+      [class.parameterized-on]="parameterized"
+      (click)="onToggleParameterized()">
+      <i
+        nz-icon
+        nzType="experiment"></i>
     </button>
     <button
       nz-button

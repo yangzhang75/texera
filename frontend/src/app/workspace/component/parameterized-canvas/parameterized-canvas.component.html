@@ -1,0 +1,521 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+
+<!-- The operator canvas's title row, rebuilt here to the same measurements: same
+     height, same rule underneath, same full-bleed width, and the view switch pinned to
+     the same right inset ahead of the same user icon. The content below is padded and
+     centred, which is why the switch cannot live down there -- it would stop at the
+     column edge and never line up with the other view. -->
+<div class="pc-topbar">
+  <nz-avatar
+    *ngIf="wid"
+    class="wid"
+    [nzText]="wid.toString()"></nz-avatar>
+  <input
+    class="wf-name"
+    [(ngModel)]="workflowName"
+    (change)="onRenameWorkflow()"
+    placeholder="Untitled workflow" />
+  <!-- Editing here writes to the same workflow, so it earns the same reassurance the
+       operator canvas gives: the moment it was last saved. -->
+  <span class="saved-state">{{ autoSaveState }}</span>
+  <span class="topbar-spacer"></span>
+  <div class="view-switch">
+    <button
+      type="button"
+      aria-pressed="false"
+      (click)="openRegularCanvas()">
+      Canvas
+    </button>
+    <button
+      type="button"
+      class="on"
+      aria-pressed="true">
+      P Canvas
+    </button>
+  </div>
+  <texera-user-icon></texera-user-icon>
+</div>
+
+<div class="pc-page">
+  <!-- The title row above carries the workflow's name and the switch, and the sections
+       below announce themselves, so this row only has to hold the controls. A lede
+       explaining the page to someone already looking at it was noise. -->
+  <header class="pc-head">
+    <p
+      class="lede"
+      *ngIf="authoring">
+      Choose what people fill in, then run to see it as they will.
+    </p>
+    <div class="spacer"></div>
+    <div class="pc-actions">
+      <button
+        *ngIf="canEdit"
+        nz-button
+        class="author-toggle"
+        [nzType]="authoring ? 'primary' : 'default'"
+        (click)="toggleAuthoring()">
+        <i
+          nz-icon
+          nzType="edit"></i>
+        {{ authoring ? "Done" : "Edit" }}
+      </button>
+    </div>
+  </header>
+
+  <div class="pc-rule"></div>
+
+  <div
+    *ngIf="loading"
+    class="pc-loading">
+    Loading…
+  </div>
+
+  <!-- Hidden while loading, not removed. The computing-unit selector lives in here,
+       and it learns which workflow it is for from a metadata event that fires during
+       load. Built with *ngIf it was created after that event and never heard it, so it
+       never restored this workflow's unit -- no unit meant no websocket, and a run went
+       out to nobody while the operator canvas, whose selector is always mounted, ran
+       fine. Being present from the start is what keeps the two views connected. -->
+  <div [hidden]="loading">
+    <!-- Instruction -->
+    <section
+      class="card instr"
+      *ngIf="hasInstruction || authoring"
+      [class.open]="instructionOpen">
+      <div
+        class="instr-bar"
+        (click)="toggleInstruction()">
+        <i
+          nz-icon
+          nzType="info-circle"
+          class="lead"></i>
+        <h2>{{ instructionTitle || "How to use this" }}</h2>
+        <i
+          nz-icon
+          nzType="down"
+          class="chev"></i>
+      </div>
+
+      <div
+        class="instr-body"
+        *ngIf="instructionOpen">
+        <ng-container *ngIf="!authoring">
+          <div
+            class="md"
+            [innerHTML]="instructionPreviewHtml"></div>
+        </ng-container>
+
+        <ng-container *ngIf="authoring">
+          <div class="tabs">
+            <button
+              [attr.aria-current]="instructionMode === 'write'"
+              (click)="setInstructionMode('write')">
+              Write
+            </button>
+            <button
+              [attr.aria-current]="instructionMode === 'preview'"
+              (click)="setInstructionMode('preview')">
+              Preview
+            </button>
+          </div>
+
+          <ng-container *ngIf="instructionMode === 'write'">
+            <label class="field">
+              <span class="label">Title — leave empty to hide the heading</span>
+              <input
+                [(ngModel)]="instructionTitle"
+                (ngModelChange)="onInstructionChange()"
+                placeholder="No title" />
+            </label>
+            <textarea
+              class="md-input"
+              [(ngModel)]="instructionBody"
+              (ngModelChange)="onInstructionChange()"
+              placeholder="Explain what this does and what to fill in."></textarea>
+            <p class="hint">Markdown. Add a picture with <code>![alt](https://…)</code>.</p>
+          </ng-container>
+
+          <div
+            class="md"
+            *ngIf="instructionMode === 'preview'"
+            [innerHTML]="instructionPreviewHtml"></div>
+        </ng-container>
+      </div>
+    </section>
+
+    <!-- Inputs -->
+    <div class="pc-section-head">
+      <span class="label">Inputs</span>
+      <span
+        class="hint"
+        *ngIf="authoring"
+        >Drag to reorder · click a step in the workflow to add more</span
+      >
+    </div>
+
+    <div
+      class="notice"
+      *ngIf="!authoring && brokenCount > 0">
+      <i
+        nz-icon
+        nzType="warning"></i>
+      <span
+        >{{ brokenCount }} input{{ brokenCount > 1 ? "s are" : " is" }} unavailable because the workflow changed. The
+        rest still work.</span
+      >
+    </div>
+
+    <div
+      class="empty"
+      *ngIf="visibleParameters.length === 0">
+      {{ authoring ? "No inputs yet. Open the workflow below and click a step to expose its settings." : "This workflow
+      has no inputs to fill in — just press Run." }}
+    </div>
+
+    <div
+      class="params"
+      cdkDropList
+      (cdkDropListDropped)="onDrop($event)">
+      <section
+        class="card param"
+        *ngFor="let r of rendered; trackBy: trackByRendered"
+        cdkDrag
+        [cdkDragDisabled]="!authoring">
+        <div class="param-top">
+          <i
+            *ngIf="authoring"
+            nz-icon
+            nzType="holder"
+            class="grip"
+            cdkDragHandle></i>
+          <div class="param-titles">
+            <!-- The control below carries its own label from the schema; this line is
+                 here for the drag handle and the author's row actions to sit against. -->
+            <div
+              class="param-help"
+              *ngIf="authoring">
+              From {{ r.parameter.operatorLabel }}
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="broken"
+          *ngIf="r.parameter.brokenReason">
+          <i
+            nz-icon
+            nzType="warning"></i>
+          Not connected — {{ r.parameter.brokenReason }}.
+        </div>
+
+        <div
+          class="control"
+          *ngIf="!r.parameter.brokenReason">
+          <!-- The operator's own field, so a file property gets the real file picker
+               and an attribute property a column dropdown. -->
+          <form
+            [formGroup]="r.form"
+            class="param-form">
+            <formly-form
+              [model]="r.model"
+              [fields]="r.fields"
+              [form]="r.form"></formly-form>
+          </form>
+
+          <!-- Under the boxes it describes, the way a hint about how to fill something
+               in is read after you have seen what there is to fill in.
+               It is rendered here rather than handed to formly as the field's
+               `description`: formly only shows that through nz-form-control's `extra`,
+               which an array property never goes through, so anything an author wrote
+               about a repeated input was silently dropped. -->
+          <p
+            class="param-help-text"
+            *ngIf="!authoring && r.parameter.binding.helpText">
+            {{ r.parameter.binding.helpText }}
+          </p>
+        </div>
+
+        <!-- Author edits the input in place, right under what it looks like. -->
+        <div
+          class="edit"
+          *ngIf="authoring">
+          <!-- The name is not edited here. It is edited by clicking the title above,
+               the same gesture that renames every box nested inside it. -->
+          <!-- No editable default here. It could only ever be offered for a setting
+               typed into a single box, so one card showed the control and the next did
+               not, for a reason no one reading the page could see. The default is still
+               what the canvas held when the setting was exposed, and Reset still returns
+               to it -- it is simply not edited from here. -->
+          <label class="field wide">
+            <span class="label">Help text</span>
+            <input
+              [value]="r.parameter.binding.helpText || ''"
+              (input)="onEditBinding(r.parameter, 'helpText', $any($event.target).value)" />
+          </label>
+          <div class="edit-foot">
+            <span class="hint">Set on {{ r.parameter.operatorLabel }} · {{ r.parameter.binding.propertyKey }}</span>
+            <div class="spacer"></div>
+            <button
+              class="remove"
+              (click)="onRemoveBinding(r.parameter)">
+              <i
+                nz-icon
+                nzType="delete"></i>
+              Remove
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Run -->
+    <div class="runbar">
+      <!-- Run and the unit it runs on sit together, because one gates the other, but
+           they stay two controls: the selector draws its own bordered box, so wrapping
+           them in a shared frame just produced a box inside a box. Adjacency and equal
+           height are enough to say they belong to each other. -->
+      <div class="run-group">
+        <!-- Never disabled, the way the operator canvas's Run is never disabled. Deciding
+             in advance whether a run is possible turned out to be guesswork, and every
+             wrong guess produced a dead button with no way forward. Pressing it and being
+             told what is missing is always recoverable. -->
+        <button
+          class="run"
+          [class.stop]="isRunning"
+          (click)="onRun()">
+          <i
+            nz-icon
+            [nzType]="isRunning ? 'stop' : 'caret-right'"></i>
+          {{ isRunning ? "Stop" : "Run" }}
+        </button>
+        <!-- Safe to live here now: the page opens its own connection on load, so this
+             control no longer decides whether running works by where it is mounted. -->
+        <div class="run-unit">
+          <texera-computing-unit-selection></texera-computing-unit-selection>
+        </div>
+        <!-- How long this has been going, from the same engine event the operator canvas
+             counts. It appears only once there is something to count, so a form at rest
+             is not carrying a 0:00:00 around. -->
+        <span
+          class="run-clock"
+          *ngIf="executionDuration > 0">
+          {{ executionDuration | date: "H:mm:ss" : "UTC" }}
+        </span>
+      </div>
+    </div>
+    <!-- On its own line: a message that explains or blocks the run should not push the
+         two controls apart, and it is absent most of the time. -->
+    <p
+      class="run-note"
+      [class.err]="runError"
+      *ngIf="runError || isRunning || needsComputingUnit">
+      {{ runError || (isRunning ? "Running — this keeps going if you look away." : "Choose a computing unit beside Run
+      first — this workflow needs one to run.") }}
+    </p>
+
+    <!-- The workflow. Out of the way unless you go looking, or you are the author. -->
+    <section
+      class="card wf"
+      [class.open]="workflowOpen">
+      <div
+        class="wf-bar"
+        (click)="toggleWorkflow()">
+        <i
+          nz-icon
+          nzType="down"
+          class="chev"></i>
+        <div class="wf-titles">
+          <h2>Workflow</h2>
+          <p>
+            {{ authoring ? "Click a step to choose which of its settings people fill in." : "Optional — the steps that
+            will run." }}
+          </p>
+        </div>
+        <div class="spacer"></div>
+        <button
+          *ngIf="authoring"
+          class="to-canvas"
+          (click)="openRegularCanvas(); $event.stopPropagation()">
+          Edit operators →
+        </button>
+      </div>
+
+      <div
+        class="wf-body"
+        [hidden]="!workflowOpen">
+        <!-- Created only once the strip is actually open. JointJS measures the paper
+             when the editor is built, so building it while collapsed gives every
+             element a zero-sized frame: ports land on the element origin and links
+             route up and over the boxes. Built at its real size, the preview draws
+             exactly like the operator canvas. -->
+        <texera-workflow-editor
+          *ngIf="workflowEverOpened"
+          [structureLocked]="true"></texera-workflow-editor>
+
+        <!-- Zooming and fitting only move the viewport, so everyone gets them.
+             Re-arranging moves the operators themselves, so it needs write access. -->
+        <div class="canvas-tools">
+          <button
+            (click)="zoomOut()"
+            nz-tooltip="Zoom out">
+            <i
+              nz-icon
+              nzType="minus"></i>
+          </button>
+          <button
+            (click)="zoomIn()"
+            nz-tooltip="Zoom in">
+            <i
+              nz-icon
+              nzType="plus"></i>
+          </button>
+          <button
+            (click)="fitToView()"
+            nz-tooltip="Fit to view">
+            <i
+              nz-icon
+              nzType="fullscreen"></i>
+          </button>
+          <button
+            *ngIf="canEdit"
+            (click)="autoLayout()"
+            nz-tooltip="Tidy up the layout">
+            <i
+              nz-icon
+              nzType="partition"></i>
+          </button>
+        </div>
+
+        <!-- The workflow's own property panel, unchanged: same component, same look as
+             the operator canvas. It floats over the preview and takes no layout space,
+             and clicking empty canvas dismisses it, so it is only there while a step is
+             actually selected. -->
+        <!-- Outside the panel on purpose. The property editor inside opens its own
+             stacking context, and everything in that context paints over a button
+             nested within it -- visible, correctly placed and unclickable, whatever
+             z-index it was given. As a sibling it is simply above. -->
+        <button
+          class="panel-close"
+          *ngIf="selectedOperatorLabel"
+          (click)="closeOperatorPanel()"
+          nz-tooltip="Close">
+          <i
+            nz-icon
+            nzType="close"></i>
+        </button>
+        <div
+          class="panel"
+          [class.inert]="!authoring"
+          [hidden]="!selectedOperatorLabel">
+          <!-- The panel's own minimise button belongs to the docked panel on the operator
+               canvas; here it collapsed the contents while this page kept the frame at
+               full width, leaving an empty box with no way back. This closes the panel
+               the way this page means it: by dropping the selection. -->
+          <texera-property-editor
+            [exposeChoosing]="authoring"
+            [persistPlacement]="false"></texera-property-editor>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results, under the workflow that produced them. The section keeps its place
+         before a run so the answer has a visible destination; saying so once, here, is
+         what let the page header drop its explanation of itself. -->
+    <section class="results">
+      <div class="pc-section-head"><span class="label">Results</span></div>
+      <p
+        class="results-empty"
+        *ngIf="!hasResults">
+        {{ isRunning ? "Working…" : "Press Run and the results appear here." }}
+      </p>
+      <ng-container *ngFor="let id of shownResultIds">
+        <div
+          class="card result"
+          *ngIf="hasResultFor(id)">
+          <div class="result-head">
+            <span>{{ resultLabel(id) }}</span>
+            <!-- A chart nobody can resize is a chart you either squint at or give up on.
+                 These change how tall the card renders it; the card can still be dragged
+                 from its corner for anything in between. -->
+            <span
+              class="result-zoom"
+              *ngIf="!isTabularResult(id)">
+              <button
+                (click)="zoomResult(id, -1)"
+                [disabled]="resultZoom(id) <= 0"
+                nz-tooltip="Smaller">
+                <i
+                  nz-icon
+                  nzType="minus"></i>
+              </button>
+              <button
+                (click)="zoomResult(id, 1)"
+                [disabled]="resultZoom(id) >= 2"
+                nz-tooltip="Bigger">
+                <i
+                  nz-icon
+                  nzType="plus"></i>
+              </button>
+            </span>
+          </div>
+          <div
+            class="result-body"
+            [attr.data-zoom]="resultZoom(id)">
+            <texera-result-table-frame
+              *ngIf="isTabularResult(id)"
+              [operatorId]="id"></texera-result-table-frame>
+            <!-- A chart arrives a moment after the run reports it. Until then the frame
+                 has nothing to draw and printed the word "undefined" across the card;
+                 say what is happening instead. -->
+            <ng-container *ngIf="!isTabularResult(id)">
+              <ng-container *ngIf="hasResultFor(id); else preparing">
+                <!-- Keyed on the result's version so a new result builds a new frame:
+                     the component reads its content once, at creation. -->
+                <texera-visualization-panel-content
+                  *ngFor="let key of [resultKey(id)]; trackBy: trackByKey"
+                  [operatorId]="id"></texera-visualization-panel-content>
+              </ng-container>
+              <ng-template #preparing>
+                <p class="result-pending">Preparing the chart…</p>
+              </ng-template>
+            </ng-container>
+          </div>
+        </div>
+      </ng-container>
+    </section>
+
+    <!-- Author chooses which steps report back. -->
+    <section
+      class="card respick"
+      *ngIf="authoring">
+      <h3>Results shown here</h3>
+      <p>Pick the steps whose output people should see after a run.</p>
+      <div class="opts">
+        <button
+          class="pill"
+          *ngFor="let choice of resultChoices"
+          [attr.aria-pressed]="choice.shown"
+          (click)="onToggleResult(choice)">
+          {{ choice.label }}
+        </button>
+      </div>
+    </section>
+  </div>
+</div>

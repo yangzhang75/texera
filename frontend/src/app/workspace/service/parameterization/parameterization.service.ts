@@ -1,0 +1,377 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { Injectable } from "@angular/core";
+import { BehaviorSubject, Observable } from "rxjs";
+import { CustomJSONSchema7 } from "../../types/custom-json-schema.interface";
+import { OperatorPredicate } from "../../types/workflow-common.interface";
+import { ParameterBinding, ParameterFieldOverride, ParameterizationConfig } from "../../../common/type/workflow";
+import { OperatorMetadataService } from "../operator-metadata/operator-metadata.service";
+import { DynamicSchemaService } from "../dynamic-schema/dynamic-schema.service";
+import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
+
+/** One operator property an author can choose to expose. */
+export interface ExposableProperty {
+  key: string;
+  /** The schema's own title, shown next to the raw key when picking. */
+  title: string;
+  type: string;
+  /** Already exposed, so the picker shows it as taken. */
+  exposed: boolean;
+}
+
+/** A binding paired with the operator field that renders it. */
+export interface ResolvedParameter {
+  binding: ParameterBinding;
+  /** The operator's current value -- what the form shows and what a run uses. */
+  value: unknown;
+  /** Label for the operator this input belongs to, for the author's reference. */
+  operatorLabel: string;
+  schema?: CustomJSONSchema7;
+  /**
+   * Set when the binding no longer points at a real property, because the operator
+   * was deleted on the regular canvas or the raw key was mistyped. Broken inputs are
+   * shown to the author with the reason and hidden from everyone else, since filling
+   * one in could not do anything.
+   */
+  brokenReason?: string;
+}
+
+/**
+ * Reads and writes the Parameterized Canvas definition.
+ *
+ * The one rule this service exists to enforce: a definition never affects a run.
+ * Filling in an input performs exactly the edit the regular canvas would perform --
+ * `setOperatorProperty` on the bound operator -- and everything else here (display
+ * names, help text, ordering, instruction) is presentation that the engine never sees.
+ */
+@Injectable({ providedIn: "root" })
+export class ParameterizationService {
+  /**
+   * Whether the author is currently choosing which properties the form offers.
+   *
+   * Sticky on purpose: it stays on until the author turns it off. Choosing usually
+   * means walking several operators, so closing it after each tick would mean
+   * re-opening it every time.
+   */
+  private choosingSubject = new BehaviorSubject<boolean>(false);
+  public readonly choosing$: Observable<boolean> = this.choosingSubject.asObservable();
+
+  constructor(
+    private workflowActionService: WorkflowActionService,
+    private operatorMetadataService: OperatorMetadataService,
+    private dynamicSchemaService: DynamicSchemaService
+  ) {}
+
+  public isChoosing(): boolean {
+    return this.choosingSubject.value;
+  }
+
+  public setChoosing(choosing: boolean): void {
+    if (this.choosingSubject.value !== choosing) {
+      this.choosingSubject.next(choosing);
+    }
+  }
+
+  public getConfig(): ParameterizationConfig {
+    return this.workflowActionService.getParameterization();
+  }
+
+  /** Apply a partial edit to the definition, announcing it so it gets saved. */
+  public updateConfig(patch: Partial<ParameterizationConfig>): void {
+    this.workflowActionService.setParameterization({ ...this.getConfig(), ...patch });
+  }
+
+  public setParameters(parameters: ParameterBinding[]): void {
+    this.updateConfig({ parameters });
+  }
+
+  public updateBinding(id: string, patch: Partial<ParameterBinding>): void {
+    this.setParameters(this.getConfig().parameters.map(p => (p.id === id ? { ...p, ...patch } : p)));
+  }
+
+  public removeBinding(id: string): void {
+    this.setParameters(this.getConfig().parameters.filter(p => p.id !== id));
+  }
+
+  /**
+   * Expose an operator property, seeding the input from what the operator already
+   * holds so the author sees the real value rather than a blank.
+   */
+  public addBinding(operatorID: string, propertyKey: string): void {
+    if (this.getConfig().parameters.some(p => p.operatorID === operatorID && p.propertyKey === propertyKey)) {
+      return;
+    }
+    const schema = this.propertySchema(operatorID, propertyKey);
+    const current = this.readValue(operatorID, propertyKey);
+    this.setParameters([
+      ...this.getConfig().parameters,
+      {
+        id: `param-${crypto.randomUUID()}`,
+        operatorID,
+        propertyKey,
+        displayName: (schema?.title as string) || propertyKey,
+        // Deliberately not seeded from the schema's description. That text describes the
+        // operator to whoever wired it up -- "Multiple string key/value pairs" -- and
+        // appearing unbidden under a reader's input it is worse than nothing: it reads
+        // as guidance the author never wrote and cannot be told apart from guidance
+        // they did. Empty until the author has something to say.
+        helpText: undefined,
+        defaultValue: current,
+      },
+    ]);
+  }
+
+  /**
+   * How a single field inside an input is presented. Absent means "as the schema says",
+   * which is why nothing is stored until the author actually changes something.
+   */
+  public fieldOverride(binding: ParameterBinding, path: string): ParameterFieldOverride {
+    return binding.fields?.[path] ?? {};
+  }
+
+  /**
+   * Apply an override to one field. An entry that no longer says anything is deleted
+   * rather than left as an empty object, so the saved definition stays a record of the
+   * author's decisions instead of accumulating every field they happened to look at.
+   */
+  public setFieldOverride(bindingId: string, path: string, patch: Partial<ParameterFieldOverride>): void {
+    const binding = this.getConfig().parameters.find(p => p.id === bindingId);
+    if (!binding) {
+      return;
+    }
+    const merged: ParameterFieldOverride = { ...(binding.fields?.[path] ?? {}), ...patch };
+    if (merged.displayName !== undefined && merged.displayName.trim() === "") {
+      delete merged.displayName;
+    }
+    if (merged.hidden === false) {
+      delete merged.hidden;
+    }
+    const fields = { ...(binding.fields ?? {}) };
+    if (Object.keys(merged).length === 0) {
+      delete fields[path];
+    } else {
+      fields[path] = merged;
+    }
+    this.updateBinding(bindingId, { fields: Object.keys(fields).length > 0 ? fields : undefined });
+  }
+
+  public isExposed(operatorID: string, propertyKey: string): boolean {
+    return this.getConfig().parameters.some(p => p.operatorID === operatorID && p.propertyKey === propertyKey);
+  }
+
+  /** Add or remove an input from the form, driven by the property editor's tick box. */
+  public setExposed(operatorID: string, propertyKey: string, exposed: boolean): void {
+    if (exposed) {
+      this.addBinding(operatorID, propertyKey);
+      return;
+    }
+    const existing = this.getConfig().parameters.find(
+      p => p.operatorID === operatorID && p.propertyKey === propertyKey
+    );
+    if (existing) {
+      this.removeBinding(existing.id);
+    }
+  }
+
+  /** Move an input to a new position; array order is what the form renders. */
+  public reorder(from: number, to: number): void {
+    const parameters = [...this.getConfig().parameters];
+    if (from === to || from < 0 || to < 0 || from >= parameters.length || to >= parameters.length) {
+      return;
+    }
+    parameters.splice(to, 0, parameters.splice(from, 1)[0]);
+    this.setParameters(parameters);
+  }
+
+  /**
+   * Choose whether an operator's output is shown on the form after a run.
+   *
+   * This also marks the operator for result viewing on the graph, because the engine
+   * only materialises results for operators in `opsToViewResult` -- picking one here
+   * without that produced a run that completed but showed nothing.
+   */
+  public toggleResultOperator(operatorID: string): void {
+    const shown = this.getConfig().resultOperatorIds;
+    const next = shown.includes(operatorID)
+      ? shown.filter(id => id !== operatorID)
+      : [...shown, operatorID];
+    this.updateConfig({ resultOperatorIds: next });
+    this.syncViewResultOperators(next);
+  }
+
+  /** Set (or clear) the note shown beside a result. */
+  public setResultNote(operatorID: string, note: string): void {
+    const notes = { ...(this.getConfig().resultNotes ?? {}) };
+    if (note.trim()) {
+      notes[operatorID] = note;
+    } else {
+      delete notes[operatorID];
+    }
+    this.updateConfig({ resultNotes: notes });
+  }
+
+  public getResultNote(operatorID: string): string {
+    return this.getConfig().resultNotes?.[operatorID] ?? "";
+  }
+
+  /**
+   * Keep the graph's view-result set in step with what the form promises to show.
+   * Operators the canvas already views for its own reasons are left alone.
+   */
+  public syncViewResultOperators(shown: string[] = this.getConfig().resultOperatorIds): void {
+    const graph = this.workflowActionService.getTexeraGraph();
+    const existing = new Set(graph.getOperatorsToViewResult());
+    shown.filter(id => graph.hasOperator(id)).forEach(id => existing.add(id));
+    this.workflowActionService.setViewOperatorResults([...existing]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Values. These are plain operator-property reads and writes.
+  // ---------------------------------------------------------------------------
+
+  public readValue(operatorID: string, propertyKey: string): unknown {
+    return this.getOperator(operatorID)?.operatorProperties?.[propertyKey];
+  }
+
+  /**
+   * Write a filled-in value back to its operator. This is the same edit as changing
+   * the property on the regular canvas, which is why both views agree immediately and
+   * why a run started from either one behaves identically.
+   */
+  public writeValue(binding: ParameterBinding, value: unknown): void {
+    const operator = this.getOperator(binding.operatorID);
+    if (!operator) {
+      return;
+    }
+    this.workflowActionService.setOperatorProperty(binding.operatorID, {
+      ...operator.operatorProperties,
+      [binding.propertyKey]: value,
+    });
+  }
+
+  /** Put an input back to the value its author chose. */
+  public resetToDefault(binding: ParameterBinding): void {
+    this.writeValue(binding, binding.defaultValue);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resolution against the live graph.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Pair every binding with its current value and schema, flagging the ones that no
+   * longer point anywhere. Callers decide what to do with broken ones: the author sees
+   * them so they can be fixed, everyone else does not.
+   */
+  public resolveParameters(): ResolvedParameter[] {
+    return this.getConfig().parameters.map(binding => {
+      const operator = this.getOperator(binding.operatorID);
+      if (!operator) {
+        return {
+          binding,
+          value: undefined,
+          operatorLabel: binding.operatorID,
+          brokenReason: "the step it belonged to was removed from the workflow",
+        };
+      }
+      const label = this.operatorLabel(operator);
+      const schema = this.propertySchema(binding.operatorID, binding.propertyKey);
+      if (!schema) {
+        return {
+          binding,
+          value: undefined,
+          operatorLabel: label,
+          brokenReason: `"${binding.propertyKey}" is not a setting of ${label}`,
+        };
+      }
+      return {
+        binding,
+        value: operator.operatorProperties?.[binding.propertyKey],
+        operatorLabel: label,
+        schema,
+      };
+    });
+  }
+
+  /** Every property of an operator an author could expose, marking the taken ones. */
+  public exposableProperties(operatorID: string): ExposableProperty[] {
+    const properties = this.operatorSchemaProperties(operatorID);
+    const taken = new Set(
+      this.getConfig()
+        .parameters.filter(p => p.operatorID === operatorID)
+        .map(p => p.propertyKey)
+    );
+    return Object.entries(properties).map(([key, schema]) => ({
+      key,
+      title: (schema?.title as string) || key,
+      type: (schema?.type as string) || "string",
+      exposed: taken.has(key),
+    }));
+  }
+
+  public operatorLabel(operator: OperatorPredicate): string {
+    if (operator.customDisplayName?.trim()) {
+      return operator.customDisplayName.trim();
+    }
+    try {
+      return this.operatorMetadataService.getOperatorSchema(operator.operatorType).additionalMetadata
+        .userFriendlyName;
+    } catch {
+      return operator.operatorType;
+    }
+  }
+
+  /** How many inputs are exposed from an operator, for the canvas badge. */
+  public exposedCount(operatorID: string): number {
+    return this.getConfig().parameters.filter(p => p.operatorID === operatorID).length;
+  }
+
+  private getOperator(operatorID: string): OperatorPredicate | undefined {
+    const graph = this.workflowActionService.getTexeraGraph();
+    return graph.hasOperator(operatorID) ? graph.getOperator(operatorID) : undefined;
+  }
+
+  private operatorSchemaProperties(operatorID: string): Record<string, CustomJSONSchema7> {
+    const operator = this.getOperator(operatorID);
+    if (!operator) {
+      return {};
+    }
+    // The dynamic schema, not the operator's static one. Schema propagation fills in
+    // the list of upstream attribute names, which is what turns an attribute setting
+    // into a dropdown; reading the static schema gave the form a bare text box and
+    // asked people to type a column name from memory.
+    try {
+      const jsonSchema = this.dynamicSchemaService.getDynamicSchema(operatorID).jsonSchema;
+      return (jsonSchema.properties ?? {}) as Record<string, CustomJSONSchema7>;
+    } catch {
+      // No dynamic entry yet -- fall back so the form still renders something.
+    }
+    try {
+      const jsonSchema = this.operatorMetadataService.getOperatorSchema(operator.operatorType).jsonSchema;
+      return (jsonSchema.properties ?? {}) as Record<string, CustomJSONSchema7>;
+    } catch {
+      return {};
+    }
+  }
+
+  private propertySchema(operatorID: string, propertyKey: string): CustomJSONSchema7 | undefined {
+    return this.operatorSchemaProperties(operatorID)[propertyKey];
+  }
+}

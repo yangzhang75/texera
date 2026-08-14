@@ -50,7 +50,8 @@ import { ResultExportationComponent } from "../result-exportation/result-exporta
 import { ReportGenerationService } from "../../service/report-generation/report-generation.service";
 import { ShareAccessComponent } from "src/app/dashboard/component/user/share-access/share-access.component";
 import { PanelService } from "../../service/panel/panel.service";
-import { USER_WORKFLOW } from "../../../app-routing.constant";
+import { ParameterizationService } from "../../service/parameterization/parameterization.service";
+import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
@@ -187,7 +188,8 @@ export class MenuComponent implements OnInit, OnDestroy {
     private panelService: PanelService,
     private computingUnitStatusService: ComputingUnitStatusService,
     protected config: GuiConfigService,
-    private router: Router
+    private router: Router,
+    private parameterizationService: ParameterizationService
   ) {
     workflowWebsocketService
       .subscribeToEvent("ExecutionDurationUpdateEvent")
@@ -608,15 +610,20 @@ export class MenuComponent implements OnInit, OnDestroy {
           workflowName = DEFAULT_WORKFLOW_NAME;
         }
 
+        // Import replaces what is on this canvas, so it keeps this workflow's id.
+        // Clearing the id instead made the open workflow look unsaved, and autosave
+        // then inserted a fresh row rather than updating this one -- so importing into
+        // a workflow you had just created left you with duplicates in the list.
+        const current = this.workflowActionService.getWorkflowMetadata();
         const workflow: Workflow = {
           content: workflowContent,
           name: workflowName,
-          description: undefined,
-          wid: undefined,
-          creationTime: undefined,
-          lastModifiedTime: undefined,
+          description: current.description,
+          wid: current.wid,
+          creationTime: current.creationTime,
+          lastModifiedTime: current.lastModifiedTime,
           readonly: false,
-          isPublished: 0,
+          isPublished: current.isPublished,
         };
 
         this.workflowActionService.enableWorkflowModification();
@@ -640,6 +647,42 @@ export class MenuComponent implements OnInit, OnDestroy {
     const workflowContentJson = JSON.stringify(workflowContent, null, 2);
     const fileName = this.currentWorkflowName + ".json";
     saveAs(new Blob([workflowContentJson], { type: "text/plain;charset=utf-8" }), fileName);
+  }
+
+  /**
+   * Whether this workflow also offers a parameterized canvas. When it does not, the
+   * switch is not rendered at all, so the canvas looks exactly as it always has.
+   */
+  public get isParameterized(): boolean {
+    return this.workflowActionService.getWorkflowMetadata().isParameterized === true;
+  }
+
+  /** True while the property panel is offering a tick box beside each setting. */
+  public get choosingParameters(): boolean {
+    return this.parameterizationService.isChoosing();
+  }
+
+  /**
+   * Turn the tick boxes on or off. Deliberately sticky: choosing what a form offers
+   * means visiting several operators, so it stays on until the author ends it.
+   */
+  public onToggleChooseParameters(): void {
+    this.parameterizationService.setChoosing(!this.parameterizationService.isChoosing());
+  }
+
+  /**
+   * Same workflow, seen as a form. The counterpart of the switch on that page, and a
+   * full page load for the same reason: both views drive the same singleton graph and
+   * connection, so a fresh document is the only clean handover between them.
+   */
+  /** The other view of this same workflow. A full load, not a route: these views share
+   *  root-level services and the Yjs shared model, and routing left the previous view's
+   *  collaboration client alive -- the user appeared as their own coeditor. */
+  public onClickOpenParameterizedCanvas(): void {
+    const wid = this.workflowActionService.getWorkflowMetadata().wid;
+    if (wid !== undefined) {
+      window.location.href = `${USER_WORKSPACE}/${wid}/parameters`;
+    }
   }
 
   /**

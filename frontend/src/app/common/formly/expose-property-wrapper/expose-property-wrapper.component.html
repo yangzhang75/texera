@@ -1,0 +1,16 @@
+<div
+  class="expose-row"
+  [class.choosing]="props.choosing">
+  <label
+    *ngIf="props.choosing"
+    class="expose-box"
+    title="Show this on the parameterized form">
+    <input
+      type="checkbox"
+      [checked]="props.exposed"
+      (change)="onToggle($event)" />
+  </label>
+  <div class="expose-field">
+    <ng-container #fieldComponent></ng-container>
+  </div>
+</div>

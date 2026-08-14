@@ -27,6 +27,7 @@ import { UserProjectComponent } from "./dashboard/component/user/user-project/us
 import { UserComputingUnitComponent } from "./dashboard/component/user/user-computing-unit/user-computing-unit.component";
 import { UserVenvComponent } from "./dashboard/component/user/user-venv/user-venv.component";
 import { WorkspaceComponent } from "./workspace/component/workspace.component";
+import { ParameterizedCanvasComponent } from "./workspace/component/parameterized-canvas/parameterized-canvas.component";
 import { AboutComponent } from "./hub/component/about/about.component";
 import { AuthGuardService } from "./common/service/user/auth-guard.service";
 import { AdminUserComponent } from "./dashboard/component/admin/user/admin-user.component";
@@ -109,6 +110,14 @@ routes.push({
         {
           path: "workflow",
           component: UserWorkflowComponent,
+        },
+        {
+          // The same workflow, seen as a form instead of a canvas. Must come before
+          // "workflow/:id" so the extra segment is not swallowed as part of the id.
+          // Offered only for workflows whose author turned it on; the component sends
+          // everyone else to the canvas rather than showing an empty page.
+          path: "workflow/:id/parameters",
+          component: ParameterizedCanvasComponent,
         },
         {
           path: "workflow/:id",

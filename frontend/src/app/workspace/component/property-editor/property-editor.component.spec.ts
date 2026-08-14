@@ -96,6 +96,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: false,
     });
 
     // unhighlight the operator
@@ -145,6 +146,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: false,
     });
 
     // unhighlight the operator
@@ -160,6 +162,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockResultPredicate.operatorID,
+      exposeChoosing: false,
     });
   });
 
@@ -175,6 +178,21 @@ describe("PropertyEditorComponent", () => {
     expect(jointGraphWrapper.getCurrentHighlightedPortIDs()).toEqual([port]);
     expect(component.currentComponent).toBe(PortPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({ currentPortID: port });
+  });
+
+  // The parameterized canvas mounts this same panel and asks it to offer a tick box
+  // beside each property, so the flag has to reach the operator frame.
+  it("should pass the expose-choosing flag through to the operator frame", () => {
+    component.exposeChoosing = true;
+    const jointGraphWrapper = workflowActionService.getJointGraphWrapper();
+    workflowActionService.addOperator(mockScanPredicate, mockPoint);
+
+    jointGraphWrapper.highlightOperators(mockScanPredicate.operatorID);
+
+    expect(component.componentInputs).toEqual({
+      currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: true,
+    });
   });
 
   it("should switch from the operator frame to the port frame when the highlight moves from an operator to a port", () => {
@@ -298,12 +316,53 @@ describe("PropertyEditorComponent", () => {
     expect(heightSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("resetPanelPosition should snap the drag position back to the return position", () => {
-    component.returnPosition = { x: 12, y: -34 };
+  // Reset has to be able to rescue a panel dragged out of the window, so home is the
+  // docked position rather than anything derived from where the panel currently is.
+  it("resetPanelPosition docks the panel and forgets the saved placement", () => {
+    component.dragPosition = { x: 12, y: -34 };
+    localStorage.setItem("right-panel-style", "transform: translate3d(-4000px, 0px, 0px);");
 
     component.resetPanelPosition();
 
-    expect(component.dragPosition).toEqual({ x: 12, y: -34 });
+    expect(component.dragPosition).toEqual({ x: 0, y: 0 });
+    expect(localStorage.getItem("right-panel-style")).toBeNull();
+  });
+
+  // The parameterized canvas mounts this same component inside its preview box, where
+  // the panel is restyled to sit inline. That copy sharing the operator canvas's saved
+  // geometry meant a trip through the form view left the real panel unusable.
+  describe("a copy that does not own the saved placement", () => {
+    it("writes nothing back when it is destroyed", () => {
+      localStorage.setItem("right-panel-width", "300");
+      localStorage.setItem("right-panel-style", "width: 300px;");
+      component.persistPlacement = false;
+      component.width = 0;
+      component.height = 65;
+
+      component.ngOnDestroy();
+
+      expect(localStorage.getItem("right-panel-width")).toBe("300");
+      expect(localStorage.getItem("right-panel-style")).toBe("width: 300px;");
+    });
+
+    it("still persists when it is the operator canvas's own panel", () => {
+      component.persistPlacement = true;
+      component.width = 420;
+
+      component.ngOnDestroy();
+
+      expect(localStorage.getItem("right-panel-width")).toBe("420");
+    });
+  });
+
+  // A width of zero is stored as the string "0", which is truthy; reading it back
+  // unguarded left the panel collapsed on every load with no visible way to reopen it.
+  it("ignores a stored width that is really a closed panel", () => {
+    localStorage.setItem("right-panel-width", "0");
+
+    const reopened = TestBed.createComponent(PropertyEditorComponent).componentInstance;
+
+    expect(reopened.width).toBeGreaterThanOrEqual(260);
   });
 
   it("should close the panel in response to the panel service close stream", () => {
@@ -318,13 +377,13 @@ describe("PropertyEditorComponent", () => {
 
   it("should reset position and re-open the panel in response to the panel service reset stream", () => {
     const heightSpy = vi.spyOn(component as any, "updateHeightBasedOnContent").mockImplementation(() => {});
-    component.returnPosition = { x: 7, y: 9 };
+    component.dragPosition = { x: 7, y: 9 };
     component.width = 0;
     component.height = 65;
 
     panelService.resetPanels();
 
-    expect(component.dragPosition).toEqual({ x: 7, y: 9 });
+    expect(component.dragPosition).toEqual({ x: 0, y: 0 });
     expect(component.width).toBe(280);
     expect(component.height).toBe(300);
     expect(heightSpy).toHaveBeenCalled();

@@ -34,6 +34,7 @@ import org.apache.texera.web.resource.dashboard.user.workflow.WorkflowResource.{
   WorkflowIDs
 }
 import org.apache.texera.web.resource.dashboard.{DashboardResource, FulltextSearchQueryUtils}
+import javax.ws.rs.ForbiddenException
 import org.jooq.Condition
 import org.jooq.impl.DSL.noCondition
 import org.scalatest.flatspec.AnyFlatSpec
@@ -899,6 +900,104 @@ class WorkflowResourceSpec
 
     assert(result.workflow.getName == "test_create_workflow")
     assert(result.coverImage.isEmpty)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parameterized Canvas: the per-workflow on/off flag.
+  // ---------------------------------------------------------------------------
+
+  // duplicateWorkflow runs assignNewOperatorIds over the content, which requires a
+  // real `operators` array, so the toy content used elsewhere in this spec won't do.
+  private val contentWithOperators =
+    """{"operators":[{"operatorID":"Limit-operator-1","operatorType":"Limit"}],""" +
+      """"operatorPositions":{},"links":[],"commentBoxes":[],"settings":{}}"""
+
+  /** Persist a fresh workflow owned by user 1 and return its wid. */
+  private def persistFreshWorkflow(
+      name: String,
+      content: String = contentWithOperators
+  ): Integer = {
+    val workflow = new Workflow()
+    workflow.setName(name)
+    workflow.setContent(content)
+    workflowResource.persistWorkflow(workflow, sessionUser1)
+    workflow.getWid
+  }
+
+  private def isParameterized(wid: Integer): Boolean =
+    getDSLContext
+      .select(WORKFLOW.IS_PARAMETERIZED)
+      .from(WORKFLOW)
+      .where(WORKFLOW.WID.eq(wid))
+      .fetchOne()
+      .value1()
+
+  "/parameterized API" should "turn the parameterized canvas on and back off" in {
+    val wid = persistFreshWorkflow("param_toggle")
+    assert(!isParameterized(wid), "a new workflow must not be parameterized")
+
+    workflowResource.enableParameterized(wid, sessionUser1)
+    assert(isParameterized(wid))
+
+    workflowResource.disableParameterized(wid, sessionUser1)
+    assert(!isParameterized(wid))
+  }
+
+  it should "reject a user without write access" in {
+    val wid = persistFreshWorkflow("param_no_access")
+
+    assertThrows[ForbiddenException] {
+      workflowResource.enableParameterized(wid, sessionUser2)
+    }
+    assert(!isParameterized(wid))
+  }
+
+  // Saving the canvas sends the whole Workflow POJO to workflowDao.update. The
+  // payload has no notion of this flag, so without the guard in persistWorkflow a
+  // plain save would silently turn the parameterized canvas back off.
+  it should "survive a subsequent save of the workflow" in {
+    val wid = persistFreshWorkflow("param_survives_save")
+    workflowResource.enableParameterized(wid, sessionUser1)
+
+    val edit = new Workflow()
+    edit.setWid(wid)
+    edit.setName("param_survives_save_edited")
+    edit.setContent("{\"operators\":[],\"links\":[]}")
+    workflowResource.persistWorkflow(edit, sessionUser1)
+
+    assert(isParameterized(wid), "saving the canvas must not clear the flag")
+  }
+
+  // A biologist's path is hub -> clone -> use, so a copy has to stay usable.
+  it should "be inherited by a duplicated workflow" in {
+    val wid = persistFreshWorkflow("param_source")
+    workflowResource.enableParameterized(wid, sessionUser1)
+
+    val copies = workflowResource.duplicateWorkflow(WorkflowIDs(List(wid), None), sessionUser1)
+
+    assert(copies.length == 1)
+    assert(isParameterized(copies.head.workflow.getWid), "the copy must keep the flag")
+  }
+
+  // Both views load a workflow through this endpoint, and each has to know whether to
+  // offer the other. Leaving the flag out of the payload made the form redirect to the
+  // canvas every time, so it is worth pinning down.
+  it should "be reported by the endpoint both canvases load through" in {
+    val wid = persistFreshWorkflow("param_retrieve")
+    assert(!workflowResource.retrieveWorkflow(wid, sessionUser1).isParameterized)
+
+    workflowResource.enableParameterized(wid, sessionUser1)
+
+    assert(workflowResource.retrieveWorkflow(wid, sessionUser1).isParameterized)
+  }
+
+  it should "leave a duplicate of a plain workflow unparameterized" in {
+    val wid = persistFreshWorkflow("plain_source")
+
+    val copies = workflowResource.duplicateWorkflow(WorkflowIDs(List(wid), None), sessionUser1)
+
+    assert(copies.length == 1)
+    assert(!isParameterized(copies.head.workflow.getWid))
   }
 
 }

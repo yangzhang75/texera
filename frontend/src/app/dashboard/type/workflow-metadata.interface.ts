@@ -25,4 +25,10 @@ export interface WorkflowMetadata {
   lastModifiedTime: number | undefined;
   isPublished: number;
   readonly: boolean;
+  /**
+   * Whether this workflow also offers a Parameterized Canvas. Served from the
+   * workflow row so listings can show the entry point without loading content.
+   * Absent on payloads that predate the column.
+   */
+  isParameterized?: boolean;
 }

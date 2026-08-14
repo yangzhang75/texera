@@ -18,6 +18,8 @@
  */
 
 import { ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges } from "@angular/core";
+import { ExposePropertyWrapperComponent } from "../../../../common/formly/expose-property-wrapper/expose-property-wrapper.component";
+import { ParameterizationService } from "../../../service/parameterization/parameterization.service";
 import { ExecuteWorkflowService } from "../../../service/execute-workflow/execute-workflow.service";
 import { WorkflowStatusService } from "../../../service/workflow-status/workflow-status.service";
 import { Subject } from "rxjs";
@@ -130,6 +132,12 @@ export function isAggregateAttributeRequired(aggFunction: unknown): boolean {
 })
 export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, OnDestroy {
   @Input() currentOperatorId?: string;
+  /**
+   * True while an author is choosing which of this operator's properties appear on the
+   * workflow's parameterized form. Adds a tick box beside each property; off, the
+   * property editor looks and behaves exactly as it always has.
+   */
+  @Input() exposeChoosing = false;
 
   currentOperatorSchema?: OperatorSchema;
 
@@ -449,6 +457,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
   }
 
   constructor(
+    private parameterizationService: ParameterizationService,
     private formlyJsonschema: FormlyJsonschema,
     private workflowActionService: WorkflowActionService,
     public executeWorkflowService: ExecuteWorkflowService,
@@ -764,6 +773,14 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     // intercept JsonSchema -> FormlySchema process, adding custom options
     // this requires a one-to-one mapping.
     // for relational custom options, have to do it after FormlySchema is generated.
+    // The names of the operator's own top-level properties. Comparing schema objects by
+    // identity does not work: formly resolves $ref/allOf and hands the callback a merged
+    // copy, so nothing ever matched and every tick box vanished. A name check is enough --
+    // the fields nested inside a property (fileKey, alias, ...) are not property names of
+    // the operator itself.
+    const schemaForFormly = cloneDeep(schema);
+    const rootPropertyNames = new Set(Object.keys(schemaForFormly.properties ?? {}));
+
     const jsonSchemaMapIntercept = (
       mappedField: FormlyFieldConfig,
       mapSource: CustomJSONSchema7
@@ -1267,13 +1284,32 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         };
       }
 
+      // An author choosing what to expose gets a tick box beside each top-level
+      // property, and only there. The map callback runs for every field at every
+      // depth, so without this an array-of-objects property sprouted a tick box on
+      // the array, on each item, and on each field inside the item -- four ways to
+      // tick one setting. The form offers whole properties; identity against the
+      // operator schema's own `properties` is what tells a top-level field from a
+      // same-named field nested inside one.
+      const isTopLevel = typeof mappedField.key === "string" && rootPropertyNames.has(mappedField.key);
+      if (this.exposeChoosing && isTopLevel && typeof mappedField.key === "string" && this.currentOperatorId) {
+        const operatorId = this.currentOperatorId;
+        const propertyKey = mappedField.key;
+        ExposePropertyWrapperComponent.decorate(
+          mappedField,
+          true,
+          this.parameterizationService.isExposed(operatorId, propertyKey),
+          (checked: boolean) => this.parameterizationService.setExposed(operatorId, propertyKey, checked)
+        );
+      }
+
       return mappedField;
     };
 
     this.formlyFormGroup = new FormGroup({});
     this.formlyOptions = {};
     // convert the json schema to formly config, pass a copy because formly mutates the schema object
-    const field = this.formlyJsonschema.toFieldConfig(cloneDeep(schema), {
+    const field = this.formlyJsonschema.toFieldConfig(schemaForFormly, {
       map: jsonSchemaMapIntercept,
     });
     field.hooks = {

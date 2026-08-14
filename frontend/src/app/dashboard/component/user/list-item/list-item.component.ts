@@ -110,6 +110,8 @@ export class ListItemComponent implements OnChanges {
   entryLink: string[] = [];
   size: number | undefined = 0;
   public iconType: string = "";
+  /** Whether this workflow also offers a Parameterized Canvas. */
+  public parameterized = false;
   isLiked: boolean = false;
   @Input() isPrivateSearch = false;
   @Input() editable = false;
@@ -156,7 +158,7 @@ export class ListItemComponent implements OnChanges {
         }
         this.size = this.entry.size;
       }
-      this.iconType = "project";
+      this.applyParameterizedState(this.entry.workflow?.workflow?.isParameterized === true);
     } else if (this.entry.type === "project") {
       this.entryLink = [USER_PROJECT, String(this.entry.id)];
       this.iconType = "container";
@@ -201,6 +203,38 @@ export class ListItemComponent implements OnChanges {
       this.initializeEntry();
       this.renderMarkdownPreview(this.entry.description);
     }
+  }
+
+  /**
+   * A parameterized workflow is marked with a flask and opens straight into its form.
+   * The operator canvas is still one click away from there, so nothing is taken away.
+   */
+  private applyParameterizedState(enabled: boolean): void {
+    this.parameterized = enabled;
+    this.iconType = enabled ? "experiment" : "project";
+    // Leave hub links alone; only the owner's own entry point moves.
+    if (this.entryLink[0] === USER_WORKSPACE) {
+      this.entryLink = enabled
+        ? [USER_WORKSPACE, String(this.entry.id), "parameters"]
+        : [USER_WORKSPACE, String(this.entry.id)];
+    }
+  }
+
+  public onToggleParameterized(): void {
+    const enabled = !this.parameterized;
+    this.workflowPersistService
+      .setParameterized(this.entry.id as number, enabled)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => {
+          if (this.entry.workflow?.workflow) {
+            this.entry.workflow.workflow.isParameterized = enabled;
+          }
+          this.applyParameterizedState(enabled);
+          this.cdr.detectChanges();
+        },
+        error: (err: unknown) => this.notificationService.error(extractErrorMessage(err)),
+      });
   }
 
   onCheckboxChange(entry: DashboardEntry): void {

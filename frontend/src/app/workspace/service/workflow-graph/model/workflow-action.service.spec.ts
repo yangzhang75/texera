@@ -794,6 +794,98 @@ describe("WorkflowActionService", () => {
     expect(workflow.content.links.length).toEqual(1);
   });
 
+  describe("parameterization (Parameterized Canvas definition)", () => {
+    const config = {
+      instruction: { title: "How to use this", body: "Pick a file, then Run." },
+      parameters: [
+        {
+          id: "p1",
+          operatorID: mockScanPredicate.operatorID,
+          propertyKey: "tableName",
+          displayName: "Input table",
+          helpText: "Which table to read.",
+          defaultValue: "twitter",
+        },
+      ],
+      resultOperatorIds: [mockResultPredicate.operatorID],
+    };
+
+    it("should start empty for a workflow that was never set up", () => {
+      expect(service.getParameterization()).toEqual({ parameters: [], resultOperatorIds: [] });
+    });
+
+    it("should round-trip through workflow content", () => {
+      service.addOperator(mockScanPredicate, { x: 10, y: 20 });
+      service.setParameterization(config);
+
+      expect(service.getWorkflowContent().parameterization).toEqual(config);
+    });
+
+    // The definition must survive being saved and opened again, which is what makes it
+    // travel with clone, version and publish for free.
+    it("should be restored when a workflow carrying one is reloaded", () => {
+      const workflow: Workflow = {
+        ...DEFAULT_WORKFLOW,
+        content: {
+          operators: [mockScanPredicate],
+          operatorPositions: { [mockScanPredicate.operatorID]: mockPoint },
+          links: [],
+          commentBoxes: [],
+          settings: undefined as any,
+          parameterization: config,
+        },
+      };
+
+      service.reloadWorkflow(workflow, false, false);
+
+      expect(service.getParameterization()).toEqual(config);
+    });
+
+    it("should fall back to an empty definition for a workflow without one", () => {
+      service.setParameterization(config);
+
+      service.reloadWorkflow(
+        {
+          ...DEFAULT_WORKFLOW,
+          content: {
+            operators: [],
+            operatorPositions: {},
+            links: [],
+            commentBoxes: [],
+            settings: undefined as any,
+          },
+        },
+        false,
+        false
+      );
+
+      expect(service.getParameterization()).toEqual({ parameters: [], resultOperatorIds: [] });
+    });
+
+    // Editing the form has to reach the same autosave that canvas edits use.
+    it("should report an edit through workflowChanged", () => {
+      const seen: unknown[] = [];
+      const sub = service.workflowChanged().subscribe(v => seen.push(v));
+
+      service.setParameterization(config);
+
+      expect(seen.length).toEqual(1);
+      sub.unsubscribe();
+    });
+
+    // Opening a workflow is not an edit; announcing it would save on every open.
+    it("should stay silent while a workflow is being opened", () => {
+      const seen: unknown[] = [];
+      const sub = service.parameterizationChanged$.subscribe(v => seen.push(v));
+
+      service.hydrateParameterization(config);
+
+      expect(seen.length).toEqual(0);
+      expect(service.getParameterization()).toEqual(config);
+      sub.unsubscribe();
+    });
+  });
+
   it("should clear pre-existing comment boxes and fall back to default settings when reloading", () => {
     service.addCommentBox({ ...mockCommentBox, commentBoxID: "commentBox-old" });
     expect(texeraGraph.hasCommentBox("commentBox-old")).toBeTruthy();

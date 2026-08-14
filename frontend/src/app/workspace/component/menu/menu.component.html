@@ -75,6 +75,27 @@
         <span *ngIf="!displayParticularWorkflowVersion"> {{autoSaveState}} </span>
       </div>
 
+      <!-- One workflow, two ways of working on it. The same control sits in the same
+           place on the parameterized canvas, so switching never means hunting for a
+           different affordance; the pressed segment is the view you are looking at.
+           Shown only once an author has turned the form on. -->
+      <div
+        class="view-switch"
+        *ngIf="isParameterized && !displayParticularWorkflowVersion">
+        <button
+          type="button"
+          class="on"
+          aria-pressed="true">
+          Canvas
+        </button>
+        <button
+          type="button"
+          aria-pressed="false"
+          (click)="onClickOpenParameterizedCanvas()">
+          P Canvas
+        </button>
+      </div>
+
       <ng-container *ngFor="let user of coeditorPresenceService.coeditors">
         <texera-coeditor-user-icon [coeditor]="user"></texera-coeditor-user-icon>
       </ng-container>

@@ -71,6 +71,7 @@ import org.apache.texera.amber.operator.sklearn.training._
 import org.apache.texera.amber.operator.sleep.SleepOpDesc
 import org.apache.texera.amber.operator.sort.{SortOpDesc, StableMergeSortOpDesc}
 import org.apache.texera.amber.operator.sortPartitions.SortPartitionsOpDesc
+import org.apache.texera.amber.operator.source.parameter.ParameterSourceOpDesc
 import org.apache.texera.amber.operator.source.apis.reddit.RedditSearchSourceOpDesc
 import org.apache.texera.amber.operator.source.apis.twitter.v2.{
   TwitterFullArchiveSearchSourceOpDesc,
@@ -165,6 +166,7 @@ trait StateTransferFunc
 )
 @JsonSubTypes(
   Array(
+    new Type(value = classOf[ParameterSourceOpDesc], name = "FileParameter"),
     new Type(value = classOf[IfOpDesc], name = "If"),
     new Type(value = classOf[SankeyDiagramOpDesc], name = "SankeyDiagram"),
     new Type(value = classOf[IcicleChartOpDesc], name = "IcicleChart"),

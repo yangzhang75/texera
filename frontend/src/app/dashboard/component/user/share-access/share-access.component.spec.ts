@@ -1373,7 +1373,7 @@ describe("ShareAccessComponent", () => {
       );
       setupComponent({ type: "workflow", id: 3, ...asOwner });
 
-      expect(publishLineText()).toContain("Restore it any time from the version panel");
+      expect(publishLineText()).toContain("Currently public");
     });
 
     it("writes nothing when it opens", () => {

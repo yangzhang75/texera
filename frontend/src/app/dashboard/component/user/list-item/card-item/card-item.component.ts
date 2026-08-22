@@ -190,7 +190,7 @@ export class CardItemComponent implements OnChanges {
     this.disableDelete = !descriptor.isOwner(this.entry);
     this.canDownload = descriptor.download !== undefined;
     this.canShare = descriptor.retrieveOwners !== undefined;
-    this.entryLink = this.resourceRegistry.entryLink(this.entry, this.currentUid);
+    this.entryLink = this.resourceRegistry.entryLink(this.entry, this.currentUid, this.isPrivateSearch);
     if (descriptor.hasSize && typeof this.entry.id === "number") {
       this.size = this.entry.size;
     }

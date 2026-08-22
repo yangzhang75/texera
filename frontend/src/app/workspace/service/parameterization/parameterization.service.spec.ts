@@ -70,7 +70,6 @@ describe("ParameterizationService", () => {
       // Not seeded from the schema: that description is written for whoever wired the
       // operator up, and shown to a reader it reads as advice the author never gave.
       expect(binding.helpText).toBeUndefined();
-      expect(binding.defaultValue).toBe("twitter");
     });
 
     it("does not expose the same property twice", () => {
@@ -78,16 +77,6 @@ describe("ParameterizationService", () => {
       service.addBinding(scanId, "tableName");
 
       expect(service.getConfig().parameters.length).toBe(1);
-    });
-
-    it("lists what an operator has to offer and marks what is taken", () => {
-      expect(service.exposableProperties(scanId)).toEqual([
-        { key: "tableName", title: "table name", type: "string", exposed: false },
-      ]);
-
-      service.addBinding(scanId, "tableName");
-
-      expect(service.exposableProperties(scanId)[0].exposed).toBe(true);
     });
   });
 
@@ -100,9 +89,7 @@ describe("ParameterizationService", () => {
 
       service.writeValue(binding, "reddit");
 
-      expect(workflowActionService.getTexeraGraph().getOperator(scanId).operatorProperties["tableName"]).toBe(
-        "reddit"
-      );
+      expect(workflowActionService.getTexeraGraph().getOperator(scanId).operatorProperties["tableName"]).toBe("reddit");
     });
 
     it("leaves the operator's other properties alone", () => {
@@ -113,17 +100,6 @@ describe("ParameterizationService", () => {
       service.writeValue(binding, "reddit");
 
       expect(workflowActionService.getTexeraGraph().getOperator(scanId).operatorProperties["keep"]).toBe("me");
-    });
-
-    it("restores the author's default on reset", () => {
-      workflowActionService.setOperatorProperty(scanId, { tableName: "twitter" });
-      service.addBinding(scanId, "tableName");
-      const [binding] = service.getConfig().parameters;
-      service.writeValue(binding, "reddit");
-
-      service.resetToDefault(binding);
-
-      expect(service.readValue(scanId, "tableName")).toBe("twitter");
     });
   });
 
@@ -198,11 +174,6 @@ describe("ParameterizationService", () => {
       service.removeBinding(first.id);
 
       expect(service.getConfig().parameters.map(p => p.propertyKey)).toEqual(["attribute"]);
-    });
-
-    it("counts what each operator exposes, for the canvas badge", () => {
-      expect(service.exposedCount(scanId)).toBe(1);
-      expect(service.exposedCount("no-such-operator")).toBe(0);
     });
   });
 

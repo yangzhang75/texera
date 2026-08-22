@@ -48,9 +48,10 @@ import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-w
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
 import { ParameterizationService, ResolvedParameter } from "../../service/parameterization/parameterization.service";
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
-import { JointGraphWrapper } from "../../service/workflow-graph/model/joint-graph-wrapper";
+import { isSink } from "../../service/workflow-graph/model/workflow-graph";
 import { WorkflowConsoleService } from "../../service/workflow-console/workflow-console.service";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
+import { PanelResizeService } from "../../service/workflow-result/panel-resize/panel-resize.service";
 import { WorkflowWebsocketService } from "../../service/workflow-websocket/workflow-websocket.service";
 import { ExecutionState } from "../../types/execute-workflow.interface";
 import { OperatorPredicate, Point } from "../../types/workflow-common.interface";
@@ -59,6 +60,9 @@ import { PropertyEditorComponent } from "../property-editor/property-editor.comp
 import { ResultTableFrameComponent } from "../result-panel/result-table-frame/result-table-frame.component";
 import { VisualizationFrameContentComponent } from "../visualization-panel-content/visualization-frame-content.component";
 import { WorkflowEditorComponent } from "../workflow-editor/workflow-editor.component";
+import { MiniMapComponent } from "../workflow-editor/mini-map/mini-map.component";
+import { CoeditorUserIconComponent } from "../menu/coeditor-user-icon/coeditor-user-icon.component";
+import { CoeditorPresenceService } from "../../service/workflow-graph/model/coeditor-presence.service";
 import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
 import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
@@ -69,24 +73,11 @@ import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-wo
  * file picker, an attribute property a column dropdown, and so on. It is the same slice
  * the template and macro pages take.
  */
-interface SubFieldRow {
-  path: string;
-  label: string;
-  hidden: boolean;
-  name: string;
-}
-
 interface RenderedParameter {
   parameter: ResolvedParameter;
   fields: FormlyFieldConfig[];
   form: FormGroup;
   model: Record<string, unknown>;
-  /**
-   * Computed once, when the card is built. Calling a method from the template instead
-   * returned a fresh array on every change-detection pass, which kept the page
-   * re-rendering for ever -- buttons could not be clicked because they never stood still.
-   */
-  subFields: SubFieldRow[];
 }
 
 /** An operator offered in the "show its results" picker. */
@@ -123,6 +114,8 @@ interface ResultChoice {
     UserIconComponent,
     ComputingUnitSelectionComponent,
     WorkflowEditorComponent,
+    MiniMapComponent,
+    CoeditorUserIconComponent,
     ResultTableFrameComponent,
     VisualizationFrameContentComponent,
     PropertyEditorComponent,
@@ -188,6 +181,8 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   private storedPositions: { [operatorID: string]: Point } = {};
 
   constructor(
+    // Public for the template: shows the same live collaborator avatars as the canvas.
+    public coeditorPresenceService: CoeditorPresenceService,
     private route: ActivatedRoute,
     private router: Router,
     private workflowActionService: WorkflowActionService,
@@ -216,7 +211,11 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     private workflowConsoleService: WorkflowConsoleService,
     private workflowWebsocketService: WorkflowWebsocketService,
     private host: ElementRef<HTMLElement>,
-    private datePipe: DatePipe
+    private datePipe: DatePipe,
+    // The result table sizes its rows-per-page from this shared panel height. On the
+    // operator canvas the docked panel drives it; this page has no such panel, so it was
+    // left at the tiny default (300px) and every table showed a single row per page.
+    private panelResizeService: PanelResizeService
   ) {}
 
   ngOnInit(): void {
@@ -226,6 +225,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       return;
     }
     this.wid = wid;
+    // Give the result tables a realistic height to page against, so they show a screenful
+    // of rows instead of one. (~7 rows; the card scrolls for the rest.)
+    this.panelResizeService.changePanelSize(900, 560);
     // Highlighting is off by default and is what turns a click on a step into a
     // selection, which is how an author picks the settings to expose.
     this.workflowActionService.setHighlightingEnabled(true);
@@ -341,16 +343,25 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       .getExecutionStateStream()
       .pipe(untilDestroyed(this))
       .subscribe(({ current }) => {
-        const wasRunning = this.executionState;
         this.executionState = current.state;
-        // Starting a run repaints every operator -- port counts appear, borders change
-        // colour -- and JointJS lays that out against whatever size it last measured.
-        // In the preview that measurement was taken while the strip was opening, so the
-        // repaint landed on stale numbers: labels sat across their own boxes and over
-        // each other. Re-measure once as the run begins, when the strip is settled.
-        if (this.workflowOpen && current.state !== wasRunning) {
-          this.refitCanvas();
+        // Surface a failed run. Without this the spinner just stops, the results stay
+        // empty, and the form gives zero feedback -- the opposite of what a reader needs.
+        // onRun() clears runError before the next run, so a stale error never lingers.
+        if (current.state === ExecutionState.Failed) {
+          // A required input left empty is by far the commonest reason a run fails here,
+          // and the engine reports it as an opaque "... is not contained in the schema".
+          // Answer with the same words the field itself already shows ("required"), so the
+          // two messages are consistent -- and it covers every operator, not just this one.
+          this.runError = this.hasEmptyRequiredInputs()
+            ? "Run failed: please fill in the required fields."
+            : this.friendlyRunError(current.errorMessages?.[0]?.message?.trim() ?? "");
         }
+        // We deliberately do NOT re-fit the preview when a run starts. A run repaints the
+        // operators (port counts appear, borders change) which grows their bounding boxes,
+        // and a re-fit then zoomed the whole graph down -- so pressing Run made a large
+        // workflow visibly shrink. The editor now keeps its own geometry correct via its
+        // container ResizeObserver, so the run repaint no longer needs a viewport re-fit;
+        // leaving the view where the reader put it is the right behaviour.
         if (this.hasResults) {
           this.later(() => this.fitVisualisations(), 400);
         }
@@ -423,11 +434,15 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     this.instructionTitle = config.instruction?.title ?? "";
     this.instructionBody = config.instruction?.body ?? "";
     this.shownResultIds = config.resultOperatorIds;
-    this.resultChoices = this.operators().map(op => ({
-      operatorID: op.operatorID,
-      label: this.parameterizationService.operatorLabel(op),
-      shown: config.resultOperatorIds.includes(op.operatorID),
-    }));
+    // A sink writes its output elsewhere and never has a result to show, so leave it out
+    // of the picker; every other operator can be offered.
+    this.resultChoices = this.operators()
+      .filter(op => !isSink(op))
+      .map(op => ({
+        operatorID: op.operatorID,
+        label: this.parameterizationService.operatorLabel(op),
+        shown: config.resultOperatorIds.includes(op.operatorID),
+      }));
     // Readers always see rendered markdown; authors only while previewing.
     if (!this.authoring || this.instructionMode === "preview") {
       void this.renderInstruction();
@@ -457,7 +472,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   private renderParameter(parameter: ResolvedParameter): RenderedParameter | undefined {
     const { binding } = parameter;
     if (parameter.brokenReason) {
-      return { parameter, fields: [], form: new FormGroup({}), model: {}, subFields: [] };
+      return { parameter, fields: [], form: new FormGroup({}), model: {} };
     }
     const schema = this.operatorSchemaFor(binding.operatorID);
     if (!schema) {
@@ -486,7 +501,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     field.props = {
       ...(field.props ?? {}),
       label: binding.displayName || binding.propertyKey,
-      description: binding.helpText ?? "",
+      // Help text is rendered once by the card itself (.param-help-text in the reader,
+      // the "Help text" box for the author). Do NOT also hand it to formly as the field
+      // description, or scalar fields show it twice (formly's copy + the card's copy).
+      description: "",
     };
 
     const form = new FormGroup({});
@@ -523,7 +541,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       });
 
     this.applyFieldOverrides(field, binding, schemaLabel);
-    return { parameter, fields: [field], form, model, subFields: this.collectSubFields([field], binding) };
+    return { parameter, fields: [field], form, model };
   }
 
   /**
@@ -598,6 +616,11 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
           name => this.onBindingNamed(binding.id, name),
           () => {}
         );
+        // The editable label above is now the single title for this input. Clear formly's
+        // own label so it is not rendered a second time next to it -- that duplicate is
+        // what showed the title twice (most visibly on the array-typed FileParameter,
+        // where the group label repeated the name).
+        node.props = { ...(node.props ?? {}), label: "" };
       }
       if (path) {
         const override = binding.fields?.[path] ?? {};
@@ -743,10 +766,6 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     this.later(() => this.fitVisualisations(), 60);
   }
 
-  public hasResultFor(operatorID: string): boolean {
-    return this.workflowResultService.hasAnyResult(operatorID);
-  }
-
   /**
    * Whether this operator's output is a table or a picture.
    *
@@ -821,6 +840,21 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     return this.workflowResultService.hasPaginatedResult(operatorID);
   }
 
+  /**
+   * Whether this step's visualisation actually drew something. A visualiser reserves a
+   * fixed canvas even when its result is empty, so without this an empty chart showed as a
+   * tall blank box; gating on real content lets the card collapse to the compact "No
+   * result yet" line instead. Tables are excluded -- their own frame says "Empty result
+   * set" and is handled by the tabular branch.
+   */
+  public vizHasContent(operatorID: string): boolean {
+    if (this.isTabularResult(operatorID)) {
+      return false;
+    }
+    const snapshot = this.workflowResultService.getResultService(operatorID)?.getCurrentResultSnapshot();
+    return !!snapshot && snapshot.length > 0;
+  }
+
   public resultLabel(operatorID: string): string {
     return this.resultChoices.find(c => c.operatorID === operatorID)?.label ?? operatorID;
   }
@@ -854,53 +888,54 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     return Number.isNaN(parsed) ? raw : parsed;
   }
 
-  public isModified(parameter: ResolvedParameter): boolean {
-    // Compare structurally: a list-valued property is not "changed" just because two
-    // equal arrays are different objects.
-    return JSON.stringify(parameter.value ?? null) !== JSON.stringify(parameter.binding.defaultValue ?? null);
-  }
-
-  public onReset(parameter: ResolvedParameter): void {
-    this.parameterizationService.resetToDefault(parameter.binding);
-    this.parameters = this.parameterizationService.resolveParameters();
-    // Put the value back into the control as well, otherwise the operator is reset but
-    // the box the reader is looking at still shows what they typed.
-    const card = this.rendered.find(r => r.parameter.binding.id === parameter.binding.id);
-    const refreshed = this.parameters.find(p => p.binding.id === parameter.binding.id);
-    if (card) {
-      card.model[parameter.binding.id] = cloneDeep(parameter.binding.defaultValue);
-      card.form.patchValue({ [parameter.binding.id]: parameter.binding.defaultValue }, { emitEvent: false });
-      if (refreshed) {
-        card.parameter = refreshed;
-      }
-    }
-    this.cdr.detectChanges();
-  }
-
-  public displayValue(parameter: ResolvedParameter): string {
-    return parameter.value === undefined || parameter.value === null ? "" : String(parameter.value);
-  }
-
   // ---------------------------------------------------------------------------
   // Running. The same call the operator canvas makes, on the same workflow.
   // ---------------------------------------------------------------------------
+
+  /**
+   * Turn an engine error into something a reader can act on. Raw SQL / jOOQ / Java stack
+   * traces mean nothing to a biologist, so those collapse to one plain sentence; a short
+   * human message (e.g. "please select a .csv file") is kept, minus any Java class prefix.
+   * The full text is always logged to the console for developers.
+   */
+  private friendlyRunError(raw: string): string {
+    if (raw) {
+      // eslint-disable-next-line no-console
+      console.error("[parameterized-canvas] run failed:", raw);
+    }
+    const opaque =
+      !raw || /\bSQL \[|org\.jooq|org\.apache|org\.postgresql|foreign key|constraint|jdbc|\bat [\w.$]+\(/i.test(raw);
+    if (opaque) {
+      return "Run failed — please reload and try again.";
+    }
+    const cleaned = raw
+      .replace(/^[\w.$]+(?:Exception|Error):\s*/, "")
+      .replace(/^requirement failed:\s*/i, "")
+      .trim();
+    return `Run failed: ${cleaned || "please check your inputs and try again."}`;
+  }
+
+  /**
+   * Whether any exposed input that is required is still empty. Reuses formly's own
+   * per-field required validation -- the very thing that renders "This field is required"
+   * under the box -- so the run-failure message stays consistent with the field hint.
+   */
+  private hasEmptyRequiredInputs(): boolean {
+    return this.rendered.some(r => r.form.invalid);
+  }
 
   public onRun(): void {
     if (this.isRunning) {
       this.executeWorkflowService.killWorkflow();
       return;
     }
-    const missing = this.visibleParameters.filter(
-      p => p.schema?.type !== "boolean" && this.displayValue(p).trim() === ""
-    );
-    if (missing.length > 0) {
-      this.runError = `Fill in "${missing[0].binding.displayName}" before running.`;
-      return;
-    }
     this.runError = "";
-    // Exactly what the operator canvas does, and nothing more. Every extra condition
-    // this page tried to impose about computing units turned out to be wrong in a way
-    // that left the reader unable to run at all.
+    // Same as the operator canvas: run the workflow as-is. We deliberately do NOT impose
+    // a client-side "fill every field first" gate here -- it diverged from the canvas
+    // (which lets you run), it mislabeled fields whose display name is empty ("Fill in
+    // """), and it could not guarantee success anyway. Empty or invalid inputs now surface
+    // as a real engine error through the execution-state stream (see the Failed handler),
+    // while formly's own per-field "required" hint still guides the reader.
     this.executeWorkflowService.executeWorkflow(this.workflowName);
     // Said afterwards, so it never stands between the reader and the attempt.
     this.needsComputingUnit = this.computingUnitStatusService.getSelectedComputingUnitValue() == null;
@@ -1032,10 +1067,14 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    * the fit waits another frame so it runs against a canvas that exists.
    */
   private openWorkflowStrip(): void {
+    // Build the editor a frame after the strip is shown (so it measures a real size), then
+    // centre the graph -- the same lightweight approach the Hub's read-only preview uses.
+    // The editor keeps its own paper sized/rebuilt via its container ResizeObserver, so no
+    // extra re-fit / fade / observer machinery is needed here.
     this.later(() => {
       this.workflowEverOpened = true;
       this.cdr.detectChanges();
-      this.later(() => this.refitCanvas());
+      this.later(() => this.workflowActionService.getTexeraGraph().triggerCenterEvent());
     });
   }
 
@@ -1052,26 +1091,6 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    * mean that merely opening this page rewrote the positions the author chose on the
    * canvas -- and, with autosave on, saved them.
    */
-  /** Zoom the preview without touching the workflow. */
-  public zoomIn(): void {
-    const w = this.workflowActionService.getJointGraphWrapper();
-    if (!w.isZoomRatioMax()) {
-      w.setZoomProperty(w.getZoomRatio() + JointGraphWrapper.ZOOM_CLICK_DIFF);
-    }
-  }
-
-  public zoomOut(): void {
-    const w = this.workflowActionService.getJointGraphWrapper();
-    if (!w.isZoomRatioMin()) {
-      w.setZoomProperty(w.getZoomRatio() - JointGraphWrapper.ZOOM_CLICK_DIFF);
-    }
-  }
-
-  /** Zoom and centre so the whole workflow is in view. Viewport only. */
-  public fitToView(): void {
-    this.refitCanvas();
-  }
-
   /**
    * Re-arrange the operators left to right.
    *
@@ -1130,43 +1149,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
           ) ?? "");
   }
 
-  /**
-   * The fields the reader would actually type into, inside one input, with the name the
-   * author gave each. Empty for a plain single-box input -- there is nothing to list.
-   */
-  /** @internal exported for tests */
-  public collectSubFields(fields: FormlyFieldConfig[], binding: ParameterBinding): SubFieldRow[] {
-    const out: SubFieldRow[] = [];
-    const seen = new Set<string>();
-    const walk = (node: FormlyFieldConfig, path: string): void => {
-      const arrayItem = ParameterizedCanvasComponent.arrayItemOf(node);
-      const children = node.fieldGroup ?? arrayItem?.fieldGroup ?? [];
-      if (children.length === 0 && arrayItem) {
-        walk(arrayItem, path);
-        return;
-      }
-      if (children.length === 0) {
-        if (path && !seen.has(path)) {
-          seen.add(path);
-          const override = binding.fields?.[path] ?? {};
-          out.push({
-            path,
-            label: (node.props?.label as string) || path,
-            hidden: override.hidden === true,
-            name: override.displayName ?? "",
-          });
-        }
-        return;
-      }
-      for (const child of children) {
-        walk(child, ParameterizedCanvasComponent.childPath(path, child.key));
-      }
-    };
-    fields.forEach(f => walk(f, ""));
-    return out;
-  }
-
-  /** Renaming the input itself, from its own title -- the top-level twin of the above. */
+  /** Renaming the input itself, from its own title. */
   private onBindingNamed(bindingId: string, value: string): void {
     this.parameterizationService.updateBinding(bindingId, { displayName: value });
     this.readConfig();
@@ -1182,75 +1165,12 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     this.readConfig();
   }
 
-  public onSubFieldName(r: RenderedParameter, path: string, value: string): void {
-    this.parameterizationService.setFieldOverride(r.parameter.binding.id, path, { displayName: value });
-    this.readConfig();
-  }
-
-  public onSubFieldHidden(r: RenderedParameter, path: string, hidden: boolean): void {
-    this.parameterizationService.setFieldOverride(r.parameter.binding.id, path, { hidden });
-    this.readConfig();
-  }
-
-  /** Stable identity for the rows, so editing one does not rebuild the others. */
-  public trackSubField(_: number, row: SubFieldRow): string {
-    return row.path;
-  }
-
   /** Renaming here is the same edit as renaming on the operator canvas. */
   public onRenameWorkflow(): void {
     this.workflowActionService.setWorkflowName(this.workflowName);
     this.workflowName = this.workflowActionService.getWorkflowMetadata().name;
     this.adjustWorkflowNameWidth();
     this.save();
-  }
-
-  public autoLayout(): void {
-    if (!this.canEdit) {
-      return;
-    }
-    this.workflowActionService.autoLayoutWorkflow();
-    const positions = this.workflowActionService.getWorkflowContent().operatorPositions;
-    this.storedPositions = { ...positions };
-    this.refitCanvas();
-  }
-
-  private refitCanvas(): void {
-    // Two steps on purpose. The paper is measured when the editor is created, which
-    // here happens while the section is still collapsed, so it starts at zero size.
-    // Asking it to fit in the same tick would measure that stale size and settle on a
-    // nonsense zoom -- which looked like a handful of tiny operators adrift in a large
-    // empty strip. Let the resize land first, then fit to what is now really there.
-    this.later(() => {
-      window.dispatchEvent(new Event("resize"));
-      this.later(() => {
-        try {
-          const paper = this.workflowActionService.getJointGraphWrapper().getMainJointPaper() as unknown as {
-            scaleContentToFit: (opts: object) => void;
-            scale: () => { sx: number };
-            getComputedSize: () => { width: number; height: number };
-            getContentArea: (opts: object) => { x: number; y: number; width: number; height: number };
-            translate: (x: number, y: number) => void;
-          };
-          // useModelGeometry measures the operator boxes rather than their rendered
-          // labels, so long names do not pad the graph out and shrink everything.
-          paper.scaleContentToFit({ padding: 40, minScale: 0.5, maxScale: 1, useModelGeometry: true });
-          // scaleContentToFit picks the zoom but parks the graph in the top-left corner,
-          // so a short workflow sits in the corner of a wide strip. Centre it by hand.
-          const scale = paper.scale().sx;
-          const area = paper.getComputedSize();
-          const content = paper.getContentArea({ useModelGeometry: true });
-          paper.translate(
-            (area.width - content.width * scale) / 2 - content.x * scale,
-            (area.height - content.height * scale) / 2 - content.y * scale
-          );
-        } catch {
-          // No paper attached yet, or nothing to show; centring is the best we can do.
-          this.workflowActionService.getTexeraGraph().triggerCenterEvent();
-        }
-        this.cdr.detectChanges();
-      }, 180);
-    }, 150);
   }
 
   /**

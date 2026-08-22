@@ -5,11 +5,12 @@
   margin-bottom: 2px;
 }
 
-/* Reads as a label until you reach for it, so the form still looks like a form. */
+/* A faint dashed box at rest signals the title is editable (authors could not tell it was
+   a field before); it firms up on hover and turns into a real input on focus. */
 .lbl-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid transparent;
+  border: 1px dashed #dcdcdc;
   border-radius: 4px;
   background: none;
   padding: 1px 5px;
@@ -17,6 +18,7 @@
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
   outline: none;
+  cursor: text;
 
   &::placeholder {
     color: rgba(0, 0, 0, 0.45);
@@ -24,10 +26,12 @@
   }
 
   &:hover {
-    border-color: #d9d9d9;
+    border-style: solid;
+    border-color: #b0b0b0;
   }
 
   &:focus {
+    border-style: solid;
     border-color: #1890ff;
     background: #fff;
   }

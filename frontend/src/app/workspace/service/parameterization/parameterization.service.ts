@@ -26,16 +26,6 @@ import { OperatorMetadataService } from "../operator-metadata/operator-metadata.
 import { DynamicSchemaService } from "../dynamic-schema/dynamic-schema.service";
 import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
 
-/** One operator property an author can choose to expose. */
-export interface ExposableProperty {
-  key: string;
-  /** The schema's own title, shown next to the raw key when picking. */
-  title: string;
-  type: string;
-  /** Already exposed, so the picker shows it as taken. */
-  exposed: boolean;
-}
-
 /** A binding paired with the operator field that renders it. */
 export interface ResolvedParameter {
   binding: ParameterBinding;
@@ -119,7 +109,6 @@ export class ParameterizationService {
       return;
     }
     const schema = this.propertySchema(operatorID, propertyKey);
-    const current = this.readValue(operatorID, propertyKey);
     this.setParameters([
       ...this.getConfig().parameters,
       {
@@ -133,7 +122,6 @@ export class ParameterizationService {
         // as guidance the author never wrote and cannot be told apart from guidance
         // they did. Empty until the author has something to say.
         helpText: undefined,
-        defaultValue: current,
       },
     ]);
   }
@@ -209,26 +197,9 @@ export class ParameterizationService {
    */
   public toggleResultOperator(operatorID: string): void {
     const shown = this.getConfig().resultOperatorIds;
-    const next = shown.includes(operatorID)
-      ? shown.filter(id => id !== operatorID)
-      : [...shown, operatorID];
+    const next = shown.includes(operatorID) ? shown.filter(id => id !== operatorID) : [...shown, operatorID];
     this.updateConfig({ resultOperatorIds: next });
     this.syncViewResultOperators(next);
-  }
-
-  /** Set (or clear) the note shown beside a result. */
-  public setResultNote(operatorID: string, note: string): void {
-    const notes = { ...(this.getConfig().resultNotes ?? {}) };
-    if (note.trim()) {
-      notes[operatorID] = note;
-    } else {
-      delete notes[operatorID];
-    }
-    this.updateConfig({ resultNotes: notes });
-  }
-
-  public getResultNote(operatorID: string): string {
-    return this.getConfig().resultNotes?.[operatorID] ?? "";
   }
 
   /**
@@ -264,11 +235,6 @@ export class ParameterizationService {
       ...operator.operatorProperties,
       [binding.propertyKey]: value,
     });
-  }
-
-  /** Put an input back to the value its author chose. */
-  public resetToDefault(binding: ParameterBinding): void {
-    this.writeValue(binding, binding.defaultValue);
   }
 
   // ---------------------------------------------------------------------------
@@ -310,37 +276,15 @@ export class ParameterizationService {
     });
   }
 
-  /** Every property of an operator an author could expose, marking the taken ones. */
-  public exposableProperties(operatorID: string): ExposableProperty[] {
-    const properties = this.operatorSchemaProperties(operatorID);
-    const taken = new Set(
-      this.getConfig()
-        .parameters.filter(p => p.operatorID === operatorID)
-        .map(p => p.propertyKey)
-    );
-    return Object.entries(properties).map(([key, schema]) => ({
-      key,
-      title: (schema?.title as string) || key,
-      type: (schema?.type as string) || "string",
-      exposed: taken.has(key),
-    }));
-  }
-
   public operatorLabel(operator: OperatorPredicate): string {
     if (operator.customDisplayName?.trim()) {
       return operator.customDisplayName.trim();
     }
     try {
-      return this.operatorMetadataService.getOperatorSchema(operator.operatorType).additionalMetadata
-        .userFriendlyName;
+      return this.operatorMetadataService.getOperatorSchema(operator.operatorType).additionalMetadata.userFriendlyName;
     } catch {
       return operator.operatorType;
     }
-  }
-
-  /** How many inputs are exposed from an operator, for the canvas badge. */
-  public exposedCount(operatorID: string): number {
-    return this.getConfig().parameters.filter(p => p.operatorID === operatorID).length;
   }
 
   private getOperator(operatorID: string): OperatorPredicate | undefined {

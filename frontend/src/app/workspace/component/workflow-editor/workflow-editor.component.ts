@@ -96,6 +96,10 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   editorWrapper!: HTMLElement;
   paper!: joint.dia.Paper;
   private paperInteractive: boolean = true;
+  // Keeps the JointJS paper sized to its OWN container (not just the window) and rebuilds
+  // cell geometry when the container goes 0 -> real size. Needed by embedded previews such
+  // as the parameterized-canvas strip, which toggles this editor's container via display:none.
+  private paperResizeObserver?: ResizeObserver;
 
   /**
    * Set by a view that shows the graph but must never let anyone re-shape it.
@@ -186,6 +190,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     this.handlePaperRestoreDefaultOffset();
     this.handlePaperZoom();
     this.handleWindowResize();
+    this.handleContainerResize();
     this.handleViewDeleteOperator();
     if (this.workflowActionService.getHighlightingEnabled()) {
       this.handleCellHighlight();
@@ -223,6 +228,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
+    this.paperResizeObserver?.disconnect();
     document.removeEventListener("keydown", this._handleKeyboardAction.bind(this));
   }
 
@@ -571,6 +577,42 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     merge(fromEvent(window, "resize").pipe(auditTime(30)))
       .pipe(untilDestroyed(this))
       .subscribe(() => this.paper.setDimensions(this.editorWrapper.offsetWidth, this.editorWrapper.offsetHeight));
+  }
+
+  /**
+   * The window:resize handler above reacts only to the WINDOW changing size. When this
+   * editor is embedded in a container that resizes on its own -- e.g. the parameterized-
+   * canvas "Workflow" preview strip, which collapses/expands via display:none -- the window
+   * never fires, so the paper is left mis-sized and, worse, any cell that repainted while
+   * the container was 0-sized cached its port anchors at the origin, which makes links cut
+   * across the boxes (the "tangle"). A ResizeObserver on the editor's own container fixes
+   * both at the exact moment the real size lands, instead of guessing with timers.
+   */
+  private handleContainerResize(): void {
+    this.paperResizeObserver = new ResizeObserver(() => this.resizePaperToContainer());
+    this.paperResizeObserver.observe(this.editorWrapper);
+  }
+
+  private resizePaperToContainer(): void {
+    if (!this.paper) {
+      return;
+    }
+    const width = this.editorWrapper.offsetWidth;
+    const height = this.editorWrapper.offsetHeight;
+    // Collapsed/hidden container: do NOT measure or rebuild against zero -- that is exactly
+    // what caches the broken geometry in the first place.
+    if (width === 0 || height === 0) {
+      return;
+    }
+    this.paper.setDimensions(width, height);
+    // Rebuild cell geometry against the now-real DOM. Re-rendering each element recomputes
+    // its port anchors; re-routing each link then draws it between the real ports. A plain
+    // setDimensions (or a viewport zoom-to-fit) cannot undo anchors already cached at 0,0.
+    this.paper.model.getElements().forEach(element => this.paper.findViewByModel(element)?.update());
+    this.paper.model.getLinks().forEach(link => {
+      const linkView = this.paper.findViewByModel(link) as joint.dia.LinkView | undefined;
+      linkView?.requestConnectionUpdate();
+    });
   }
 
   private handleCellHighlight(): void {

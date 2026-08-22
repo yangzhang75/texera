@@ -48,8 +48,6 @@ export interface ParameterBinding {
   propertyKey: string;
   displayName: string;
   helpText?: string;
-  /** What "Reset" restores. May be absent, meaning the input starts empty. */
-  defaultValue?: unknown;
   /**
    * Per-field overrides inside this input, keyed by the field's path within the
    * property (`fileKey`, `alias`, `predicates.0.value` -- the array index is dropped,
@@ -93,11 +91,6 @@ export interface ParameterizationConfig {
   parameters: ParameterBinding[];
   /** Operators whose results are shown under the workflow after a run. */
   resultOperatorIds: string[];
-  /**
-   * Optional one-line explanation per shown result, keyed by operator id. A table of
-   * numbers rarely says what it is; this lets the author say so. Absent means no note.
-   */
-  resultNotes?: { [operatorID: string]: string };
 }
 
 export function getDefaultParameterization(): ParameterizationConfig {

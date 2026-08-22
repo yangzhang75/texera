@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="106" failures="0" errors="0" time="0.812403958">
+    <testsuite name="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" timestamp="2026-08-22T21:53:14.741Z" hostname="Yangs-MacBook-Pro.local" tests="73" failures="0" errors="0" skipped="0" time="0.739194333">
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; opens the form for a workflow whose author turned it on" time="0.013010917">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; sends a plain workflow to the operator canvas instead of showing an empty form" time="0.001228792">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; shows the workflow read-only, since editing belongs to the other view" time="0.000627083">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; shows properties rather than editing them until edit mode is on" time="0.000460625">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; lets an author edit properties in edit mode" time="0.0006505">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; puts them back to read-only on leaving edit mode" time="0.000519167">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; never unlocks for a reader without write access" time="0.00044675">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; offers author controls only with write access" time="0.000638208">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; who this page is for &gt; goes back to the list when the workflow cannot be opened" time="0.000505083">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; broken inputs &gt; hides them from a reader and counts them" time="0.000611541">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; broken inputs &gt; shows them to the author" time="0.000365666">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running &gt; runs this very workflow, by name" time="0.000466875">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running &gt; turns into Stop while a run is in flight" time="0.000484667">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running &gt; is not running once the execution finishes" time="0.000360333">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running &gt; leaves the workflow as the reader left it when a run starts" time="0.000347084">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running &gt; respects a reader who collapsed it on purpose" time="0.000437125">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; values &gt; writes text straight through to the operator" time="0.000445042">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; values &gt; keeps numeric inputs numeric" time="0.000340917">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; values &gt; treats an emptied number as no value rather than NaN" time="0.000337416">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; resizing a result &gt; starts at the middle size" time="0.000265375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; resizing a result &gt; grows and shrinks within bounds" time="0.000450209">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; resizing a result &gt; keeps a size per result" time="0.000272917">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running without a computing unit &gt; still attempts the run rather than refusing up front" time="0.000264958">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running without a computing unit &gt; points at the missing unit afterwards" time="0.000259167">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; running without a computing unit &gt; says nothing when a unit is already chosen" time="0.0002595">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; saving &gt; keeps the positions the workflow was opened with" time="0.00045">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; saving &gt; still gives a position to an operator the stored map never knew about" time="0.0004035">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; saving &gt; never writes a workflow that is missing a position" time="0.000375625">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; saving &gt; does not save a workflow other than the one this page opened" time="0.000311167">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; looking at a step &gt; opens the workflow&apos;s own property panel for it" time="0.000356167">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; looking at a step &gt; closes the panel for a step that is no longer there" time="0.000309709">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming an input from its own title &gt; makes the top-level title editable in place while authoring" time="0.000839833">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming an input from its own title &gt; offers no eye on the top-level title, since Remove already takes it off the form" time="0.000515583">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming an input from its own title &gt; writes the typed name onto the binding" time="0.000590042">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming an input from its own title &gt; leaves the reader a plain title with no rename control" time="0.000186833">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; picking up attribute options when compilation reports them &gt; rebuilds the cards for an operator it shows" time="0.20195425">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; picking up attribute options when compilation reports them &gt; ignores an operator none of its cards came from" time="0.202224958">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; picking up attribute options when compilation reports them &gt; does not rebuild under the cursor of someone typing" time="0.201801541">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the run clock &gt; shows nothing before anything has run" time="0.000624375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the run clock &gt; takes the elapsed time the engine reports" time="0.000525458">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the run clock &gt; keeps the final time when the run stops" time="0.000406042">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; opening the workflow strip &gt; reveals the strip before building the canvas inside it" time="0.000355083">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; opening the workflow strip &gt; builds the canvas once the strip has a size" time="0.016012125">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; opening the workflow strip &gt; waits the same way when a starting run opens the strip for you" time="0.017078875">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; opening the workflow strip &gt; leaves the canvas alone when the strip is being closed" time="0.000694458">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; walking away while something is still pending &gt; does not build the canvas for a page that has been left" time="0.015830167">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; walking away while something is still pending &gt; does not fit charts for a page that has been left" time="0.022232875">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; walking away while something is still pending &gt; still runs a pending callback while the page is alive" time="0.021185458">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming edge cases &gt; treats an emptied name as a request to fall back to the schema label" time="0.000545666">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming edge cases &gt; shows the author&apos;s name in the box, not the schema&apos;s" time="0.000266917">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming edge cases &gt; starts empty when the author has not named it, so the placeholder shows through" time="0.000216333">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming edge cases &gt; takes formly&apos;s own label off the field it wraps" time="0.000216958">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; when saving fails &gt; tells the user instead of failing quietly" time="0.000556583">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; when saving fails &gt; says nothing when the save goes through" time="0.000407834">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; when saving fails &gt; still issues the final save while the page is being torn down" time="0.000394542">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; editing what the form offers &gt; removes an input and re-reads what is left" time="0.000395292">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; editing what the form offers &gt; reorders by the positions the drag reports" time="0.000329833">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; editing what the form offers &gt; toggles which operator&apos;s results are shown" time="0.000293542">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; editing what the form offers &gt; stores the instruction as the author types it" time="0.000373166">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; editing what the form offers &gt; writes help text through the binding" time="0.000308917">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; row identity &gt; identifies a card by its binding, not its position" time="0.000309125">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; row identity &gt; keeps a result&apos;s identity stable until its version moves" time="0.000505417">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; showing values and results &gt; falls back to the operator id when it has no friendly label" time="0.000259709">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; showing values and results &gt; uses the friendly label once the page knows one" time="0.000439">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the instruction panel &gt; opens and closes on the same control" time="0.000266833">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the instruction panel &gt; renders the markdown when the author switches to preview" time="0.000309375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; the instruction panel &gt; does not re-render while the author is still writing" time="0.0002735">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming the workflow &gt; writes the name through the shared graph and saves" time="0.000281875">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; renaming the workflow &gt; shows back whatever the graph actually stored" time="0.000243667">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; selecting a step &gt; dismisses the operator panel by dropping the selection that holds it open" time="0.00028525">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; what a result looks like &gt; calls a paginated result a table and anything else a picture" time="0.000289542">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; what a result looks like &gt; tracks a plain list by the key itself" time="0.00023675">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/parameterized-canvas.component.spec.ts" name="ParameterizedCanvasComponent &gt; switches to the operator canvas on the same workflow" time="0.000233667">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" timestamp="2026-08-22T21:53:14.746Z" hostname="Yangs-MacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.003558167">
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; paths &gt; joins nested keys" time="0.001578959">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; paths &gt; drops array indices so every row shares one decision" time="0.000248458">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; paths &gt; ignores keys that are not names" time="0.000174333">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; finding the row template of a repeated section &gt; takes it directly when it is a value" time="0.00014875">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; finding the row template of a repeated section &gt; calls it when formly supplies a builder" time="0.000149">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; finding the row template of a repeated section &gt; gives up quietly on a builder it cannot call" time="0.000161375">
+        </testcase>
+        <testcase classname="src/app/workspace/component/parameterized-canvas/sub-fields.spec.ts" name="sub-fields of a parameter &gt; finding the row template of a repeated section &gt; has nothing to offer when there is no array" time="0.000112292">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/app/workspace/service/parameterization/parameterization.service.spec.ts" timestamp="2026-08-22T21:53:14.746Z" hostname="Yangs-MacBook-Pro.local" tests="26" failures="0" errors="0" skipped="0" time="0.069651458">
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; starts with nothing exposed" time="0.016701291">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; exposing a property &gt; seeds the input from the operator&apos;s schema and current value" time="0.0033745">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; exposing a property &gt; does not expose the same property twice" time="0.002636833">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; filling in a value &gt; writes through to the operator&apos;s property" time="0.002369625">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; filling in a value &gt; leaves the operator&apos;s other properties alone" time="0.002301292">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; resolving against the live graph &gt; pairs a healthy binding with its value and schema" time="0.002226125">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; resolving against the live graph &gt; flags a binding whose operator is gone" time="0.003325209">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; resolving against the live graph &gt; flags a raw key that is not a property of its operator" time="0.001879125">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; arranging the form &gt; reorders by moving an input to a new position" time="0.002597625">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; arranging the form &gt; ignores a move that goes nowhere or out of range" time="0.002461125">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; arranging the form &gt; keeps identity when the display name or raw key changes" time="0.002568459">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; arranging the form &gt; removes an input" time="0.002525292">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the property editor&apos;s expose tick box &gt; reports whether a property is already on the form" time="0.002179584">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the property editor&apos;s expose tick box &gt; adds the property when ticked and removes it when unticked" time="0.002076125">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the property editor&apos;s expose tick box &gt; is idempotent in both directions" time="0.001489458">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the choose-parameters mode &gt; starts off" time="0.001460375">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the choose-parameters mode &gt; stays on across ticking properties" time="0.001454458">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the choose-parameters mode &gt; only ends when it is switched off" time="0.001528959">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; the choose-parameters mode &gt; announces changes, and only real ones" time="0.002036375">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; naming and hiding the fields inside an input &gt; says nothing until the author decides something" time="0.001668167">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; naming and hiding the fields inside an input &gt; renames one field without touching the others" time="0.001393125">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; naming and hiding the fields inside an input &gt; hides a field and can bring it back" time="0.00120925">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; naming and hiding the fields inside an input &gt; keeps no entry for a field back at its defaults" time="0.001304667">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; naming and hiding the fields inside an input &gt; leaves a field alone when the binding does not exist" time="0.001784875">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; choosing which results to show &gt; toggles an operator in and out of the shown set" time="0.002055167">
+        </testcase>
+        <testcase classname="src/app/workspace/service/parameterization/parameterization.service.spec.ts" name="ParameterizationService &gt; keeps the definition out of the executable graph" time="0.002032125">
+        </testcase>
+    </testsuite>
+</testsuites>

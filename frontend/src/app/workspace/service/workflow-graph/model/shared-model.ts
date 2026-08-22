@@ -88,7 +88,13 @@ export class SharedModel {
     if (this.user) {
       const userState: CoeditorState = {
         user: { ...this.user, clientId: this.clientId },
-        isActive: true,
+        // Not active until the mouse actually enters a canvas, which is what draws the
+        // pointer for everyone else. Starting at true published a pointer nobody had
+        // placed, parked at the origin. On the operator canvas the first mouse move
+        // overwrote it, so it went unnoticed; on the parameterized canvas the workflow
+        // is collapsed and those mouse events never fire, so a stray dot sat on a
+        // coeditor's screen for as long as the other person stayed on the form.
+        isActive: false,
         userCursor: { x: 0, y: 0 },
       };
       this.awareness.setLocalState(userState);

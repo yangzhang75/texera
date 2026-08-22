@@ -49,7 +49,6 @@ describe("ParameterizedCanvasComponent", () => {
     operatorID: "op-1",
     propertyKey: id,
     displayName,
-    defaultValue: "seed",
   });
 
   const resolved = (id: string, displayName: string, extra: Partial<ResolvedParameter> = {}): ResolvedParameter => ({
@@ -80,13 +79,10 @@ describe("ParameterizedCanvasComponent", () => {
       getConfig: vi.fn().mockReturnValue({ parameters: [], resultOperatorIds: [] }),
       resolveParameters: vi.fn().mockReturnValue([]),
       writeValue: vi.fn(),
-      resetToDefault: vi.fn(),
       operatorLabel: vi.fn().mockReturnValue("Source: Scan"),
       // The engine only materialises results for operators the graph views, so the
       // component keeps that set in step with what the form promises to show.
       syncViewResultOperators: vi.fn(),
-      getResultNote: vi.fn().mockReturnValue(""),
-      setResultNote: vi.fn(),
       updateBinding: vi.fn(),
       setFieldOverride: vi.fn(),
     };
@@ -120,6 +116,7 @@ describe("ParameterizedCanvasComponent", () => {
     };
 
     component = new ParameterizedCanvasComponent(
+      { coeditors: [] } as any,
       { snapshot: { params: { id: "7" } } } as any,
       router as unknown as Router,
       workflowActionService,
@@ -157,7 +154,8 @@ describe("ParameterizedCanvasComponent", () => {
       // `contains` answers whether the cursor is inside this page, which decides
       // whether a rebuild would be pulled out from under someone typing.
       { nativeElement: { querySelectorAll: () => [], querySelector: () => null, contains: () => false } } as any,
-      { transform: () => "01/01/2026 00:00:00" } as any
+      { transform: () => "01/01/2026 00:00:00" } as any,
+      { changePanelSize: vi.fn() } as any
     );
     return component;
   };
@@ -278,16 +276,6 @@ describe("ParameterizedCanvasComponent", () => {
       expect(executeWorkflowService.executeWorkflow).toHaveBeenCalledWith("scGPT");
     });
 
-    it("refuses with a specific message when an input is empty", () => {
-      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Number of genes", { value: "" })]);
-      (component as any).readConfig();
-
-      component.onRun();
-
-      expect(executeWorkflowService.executeWorkflow).not.toHaveBeenCalled();
-      expect(component.runError).toContain("Number of genes");
-    });
-
     it("turns into Stop while a run is in flight", () => {
       executionStateStream.next({ current: { state: ExecutionState.Running } });
       expect(component.isRunning).toBe(true);
@@ -356,56 +344,12 @@ describe("ParameterizedCanvasComponent", () => {
 
       expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, undefined);
     });
-
-    it("offers Reset only once a value differs from the author's default", () => {
-      expect(component.isModified(resolved("n_hvg", "n", { value: "seed" }))).toBe(false);
-      expect(component.isModified(resolved("n_hvg", "n", { value: "changed" }))).toBe(true);
-    });
   });
 
   // Run is never held back on a guess about whether it can succeed. Every version of
   // that guess was wrong in a way that left the reader with a button that did nothing
   // and no way forward, so the attempt is always made and a failure explains itself --
   // exactly how the operator canvas behaves.
-  // How much room a chart needs depends on the chart, so the reader sets it per result.
-  // Starting a run repaints every operator, and JointJS lays that out against the size
-  // it last measured -- which in the preview was taken while the strip was still
-  // opening. Without a fresh measurement the repaint lands on stale numbers and the
-  // labels sit across their own boxes.
-  describe("re-measuring the preview when a run starts", () => {
-    beforeEach(() => build(parameterized).ngOnInit());
-
-    it("re-fits when the execution state changes while the workflow is open", () => {
-      component.workflowOpen = true;
-      const refit = vi.spyOn(component as any, "refitCanvas").mockImplementation(() => {});
-
-      executionStateStream.next({ current: { state: ExecutionState.Running } });
-
-      expect(refit).toHaveBeenCalled();
-    });
-
-    // Nothing to measure while it is collapsed, and measuring then is what produced the
-    // stale numbers in the first place.
-    it("leaves a collapsed preview alone", () => {
-      component.workflowOpen = false;
-      const refit = vi.spyOn(component as any, "refitCanvas").mockImplementation(() => {});
-
-      executionStateStream.next({ current: { state: ExecutionState.Running } });
-
-      expect(refit).not.toHaveBeenCalled();
-    });
-
-    it("does not re-fit when the state has not actually changed", () => {
-      component.workflowOpen = true;
-      executionStateStream.next({ current: { state: ExecutionState.Running } });
-      const refit = vi.spyOn(component as any, "refitCanvas").mockImplementation(() => {});
-
-      executionStateStream.next({ current: { state: ExecutionState.Running } });
-
-      expect(refit).not.toHaveBeenCalled();
-    });
-  });
-
   describe("resizing a result", () => {
     beforeEach(() => build(parameterized).ngOnInit());
 
@@ -525,27 +469,6 @@ describe("ParameterizedCanvasComponent", () => {
       (component as any).save();
 
       expect(workflowPersistService.persistWorkflow).not.toHaveBeenCalled();
-    });
-  });
-
-  // The default is no longer edited from the card, but it is still what Reset returns
-  // to, so the comparison that decides "changed" still has to hold up.
-  describe("defaults for complex settings", () => {
-    beforeEach(() => {
-      build(parameterized);
-      component.ngOnInit();
-    });
-
-    // Two equal lists are different objects; that is not a change the reader made.
-    it("does not call an unchanged list modified", () => {
-      const p = resolved("predicates", "Predicates", { schema: { type: "array" } as any });
-      p.binding.defaultValue = [{ a: 1 }] as never;
-      p.value = [{ a: 1 }];
-
-      expect(component.isModified(p)).toBe(false);
-
-      p.value = [{ a: 2 }];
-      expect(component.isModified(p)).toBe(true);
     });
   });
 
@@ -861,8 +784,6 @@ describe("ParameterizedCanvasComponent", () => {
       reread = vi.spyOn(component as any, "readConfig");
     });
 
-    const card = (id = "b1") => ({ parameter: resolved(id, "A") }) as any;
-
     it("removes an input and re-reads what is left", () => {
       component.onRemoveBinding(resolved("b1", "A"));
 
@@ -894,54 +815,10 @@ describe("ParameterizedCanvasComponent", () => {
       });
     });
 
-    it("names a sub-field on the binding it belongs to", () => {
-      component.onSubFieldName(card(), "alias", "Column name");
-
-      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b1", "alias", {
-        displayName: "Column name",
-      });
-    });
-
-    it("hides a sub-field without touching its name", () => {
-      component.onSubFieldHidden(card(), "alias", true);
-
-      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b1", "alias", { hidden: true });
-    });
-
-    it("brings a hidden sub-field back", () => {
-      component.onSubFieldHidden(card(), "alias", false);
-
-      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b1", "alias", { hidden: false });
-    });
-
     it("writes help text through the binding", () => {
       component.onEditBinding(resolved("b1", "A"), "helpText", "Any CSV file");
 
       expect(parameterizationService.updateBinding).toHaveBeenCalledWith("b1", { helpText: "Any CSV file" });
-    });
-  });
-
-  // Resetting has to put the value back in the box as well as on the operator; doing
-  // only the latter left the reader looking at what they had typed.
-  describe("resetting an input", () => {
-    it("returns the operator to its default", () => {
-      build(parameterized).ngOnInit();
-      const p = resolved("b1", "A");
-
-      component.onReset(p);
-
-      expect(parameterizationService.resetToDefault).toHaveBeenCalledWith(p.binding);
-    });
-
-    it("puts the default back into the box the reader is looking at", () => {
-      build(parameterized).ngOnInit();
-      const p = resolved("b1", "A");
-      parameterizationService.resolveParameters = vi.fn().mockReturnValue([resolved("b1", "A", { value: "seed" })]);
-      (component as any).rendered = [{ parameter: p, model: { b1: "typed" }, form: { patchValue: vi.fn() } }];
-
-      component.onReset(p);
-
-      expect((component as any).rendered[0].model.b1).toBe("seed");
     });
   });
 
@@ -953,10 +830,6 @@ describe("ParameterizedCanvasComponent", () => {
     it("identifies a card by its binding, not its position", () => {
       expect(component.trackByRendered(0, { parameter: resolved("b1", "A") } as any)).toBe("b1");
       expect(component.trackByRendered(7, { parameter: resolved("b1", "A") } as any)).toBe("b1");
-    });
-
-    it("identifies a sub-field row by its path", () => {
-      expect(component.trackSubField(0, { path: "alias", label: "Alias", hidden: false, name: "" })).toBe("alias");
     });
 
     // The key changes only when that operator's result is genuinely new, so an unrelated
@@ -973,20 +846,6 @@ describe("ParameterizedCanvasComponent", () => {
 
   describe("showing values and results", () => {
     beforeEach(() => build(parameterized).ngOnInit());
-
-    // A blank box, never the words "undefined" or "null".
-    [
-      [undefined, ""],
-      [null, ""],
-      ["", ""],
-      [0, "0"],
-      [false, "false"],
-      ["iris.csv", "iris.csv"],
-    ].forEach(([value, shown]) => {
-      it(`shows ${JSON.stringify(value)} as ${JSON.stringify(shown)}`, () => {
-        expect(component.displayValue(resolved("b1", "A", { value }) as any)).toBe(shown);
-      });
-    });
 
     it("falls back to the operator id when it has no friendly label", () => {
       expect(component.resultLabel("op-unknown")).toBe("op-unknown");
@@ -1057,82 +916,21 @@ describe("ParameterizedCanvasComponent", () => {
     });
   });
 
-  // Zooming and fitting only move the viewport, so everyone gets them. Re-arranging
-  // moves the operators themselves, which is an edit to the shared workflow.
-  describe("the canvas tools", () => {
+  // Zoom, fit and layout are handled by the reused editor/mini-map now, so the page's
+  // own controls are gone; what stays is selecting a step and dismissing its panel.
+  describe("selecting a step", () => {
     let jointWrapper: any;
 
-    const withCanvas = (canEdit: boolean) => {
+    beforeEach(() => {
       build(parameterized).ngOnInit();
-      component.canEdit = canEdit;
       jointWrapper = {
-        isZoomRatioMax: vi.fn().mockReturnValue(false),
-        isZoomRatioMin: vi.fn().mockReturnValue(false),
-        getZoomRatio: vi.fn().mockReturnValue(1),
-        setZoomProperty: vi.fn(),
         unhighlightOperators: vi.fn(),
         getCurrentHighlightedOperatorIDs: () => ["op-1"],
       };
       workflowActionService.getJointGraphWrapper = () => jointWrapper;
-      workflowActionService.autoLayoutWorkflow = vi.fn();
-      workflowActionService.getWorkflowContent = () => ({ operatorPositions: { "op-1": { x: 1, y: 2 } } });
-      vi.spyOn(component as any, "refitCanvas").mockImplementation(() => {});
-    };
-
-    it("zooms in a step", () => {
-      withCanvas(true);
-
-      component.zoomIn();
-
-      expect(jointWrapper.setZoomProperty).toHaveBeenCalled();
-    });
-
-    it("refuses to zoom past the maximum", () => {
-      withCanvas(true);
-      jointWrapper.isZoomRatioMax.mockReturnValue(true);
-
-      component.zoomIn();
-
-      expect(jointWrapper.setZoomProperty).not.toHaveBeenCalled();
-    });
-
-    it("refuses to zoom past the minimum", () => {
-      withCanvas(true);
-      jointWrapper.isZoomRatioMin.mockReturnValue(true);
-
-      component.zoomOut();
-
-      expect(jointWrapper.setZoomProperty).not.toHaveBeenCalled();
-    });
-
-    it("fits by re-running the same fit the page uses elsewhere", () => {
-      withCanvas(true);
-
-      component.fitToView();
-
-      expect((component as any).refitCanvas).toHaveBeenCalled();
-    });
-
-    it("re-arranges for an author and keeps the new positions to save", () => {
-      withCanvas(true);
-
-      component.autoLayout();
-
-      expect(workflowActionService.autoLayoutWorkflow).toHaveBeenCalled();
-      expect((component as any).storedPositions).toEqual({ "op-1": { x: 1, y: 2 } });
-    });
-
-    // Moving operators is an edit; a reader must not be able to make it.
-    it("does not re-arrange for someone without write access", () => {
-      withCanvas(false);
-
-      component.autoLayout();
-
-      expect(workflowActionService.autoLayoutWorkflow).not.toHaveBeenCalled();
     });
 
     it("dismisses the operator panel by dropping the selection that holds it open", () => {
-      withCanvas(true);
       component.onOperatorClicked("op-1");
 
       component.closeOperatorPanel();
@@ -1144,12 +942,6 @@ describe("ParameterizedCanvasComponent", () => {
 
   describe("what a result looks like", () => {
     beforeEach(() => build(parameterized).ngOnInit());
-
-    it("asks the result service whether there is anything to show", () => {
-      (component as any).workflowResultService.hasAnyResult = vi.fn().mockReturnValue(true);
-
-      expect(component.hasResultFor("op-1")).toBe(true);
-    });
 
     it("calls a paginated result a table and anything else a picture", () => {
       (component as any).workflowResultService.hasPaginatedResult = vi.fn().mockReturnValue(true);

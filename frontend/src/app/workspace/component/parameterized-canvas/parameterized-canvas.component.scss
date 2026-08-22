@@ -47,6 +47,12 @@ $shell: #fafafa;
   display: flex;
   align-items: center;
   gap: 8px;
+  // Pinned to the top so the Canvas / P Canvas switch (and the workflow name) stay
+  // reachable while scrolling the form/preview/results below.
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #fff;
 
   /* Trims the difference between this row's right edge and the operator canvas's, so
      the switch and the user icon land on the same x in both views. */
@@ -110,21 +116,6 @@ $shell: #fafafa;
   max-width: 1320px;
   margin: 0 auto;
   padding: 22px 24px 80px;
-}
-
-.pc-crumb {
-  font-size: 13px;
-  color: $text-2;
-  margin-bottom: 14px;
-
-  a {
-    color: $blue;
-    cursor: pointer;
-  }
-
-  .sep {
-    margin: 0 6px;
-  }
 }
 
 .pc-head {
@@ -269,6 +260,39 @@ $shell: #fafafa;
       font-size: 15px;
       font-weight: 600;
       flex: 1;
+    }
+
+    // Author edits the heading right here. Looks like the h2, with a faint dashed box so
+    // it reads as editable; firms up on hover, becomes a real input on focus.
+    .instr-title-input {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: inherit;
+      background: none;
+      border: 1px dashed #dcdcdc;
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: text;
+      outline: none;
+
+      &::placeholder {
+        color: $text-2;
+        font-weight: 600;
+      }
+
+      &:hover {
+        border-style: solid;
+        border-color: #b0b0b0;
+      }
+
+      &:focus {
+        border-style: solid;
+        border-color: $blue;
+        background: #fff;
+      }
     }
 
     .lead {
@@ -584,11 +608,6 @@ $shell: #fafafa;
     padding-top: 3px;
   }
 
-  .param-name {
-    font-size: 15px;
-    font-weight: 600;
-  }
-
   .param-help-text {
     margin: 4px 0 0;
     color: $text-2;
@@ -630,18 +649,6 @@ $shell: #fafafa;
       border-color: $blue;
       outline: none;
       box-shadow: 0 0 0 2px $blue-bg;
-    }
-  }
-
-  .reset {
-    background: none;
-    border: none;
-    color: $text-2;
-    cursor: pointer;
-    font-size: 13px;
-
-    &:hover {
-      color: $blue;
     }
   }
 }
@@ -686,30 +693,6 @@ $shell: #fafafa;
       outline: none;
       box-shadow: 0 0 0 2px $blue-bg;
     }
-
-    &.bad {
-      border-color: #fa8c16;
-    }
-  }
-}
-
-.default-capture {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 32px;
-}
-
-.btn-quiet {
-  background: none;
-  border: 1px solid $border;
-  border-radius: 6px;
-  padding: 4px 10px;
-  cursor: pointer;
-
-  &:hover {
-    color: $blue;
-    border-color: $blue;
   }
 }
 
@@ -819,40 +802,6 @@ $shell: #fafafa;
   }
 }
 
-/* Rows of "is it shown / what is it called", tucked under the input they belong to.
-   Deliberately the same height and spacing as the card's other fields -- this is one
-   more small decision about presentation, not a section of its own. */
-.subfield {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  + .subfield {
-    margin-top: 6px;
-  }
-
-  input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
-    min-width: 14px;
-    margin: 0;
-    flex: none;
-    accent-color: $blue;
-    cursor: pointer;
-  }
-
-  input:not([type="checkbox"]) {
-    flex: 1;
-    min-width: 0;
-
-    &:disabled {
-      background: $shell;
-      color: $text-2;
-      cursor: not-allowed;
-    }
-  }
-}
-
 .run-note {
   font-size: 13px;
   color: $text-2;
@@ -922,39 +871,25 @@ $shell: #fafafa;
     height: 380px;
     resize: vertical;
     overflow: hidden;
+    background: #f7f8f9;
 
     texera-workflow-editor {
       display: block;
       height: 100%;
       width: 100%;
     }
-  }
-}
 
-/* Canvas controls, top-left so they never sit under the property panel. */
-.canvas-tools {
-  position: absolute;
-  left: 10px;
-  top: 10px;
-  z-index: 4;
-  display: flex;
-  gap: 6px;
-
-  button {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: #fff;
-    border: 1px solid $border;
-    color: $text-2;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-
-    &:hover {
-      color: $blue;
-      border-color: $blue;
+    // The Hub preview's mini-map, parked in the corner for navigating a large graph.
+    .box {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 200px;
+      height: 130px;
+      border: 1px solid $divider;
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
     }
   }
 }
@@ -1139,36 +1074,63 @@ $shell: #fafafa;
     }
   }
 
+  /* Centred in the card so an empty / computing step reads at the same height as a full
+     one -- see .result-body: every card is one fixed height, whatever its state. */
   .result-pending {
     margin: 0;
-    padding: 26px 14px;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    text-align: center;
     color: $text-2;
     font-size: 13.5px;
   }
 
   .result-body {
     padding: 4px;
-    max-height: 460px;
+    /* Every result card is the SAME height -- table, chart, empty, or "computing" -- so the
+       list never jumps between a tall box and a thin strip (worst of all mid-run, when some
+       steps have last time's result and others are still working). Content scrolls inside;
+       an empty state centres. Moderate on purpose: tall enough for a screenful of rows,
+       nowhere near the full-window box an image used to blow up to. */
+    height: 380px;
     overflow: auto;
 
-    /* Scales with the window instead of a fixed box, and can be dragged taller for a
-       big chart. An iframe needs a definite height -- it has no intrinsic one. */
+    /* The reused result table's empty state ends with "Tip: enable the eye icon on the
+       operator ...". There is no such icon on this page and the step is already chosen,
+       so that tip only misleads here -- drop it, keep the neutral "Empty result set". */
+    ::ng-deep texera-result-table-frame h4 + p {
+      display: none;
+    }
+
+    /* Centre the table's own "Empty result set" in the card, where the other empty states
+       sit. Only the empty block carries this inline style, so a populated table is untouched. */
+    ::ng-deep texera-result-table-frame > div[style*="text-align"] {
+      height: 340px;
+      display: grid;
+      place-items: center;
+    }
+
+    /* An iframe has no intrinsic height; fill the card so a chart is the same height as a
+       table. The zoom control enlarges the picture inside without changing the card. */
     texera-visualization-panel-content {
       display: block;
       width: 100%;
-      /* Charts are the answer people came for, so they open big: most of the window,
-         not a strip. Still draggable from the corner for anyone who wants more. */
-      height: clamp(460px, 72vh, 1000px);
+      height: 100%;
     }
 
-    &[data-zoom="0"] ::ng-deep texera-visualization-panel-content {
-      height: clamp(260px, 34vh, 460px);
+    /* Zoom scales the picture itself (the iframe's rendered content), not the card frame.
+       The card keeps its height and scrolls to reach the rest of an enlarged image, which
+       is what "bigger/smaller" should mean here -- the old behaviour only grew the empty
+       box around the picture. */
+    &[data-zoom="0"] ::ng-deep iframe {
+      transform: scale(0.7);
+      transform-origin: top left;
     }
 
-    &[data-zoom="2"] ::ng-deep texera-visualization-panel-content {
-      height: clamp(700px, 110vh, 1600px);
-      resize: vertical;
-      overflow: hidden;
+    &[data-zoom="2"] ::ng-deep iframe {
+      transform: scale(1.6);
+      transform-origin: top left;
     }
 
     /* A plot with dozens of categories needs the width more than anything: squeezed
@@ -1182,11 +1144,6 @@ $shell: #fafafa;
       max-width: none !important;
       height: 100% !important;
     }
-  }
-
-  /* Tall charts should not be trapped behind the card's own scrollbar. */
-  &.result .result-body {
-    max-height: none;
   }
 }
 

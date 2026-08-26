@@ -269,6 +269,12 @@ export class ComputingUnitSelectionComponent implements OnInit {
         if (wid !== this.workflowId) {
           this.workflowId = wid;
           if (isDefined(this.workflowId) && this.workflowId !== DEFAULT_WORKFLOW.wid) {
+            // An explicit choice is newer than the last run, so it wins over it.
+            const remembered = this.recallComputingUnit(this.workflowId);
+            if (isDefined(remembered)) {
+              this.selectComputingUnit(this.workflowId, remembered);
+              return;
+            }
             this.workflowExecutionsService
               .retrieveLatestWorkflowExecution(this.workflowId)
               .pipe(untilDestroyed(this))
@@ -294,7 +300,51 @@ export class ComputingUnitSelectionComponent implements OnInit {
   selectComputingUnit(wid: number | undefined, cuid: number | undefined): void {
     if (isDefined(cuid) && wid !== DEFAULT_WORKFLOW.wid) {
       this.computingUnitStatusService.selectComputingUnit(wid, cuid);
+      this.rememberComputingUnit(wid, cuid);
     }
+  }
+
+  /**
+   * The live selection lives only in ComputingUnitStatusService, re-derived on load from the
+   * last execution -- but that only exists once the workflow has run (pick a unit, reload
+   * before running, and it is gone). Canvas<->Form View switches reload, so we remember the
+   * last explicit choice per workflow to keep the two views agreeing. One unit per workflow.
+   */
+  private static computingUnitStorageKey(wid: number): string {
+    return `computing-unit-of-workflow-${wid}`;
+  }
+
+  private rememberComputingUnit(wid: number | undefined, cuid: number): void {
+    if (!isDefined(wid)) {
+      return;
+    }
+    try {
+      localStorage.setItem(ComputingUnitSelectionComponent.computingUnitStorageKey(wid), String(cuid));
+    } catch {
+      // Private browsing or a full quota; remembering is an optimisation, not a
+      // requirement -- the last-execution lookup still applies on the next load.
+    }
+  }
+
+  private recallComputingUnit(wid: number): number | undefined {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(ComputingUnitSelectionComponent.computingUnitStorageKey(wid));
+    } catch {
+      return undefined;
+    }
+    // A cuid is a positive integer. Number() would also accept "0", "1.5" and " 2 ",
+    // and handing any of those on would mean chasing a unit that cannot exist.
+    const cuid = Number(stored);
+    if (!stored || !Number.isInteger(cuid) || cuid <= 0) {
+      return undefined;
+    }
+    // A remembered unit that has since been terminated must not win over the fallbacks,
+    // but an empty list means the units have not arrived yet rather than that it is gone.
+    if (this.allComputingUnits.length > 0 && !this.allComputingUnits.some(u => u.computingUnit.cuid === cuid)) {
+      return undefined;
+    }
+    return cuid;
   }
 
   isComputingUnitRunning(): boolean {

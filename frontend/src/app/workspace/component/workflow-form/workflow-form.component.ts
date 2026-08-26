@@ -23,8 +23,11 @@ import { FormGroup, FormsModule, ReactiveFormsModule } from "@angular/forms";
 import { FormlyFieldConfig, FormlyModule } from "@ngx-formly/core";
 import { FormlyJsonschema } from "@ngx-formly/core/json-schema";
 import { ActivatedRoute, Router } from "@angular/router";
+import { CdkDragDrop, DragDropModule } from "@angular/cdk/drag-drop";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { NzIconModule } from "ng-zorro-antd/icon";
+import { NzButtonModule } from "ng-zorro-antd/button";
+import { NzTooltipModule } from "ng-zorro-antd/tooltip";
 import { NzAvatarModule } from "ng-zorro-antd/avatar";
 import { UserIconComponent } from "../../../dashboard/component/user/user-icon/user-icon.component";
 import { cloneDeep } from "lodash-es";
@@ -47,12 +50,16 @@ import { ParameterizationService, ResolvedParameter } from "../../service/parame
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
 import { ValidationWorkflowService } from "../../service/validation/validation-workflow.service";
 import { GuiConfigService } from "../../../common/service/gui-config.service";
+import { isSink } from "../../service/workflow-graph/model/workflow-graph";
 import { WorkflowConsoleService } from "../../service/workflow-console/workflow-console.service";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
+import { PanelResizeService } from "../../service/workflow-result/panel-resize/panel-resize.service";
 import { WorkflowWebsocketService } from "../../service/workflow-websocket/workflow-websocket.service";
 import { ExecutionState } from "../../types/execute-workflow.interface";
-import { Point } from "../../types/workflow-common.interface";
+import { OperatorPredicate, Point } from "../../types/workflow-common.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
+import { ResultTableFrameComponent } from "../result-panel/result-table-frame/result-table-frame.component";
+import { VisualizationFrameContentComponent } from "../visualization-panel-content/visualization-frame-content.component";
 import { WorkflowEditorComponent } from "../workflow-editor/workflow-editor.component";
 import { MiniMapComponent } from "../workflow-editor/mini-map/mini-map.component";
 import { CoeditorUserIconComponent } from "../menu/coeditor-user-icon/coeditor-user-icon.component";
@@ -72,10 +79,17 @@ interface RenderedParameter {
   model: Record<string, unknown>;
 }
 
+/** An operator offered in the "show its results" picker. */
+interface ResultChoice {
+  operatorID: string;
+  label: string;
+  shown: boolean;
+}
+
 /**
- * The Form View: runs the workflow. On top of the inputs, this PR adds the Run button (its
- * label/state mirrors the operator canvas), the computing-unit selector, the run clock and
- * failure messages. Showing the results is added by the following PR.
+ * The Form View: a second way to use a workflow. Shows the inputs an author exposed, a Run
+ * button, the (collapsed) workflow and its results. A view, not a new object -- it opens the
+ * same workflow the canvas does, edits the same properties, runs the same execution.
  */
 @UntilDestroy()
 @Component({
@@ -87,13 +101,18 @@ interface RenderedParameter {
     FormsModule,
     ReactiveFormsModule,
     FormlyModule,
+    DragDropModule,
     NzIconModule,
+    NzButtonModule,
+    NzTooltipModule,
     NzAvatarModule,
     UserIconComponent,
     ComputingUnitSelectionComponent,
     WorkflowEditorComponent,
     MiniMapComponent,
     CoeditorUserIconComponent,
+    ResultTableFrameComponent,
+    VisualizationFrameContentComponent,
   ],
 })
 export class WorkflowFormComponent implements OnInit, OnDestroy {
@@ -129,6 +148,8 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public instructionBody = "";
   public instructionMode: "write" | "preview" = "write";
   public instructionPreviewHtml = "";
+  public resultChoices: ResultChoice[] = [];
+  public shownResultIds: string[] = [];
 
   public executionState: ExecutionState = ExecutionState.Uninitialized;
   public runError = "";
@@ -178,6 +199,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     private workflowWebsocketService: WorkflowWebsocketService,
     private host: ElementRef<HTMLElement>,
     private datePipe: DatePipe,
+    // The result table sizes its rows-per-page from this shared panel height. On the
+    // operator canvas the docked panel drives it; this page has no such panel, so it was
+    // left at the tiny default (300px) and every table showed a single row per page.
+    private panelResizeService: PanelResizeService,
     // Same source the operator canvas reads its "Invalid Workflow" / "Empty Workflow"
     // states from, so Run is disabled here exactly when it is disabled there.
     private validationWorkflowService: ValidationWorkflowService,
@@ -191,6 +216,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       return;
     }
     this.wid = wid;
+    // Give the result tables a realistic height to page against, so they show a screenful
+    // of rows instead of one. (~7 rows; the card scrolls for the rest.)
+    this.panelResizeService.changePanelSize(900, 560);
     this.load(wid);
 
     // The run clock, reusing the operator canvas's source outright rather than timing
@@ -259,14 +287,26 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       this.cdr.detectChanges();
     });
 
+    // Rebuild a chart when its result changes, so it shows what the run produced.
+    this.workflowResultService
+      .getResultUpdateStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(update => {
+        for (const operatorID of Object.keys(update ?? {})) {
+          this.resultVersion.set(operatorID, (this.resultVersion.get(operatorID) ?? 0) + 1);
+        }
+        this.cdr.detectChanges();
+        this.later(() => this.fitVisualisations(), 300);
+      });
+
     this.executeWorkflowService
       .getExecutionStateStream()
       .pipe(untilDestroyed(this))
       .subscribe(({ current }) => {
         this.executionState = current.state;
-        // Surface a failed run. Without this the spinner just stops and the form gives zero
-        // feedback -- the opposite of what a reader needs. onRun() clears runError before
-        // the next run, so a stale error never lingers.
+        // Surface a failed run. Without this the spinner just stops, the results stay
+        // empty, and the form gives zero feedback -- the opposite of what a reader needs.
+        // onRun() clears runError before the next run, so a stale error never lingers.
         if (current.state === ExecutionState.Failed) {
           // A required input left empty is by far the commonest reason a run fails here,
           // and the engine reports it as an opaque "... is not contained in the schema".
@@ -276,6 +316,15 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
             ? "Run failed: please fill in the required fields."
             : this.friendlyRunError(current.errorMessages?.[0]?.message?.trim() ?? "");
         }
+        // Do NOT re-fit the preview when a run starts: the run repaints operators (growing
+        // their boxes) and a re-fit then zoomed the whole graph down -- pressing Run made a
+        // large workflow shrink. The editor keeps its own geometry via its ResizeObserver.
+        if (this.hasResults) {
+          this.later(() => this.fitVisualisations(), 400);
+        }
+        // Deliberately does not open the workflow. Someone using the form came for the
+        // inputs and the results; the steps in between are optional and stay where the
+        // reader left them.
         this.cdr.detectChanges();
       });
   }
@@ -306,6 +355,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
           this.refreshSavedState();
           this.later(() => this.adjustWorkflowNameWidth(), 0);
           this.readConfig();
+          // The definition may have been authored elsewhere (or seeded), so make sure
+          // the graph is actually set to materialise the results the form promises.
+          this.parameterizationService.syncViewResultOperators();
           this.registerAutoPersist();
           this.loading = false;
           this.cdr.detectChanges();
@@ -331,6 +383,19 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     this.parameters = this.parameterizationService.resolveParameters();
     this.instructionTitle = config.instruction?.title ?? "";
     this.instructionBody = config.instruction?.body ?? "";
+    // Result cards only for operators that still exist: a deleted one lingers in the saved
+    // config and rendered a stale card titled with its raw id. The picker is built from live
+    // operators, so it un-checks itself.
+    const graph = this.workflowActionService.getTexeraGraph();
+    this.shownResultIds = config.resultOperatorIds.filter(id => graph.hasOperator(id));
+    // A sink has no result to show, so leave it out of the picker.
+    this.resultChoices = this.operators()
+      .filter(op => !isSink(op))
+      .map(op => ({
+        operatorID: op.operatorID,
+        label: this.parameterizationService.operatorLabel(op),
+        shown: config.resultOperatorIds.includes(op.operatorID),
+      }));
     // A reader always sees the instruction as rendered markdown.
     void this.renderInstruction();
     this.buildForm();
@@ -515,6 +580,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     }
   }
 
+  private operators(): OperatorPredicate[] {
+    return this.workflowActionService.getTexeraGraph().getAllOperators();
+  }
+
   // ---------------------------------------------------------------------------
   // What each reader sees
   // ---------------------------------------------------------------------------
@@ -541,9 +610,123 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     );
   }
 
+  public get hasResults(): boolean {
+    return this.shownResultIds.some(id => this.workflowResultService.hasAnyResult(id));
+  }
 
+  /** Chart height per result (0 compact / 1 default / 2 tall). Per operator so one does not
+   *  resize the others, and in memory only -- a viewing preference, not part of the workflow. */
+  private zoomByResult = new Map<string, number>();
 
+  /**
+   * Bumped when a result changes, used as the chart's *ngFor identity so the frame is
+   * rebuilt, not reused: the chart reads its content once at creation (here, at run start,
+   * before the engine has produced anything), so a stale frame showed "undefined" forever.
+   */
+  private resultVersion = new Map<string, number>();
+
+  public trackByKey(_: number, key: string): string {
+    return key;
+  }
+
+  public resultKey(operatorID: string): string {
+    return operatorID + "#" + (this.resultVersion.get(operatorID) ?? 0);
+  }
+
+  public resultZoom(operatorID: string): number {
+    return this.zoomByResult.get(operatorID) ?? 1;
+  }
+
+  public zoomResult(operatorID: string, delta: number): void {
+    const next = Math.min(2, Math.max(0, this.resultZoom(operatorID) + delta));
+    this.zoomByResult.set(operatorID, next);
+    // Let the new card height land, then have the chart redraw into it -- growing the frame
+    // alone leaves the picture at its old size until something asks it to re-measure.
+    this.cdr.detectChanges();
+    this.later(() => this.fitVisualisations(), 60);
+  }
+
+  /**
+   * Scale each visualisation to its card. They render in a same-origin srcdoc iframe at
+   * natural size, so we inject a stylesheet to fit the content to the card width and fire
+   * a resize so chart libraries re-lay out. The operator's output is untouched.
+   */
+  /* v8 ignore start -- iframe/Plotly DOM fitting; no coverage in jsdom */
+  private fitVisualisations(): void {
+    const frames = this.host.nativeElement.querySelectorAll<HTMLIFrameElement>(".result-body iframe");
+    frames.forEach(frame => {
+      const apply = () => {
+        try {
+          const doc = frame.contentDocument;
+          if (!doc?.body) {
+            return;
+          }
+          // The style is injected once, but the resize below must fire every time --
+          // returning early when it was already there is why making a chart bigger only
+          // grew the frame around it: the chart never heard that it had more room.
+          if (!doc.getElementById("pc-fit")) {
+            const style = doc.createElement("style");
+            style.id = "pc-fit";
+            style.textContent = `
+              html, body { margin: 0; padding: 8px; overflow-x: hidden; }
+              /* Fill the frame rather than keeping the size it was first drawn at. */
+              .js-plotly-plot, .plot-container, .plotly, .svg-container {
+                width: 100% !important;
+                height: 100% !important;
+              }
+              img, svg, canvas, video { max-width: 100% !important; height: auto !important; }
+              table { max-width: 100%; }
+            `;
+            doc.head?.appendChild(style);
+          }
+          // A window resize event is not enough for Plotly: it writes its width and
+          // height as inline styles when it first draws and only re-reads them when
+          // asked directly. Without this the frame grew and the picture inside stayed
+          // exactly the size it was born at.
+          const win = frame.contentWindow as (Window & { Plotly?: any }) | null;
+          const plots = doc.querySelectorAll<HTMLElement>(".js-plotly-plot");
+          if (win?.Plotly?.Plots?.resize && plots.length) {
+            plots.forEach(plot => {
+              plot.style.width = "100%";
+              plot.style.height = "100%";
+              try {
+                win.Plotly.Plots.resize(plot);
+              } catch {
+                // A chart mid-render cannot be resized; the next call will catch it.
+              }
+            });
+          }
+          win?.dispatchEvent(new Event("resize"));
+        } catch {
+          // A cross-origin document cannot be styled from here; leave it as it came.
+        }
+      };
+      apply();
+      frame.addEventListener("load", apply, { once: true });
+    });
+  }
   /* v8 ignore stop */
+
+  public isTabularResult(operatorID: string): boolean {
+    return this.workflowResultService.hasPaginatedResult(operatorID);
+  }
+
+  /**
+   * Whether this step's visualisation drew something. A visualiser reserves a fixed canvas
+   * even when empty, so gating on real content lets an empty result collapse to the compact
+   * "No result yet" line instead of a tall blank box. Tables are excluded (tabular branch).
+   */
+  public vizHasContent(operatorID: string): boolean {
+    if (this.isTabularResult(operatorID)) {
+      return false;
+    }
+    const snapshot = this.workflowResultService.getResultService(operatorID)?.getCurrentResultSnapshot();
+    return !!snapshot && snapshot.length > 0;
+  }
+
+  public resultLabel(operatorID: string): string {
+    return this.resultChoices.find(c => c.operatorID === operatorID)?.label ?? operatorID;
+  }
 
   public trackByRendered(_: number, rendered: RenderedParameter): string {
     return rendered.parameter.binding.id;

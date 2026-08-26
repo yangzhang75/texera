@@ -30,9 +30,9 @@ import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
 import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * Cover running the workflow -- the Run button state machine, the run clock and failure
- * messages -- on top of the shell + inputs. Shared mocks come from the spec harness; this
- * slice's component takes everything except the results-only dependencies.
+ * Exercise the whole page's own decisions -- inputs, running and results -- without standing
+ * up the JointJS canvas. Shared mocks come from the spec harness; this slice's component takes
+ * the full dependency set.
  */
 describe("WorkflowFormComponent", () => {
   let component: WorkflowFormComponent;
@@ -46,8 +46,11 @@ describe("WorkflowFormComponent", () => {
   let compilationChanged: Subject<unknown>;
   let executionStateStream: Subject<any>;
   let durationEvents: Subject<{ duration: number; isRunning: boolean }>;
+  let resultUpdateStream: Subject<unknown>;
+  let highlightedIds: string[];
   let hasOperatorIds: Set<string>;
   let graphOperators: any[];
+  let anyResultIds: Set<string>;
 
   const build = (workflow: any) => {
     h.useWorkflow(workflow);
@@ -73,6 +76,7 @@ describe("WorkflowFormComponent", () => {
       h.workflowWebsocketService as any,
       h.host as any,
       h.datePipe as any,
+      h.panelResizeService as any,
       h.validationWorkflowService as any,
       h.config as any
     );
@@ -90,8 +94,11 @@ describe("WorkflowFormComponent", () => {
     compilationChanged = h.compilationChanged;
     executionStateStream = h.executionStateStream;
     durationEvents = h.durationEvents;
+    resultUpdateStream = h.resultUpdateStream;
+    highlightedIds = h.highlightedIds;
     hasOperatorIds = h.hasOperatorIds;
     graphOperators = h.graphOperators;
+    anyResultIds = h.anyResultIds;
   });
 
   describe("who this page is for", () => {
@@ -212,6 +219,40 @@ describe("WorkflowFormComponent", () => {
       executionStateStream.next({ current: { state: ExecutionState.Running } });
 
       expect(component.workflowOpen).toBe(false);
+    });
+  });
+
+  // Run is never held back on a guess about whether it can succeed. Every version of
+  // that guess was wrong in a way that left the reader with a button that did nothing
+  // and no way forward, so the attempt is always made and a failure explains itself --
+  // exactly how the operator canvas behaves.
+  describe("resizing a result", () => {
+    beforeEach(() => build(parameterized).ngOnInit());
+
+    it("starts at the middle size", () => {
+      expect(component.resultZoom("op-1")).toBe(1);
+    });
+
+    it("grows and shrinks within bounds", () => {
+      component.zoomResult("op-1", 1);
+      expect(component.resultZoom("op-1")).toBe(2);
+
+      component.zoomResult("op-1", 1);
+      expect(component.resultZoom("op-1")).toBe(2);
+
+      component.zoomResult("op-1", -1);
+      component.zoomResult("op-1", -1);
+      expect(component.resultZoom("op-1")).toBe(0);
+
+      component.zoomResult("op-1", -1);
+      expect(component.resultZoom("op-1")).toBe(0);
+    });
+
+    // Resizing one chart must not resize the others.
+    it("keeps a size per result", () => {
+      component.zoomResult("op-1", 1);
+
+      expect(component.resultZoom("op-2")).toBe(1);
     });
   });
 
@@ -341,12 +382,17 @@ describe("WorkflowFormComponent", () => {
       expect(component.executionDuration).toBe(0);
     });
 
-    it("takes the elapsed time the engine reports", () => {
+    it("takes the elapsed time the engine reports, then ticks it up while running", () => {
+      vi.useFakeTimers();
       build(parameterized).ngOnInit();
 
       durationEvents.next({ duration: 4000, isRunning: true });
-
       expect(component.executionDuration).toBe(4000);
+
+      // A running clock fills the gap between engine reports with a local 1s tick.
+      vi.advanceTimersByTime(1000);
+      expect(component.executionDuration).toBe(5000);
+      vi.useRealTimers();
     });
 
     it("keeps the final time when the run stops", () => {
@@ -422,6 +468,17 @@ describe("WorkflowFormComponent", () => {
       expect(component.workflowEverOpened).toBe(false);
     });
 
+    it("does not fit charts for a page that has been left", async () => {
+      build(parameterized).ngOnInit();
+      const fit = vi.spyOn(component as any, "fitVisualisations");
+
+      (component as any).later(() => (component as any).fitVisualisations(), 0);
+      component.ngOnDestroy();
+      await new Promise(r => setTimeout(r, 20));
+
+      expect(fit).not.toHaveBeenCalled();
+    });
+
     it("still runs a pending callback while the page is alive", async () => {
       build(parameterized).ngOnInit();
       const ran = vi.fn();
@@ -488,6 +545,30 @@ describe("WorkflowFormComponent", () => {
       expect(component.trackByRendered(7, { parameter: resolved("b1", "A") } as any)).toBe("b1");
     });
 
+    // The key changes only when that operator's result is genuinely new, so an unrelated
+    // update does not tear a chart down and rebuild it.
+    it("keeps a result's identity stable until its version moves", () => {
+      const before = component.resultKey("op-1");
+      expect(component.resultKey("op-1")).toBe(before);
+
+      (component as any).resultVersion.set("op-1", 1);
+
+      expect(component.resultKey("op-1")).not.toBe(before);
+    });
+  });
+
+  describe("showing values and results", () => {
+    beforeEach(() => build(parameterized).ngOnInit());
+
+    it("falls back to the operator id when it has no friendly label", () => {
+      expect(component.resultLabel("op-unknown")).toBe("op-unknown");
+    });
+
+    it("uses the friendly label once the page knows one", () => {
+      component.resultChoices = [{ operatorID: "op-1", label: "Image Visualizer", shown: true }];
+
+      expect(component.resultLabel("op-1")).toBe("Image Visualizer");
+    });
   });
 
   // Renaming from here is the same edit as renaming on the operator canvas, so it must
@@ -515,6 +596,22 @@ describe("WorkflowFormComponent", () => {
       component.onRenameWorkflow();
 
       expect(component.workflowName).toBe("Untitled workflow");
+    });
+  });
+
+  describe("what a result looks like", () => {
+    beforeEach(() => build(parameterized).ngOnInit());
+
+    it("calls a paginated result a table and anything else a picture", () => {
+      (component as any).workflowResultService.hasPaginatedResult = vi.fn().mockReturnValue(true);
+      expect(component.isTabularResult("op-1")).toBe(true);
+
+      (component as any).workflowResultService.hasPaginatedResult = vi.fn().mockReturnValue(false);
+      expect(component.isTabularResult("op-1")).toBe(false);
+    });
+
+    it("tracks a plain list by the key itself", () => {
+      expect(component.trackByKey(3, "op-1")).toBe("op-1");
     });
   });
 
@@ -571,6 +668,20 @@ describe("WorkflowFormComponent", () => {
       expect(component.hasInstruction).toBe(true);
     });
 
+    it("has results once a shown operator has produced any", () => {
+      build(parameterized);
+      component.shownResultIds = ["op-1"];
+      expect(component.hasResults).toBe(false);
+      anyResultIds.add("op-1");
+      expect(component.hasResults).toBe(true);
+    });
+
+    it("treats a paginated result as tabular, with no visualisation content", () => {
+      build(parameterized);
+      expect(component.isTabularResult("tabular")).toBe(true);
+      expect(component.vizHasContent("tabular")).toBe(false);
+    });
+
     it("shows Stop while a run is in flight", () => {
       build(parameterized).ngOnInit();
       executionStateStream.next({ current: { state: ExecutionState.Running } });
@@ -613,6 +724,58 @@ describe("WorkflowFormComponent", () => {
       expect((component as any).isTypingInTheForm()).toBe(true);
 
       document.body.removeChild(input);
+    });
+
+    it("keeps only live operators in the results picker", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "ScanSource" });
+      parameterizationService.getConfig.mockReturnValue({ parameters: [], resultOperatorIds: ["op-1"] });
+      hasOperatorIds.add("op-1");
+
+      (component as any).readConfig();
+
+      expect(component.resultChoices.map(c => c.operatorID)).toContain("op-1");
+    });
+
+    it("bumps result versions and refreshes on a result update", () => {
+      build(parameterized).ngOnInit();
+      resultUpdateStream.next({ "op-1": {} });
+      expect(component.resultKey("op-1")).toBe("op-1#1");
+    });
+
+    it("reports visualisation content from the operator's snapshot", () => {
+      build(parameterized).ngOnInit();
+      (component as any).workflowResultService.getResultService = () => ({
+        getCurrentResultSnapshot: () => [{ a: 1 }],
+      });
+      expect(component.vizHasContent("viz")).toBe(true);
+    });
+
+    it("re-fits the visualisations after a result update", () => {
+      vi.useFakeTimers();
+      try {
+        build(parameterized).ngOnInit();
+        const fit = vi.spyOn(component as any, "fitVisualisations").mockImplementation(() => {});
+        resultUpdateStream.next({ "op-1": {} });
+        vi.advanceTimersByTime(300);
+        expect(fit).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("re-fits the visualisations once a finished run has results", () => {
+      vi.useFakeTimers();
+      try {
+        build(parameterized).ngOnInit();
+        vi.spyOn(component, "hasResults", "get").mockReturnValue(true);
+        const fit = vi.spyOn(component as any, "fitVisualisations").mockImplementation(() => {});
+        executionStateStream.next({ current: { state: ExecutionState.Completed } });
+        vi.advanceTimersByTime(400);
+        expect(fit).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("collapses an opaque engine error to a generic message", () => {
@@ -804,6 +967,16 @@ describe("WorkflowFormComponent", () => {
       (component as any).readConfig();
 
       expect(component.rendered).toHaveLength(0);
+    });
+
+    it("re-fits results a moment after a run reports them", () => {
+      build(parameterized).ngOnInit();
+      component.shownResultIds = ["op-1"];
+      anyResultIds.add("op-1");
+
+      executionStateStream.next({ current: { state: ExecutionState.Completed } });
+
+      expect(component.hasResults).toBe(true);
     });
 
     it("disables the run button for an invalid or empty workflow", () => {

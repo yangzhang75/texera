@@ -215,6 +215,108 @@ $shell: #fafafa;
   background: #fff;
 }
 
+/* ---------- instruction ---------- */
+
+.instr {
+  margin-bottom: 26px;
+
+  .instr-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 16px;
+    cursor: pointer;
+    user-select: none;
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    // Author edits the heading right here. Looks like the h2, with a faint dashed box so
+    // it reads as editable; firms up on hover, becomes a real input on focus.
+    .instr-title-input {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: inherit;
+      background: none;
+      border: 1px dashed #dcdcdc;
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: text;
+      outline: none;
+
+      &::placeholder {
+        color: $text-2;
+        font-weight: 600;
+      }
+
+      &:hover {
+        border-style: solid;
+        border-color: #b0b0b0;
+      }
+
+      &:focus {
+        border-style: solid;
+        border-color: $blue;
+        background: #fff;
+      }
+    }
+
+    .lead {
+      color: $blue;
+    }
+
+    .chev {
+      color: $text-2;
+      transform: rotate(-90deg);
+      transition: transform 0.2s;
+    }
+  }
+
+  &.open .instr-bar .chev {
+    transform: rotate(0deg);
+  }
+
+  .instr-body {
+    border-top: 1px solid $divider;
+    padding: 16px;
+    /* A long explanation scrolls rather than pushing the form off screen, and can be
+       dragged taller by anyone who wants to read it all at once. */
+    max-height: 340px;
+    overflow-y: auto;
+    resize: vertical;
+  }
+}
+
+.md {
+  :first-child {
+    margin-top: 0;
+  }
+
+  :last-child {
+    margin-bottom: 0;
+  }
+
+  img {
+    max-width: 100%;
+    border: 1px solid $divider;
+    border-radius: 6px;
+  }
+
+  code {
+    background: $divider;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+}
+
 /* ---------- inputs ---------- */
 
 .empty {

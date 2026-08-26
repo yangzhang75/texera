@@ -75,6 +75,34 @@
        out to nobody while the operator canvas, whose selector is always mounted, ran
        fine. Being present from the start is what keeps the two views connected. -->
   <div [hidden]="loading">
+    <!-- Instruction -->
+    <section
+      class="card instr"
+      *ngIf="hasInstruction"
+      [class.open]="instructionOpen">
+      <div
+        class="instr-bar"
+        (click)="toggleInstruction()">
+        <i
+          nz-icon
+          nzType="info-circle"
+          class="lead"></i>
+        <h2>{{ instructionTitle || "How to use this" }}</h2>
+        <i
+          nz-icon
+          nzType="down"
+          class="chev"></i>
+      </div>
+
+      <div
+        class="instr-body"
+        *ngIf="instructionOpen">
+        <div
+          class="md"
+          [innerHTML]="instructionPreviewHtml"></div>
+      </div>
+    </section>
+
     <!-- Inputs -->
     <div class="pc-section-head">
       <span class="label">Inputs</span>

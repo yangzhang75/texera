@@ -28,6 +28,7 @@ import { NzIconModule } from "ng-zorro-antd/icon";
 import { NzAvatarModule } from "ng-zorro-antd/avatar";
 import { UserIconComponent } from "../../../dashboard/component/user/user-icon/user-icon.component";
 import { cloneDeep } from "lodash-es";
+import { MarkdownService } from "ngx-markdown";
 import { forkJoin, Subject } from "rxjs";
 import { debounceTime, takeUntil } from "rxjs/operators";
 
@@ -68,7 +69,7 @@ interface RenderedParameter {
 
 /**
  * The Form View: renders the inputs an author exposed and writes filled-in values back to
- * their operators. This PR adds the inputs on top of the page shell; the instruction panel,
+ * their operators. This PR adds the inputs (and the instruction) on top of the page shell;
  * running the workflow and showing results are added by the following PRs.
  */
 @UntilDestroy()
@@ -99,6 +100,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public canEdit = false;
   public authoring = false;
 
+  public instructionOpen = true;
   public workflowOpen = false;
   /** Set once the reader collapses or expands it themselves, so we stop deciding for them. */
   private workflowOpenTouched = false;
@@ -111,6 +113,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   private formsRebuilt = new Subject<void>();
   /** Set on teardown so deferred callbacks stop touching a view that is gone. */
   private destroyed = false;
+  public instructionTitle = "";
+  public instructionBody = "";
+  public instructionMode: "write" | "preview" = "write";
+  public instructionPreviewHtml = "";
 
 
 
@@ -135,6 +141,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     private workflowResultService: WorkflowResultService,
     private notificationService: NotificationService,
     private userService: UserService,
+    private markdownService: MarkdownService,
     private formlyJsonschema: FormlyJsonschema,
     private cdr: ChangeDetectorRef,
     // Injected for its side effect: it fills its map from the operator-add stream, so
@@ -231,7 +238,12 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   }
 
   private readConfig(): void {
+    const config = this.parameterizationService.getConfig();
     this.parameters = this.parameterizationService.resolveParameters();
+    this.instructionTitle = config.instruction?.title ?? "";
+    this.instructionBody = config.instruction?.body ?? "";
+    // A reader always sees the instruction as rendered markdown.
+    void this.renderInstruction();
     this.buildForm();
   }
 
@@ -426,6 +438,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     return this.parameters.filter(p => !p.brokenReason);
   }
 
+  public get hasInstruction(): boolean {
+    return this.instructionBody.trim().length > 0;
+  }
+
 
 
   /* v8 ignore stop */
@@ -442,9 +458,20 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   // Author mode
   // ---------------------------------------------------------------------------
 
+  private async renderInstruction(): Promise<void> {
+    this.instructionPreviewHtml = this.instructionBody.trim()
+      ? await Promise.resolve(this.markdownService.parse(this.instructionBody))
+      : "";
+    this.cdr.detectChanges();
+  }
+
   // ---------------------------------------------------------------------------
   // Layout
   // ---------------------------------------------------------------------------
+
+  public toggleInstruction(): void {
+    this.instructionOpen = !this.instructionOpen;
+  }
 
   public toggleWorkflow(): void {
     this.workflowOpen = !this.workflowOpen;

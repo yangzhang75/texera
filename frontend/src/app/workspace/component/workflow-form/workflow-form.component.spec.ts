@@ -58,6 +58,7 @@ describe("WorkflowFormComponent", () => {
       h.workflowResultService as any,
       h.notificationService as any,
       h.userService as any,
+      h.markdownService as any,
       h.formlyJsonschema as any,
       h.cdr as any,
       h.dynamicSchemaService as any,
@@ -132,6 +133,15 @@ describe("WorkflowFormComponent", () => {
       (component as any).applyEditability();
 
       expect(workflowActionService.enableWorkflowModification).toHaveBeenCalled();
+    });
+
+    it("toggles the instruction panel open and shut", () => {
+      build(parameterized).ngOnInit();
+      const open = component.instructionOpen;
+
+      component.toggleInstruction();
+
+      expect(component.instructionOpen).toBe(!open);
     });
 
     it("goes back to the list when the workflow cannot be opened", () => {
@@ -392,6 +402,14 @@ describe("WorkflowFormComponent", () => {
       workflowActionService.parameterizationChanged$.next(undefined);
 
       expect(parameterizationService.resolveParameters.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it("has an instruction only when the body has text", () => {
+      build(parameterized);
+      component.instructionBody = "  ";
+      expect(component.hasInstruction).toBe(false);
+      component.instructionBody = "Fill this in";
+      expect(component.hasInstruction).toBe(true);
     });
 
     it("saves on every debounced workflow change", () => {

@@ -58,6 +58,7 @@ import { WorkflowWebsocketService } from "../../service/workflow-websocket/workf
 import { ExecutionState } from "../../types/execute-workflow.interface";
 import { OperatorPredicate, Point } from "../../types/workflow-common.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
+import { PropertyEditorComponent } from "../property-editor/property-editor.component";
 import { ResultTableFrameComponent } from "../result-panel/result-table-frame/result-table-frame.component";
 import { VisualizationFrameContentComponent } from "../visualization-panel-content/visualization-frame-content.component";
 import { WorkflowEditorComponent } from "../workflow-editor/workflow-editor.component";
@@ -113,6 +114,7 @@ interface ResultChoice {
     CoeditorUserIconComponent,
     ResultTableFrameComponent,
     VisualizationFrameContentComponent,
+    PropertyEditorComponent,
   ],
 })
 export class WorkflowFormComponent implements OnInit, OnDestroy {
@@ -163,6 +165,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public isWorkflowValid = true;
   public isWorkflowEmpty = false;
 
+  /** The step whose property panel is open, if any. */
+  public selectedOperatorId?: string;
+  public selectedOperatorLabel = "";
   /**
    * Operator positions as stored. The workflow shows in a collapsible strip, and a canvas
    * measured while hidden reports junk geometry that autosave would flatten to the origin --
@@ -219,6 +224,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     // Give the result tables a realistic height to page against, so they show a screenful
     // of rows instead of one. (~7 rows; the card scrolls for the rest.)
     this.panelResizeService.changePanelSize(900, 560);
+    // Highlighting is off by default and is what turns a click on a step into a
+    // selection, which is how an author picks the settings to expose.
+    this.workflowActionService.setHighlightingEnabled(true);
     this.load(wid);
 
     // The run clock, reusing the operator canvas's source outright rather than timing
@@ -278,6 +286,37 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
         this.isWorkflowEmpty = value.workflowEmpty;
         this.isWorkflowValid = Object.keys(value.errors).length === 0;
         this.cdr.markForCheck();
+      });
+
+    // Selecting a step on the embedded canvas is how an author picks what to expose.
+    // The canvas is read-only, but highlighting still works, so we reuse it rather
+    // than teaching the editor a second click mode.
+    this.workflowActionService
+      .getJointGraphWrapper()
+      .getJointOperatorHighlightStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(ids => {
+        if (ids.length === 1) {
+          this.onOperatorClicked(ids[0]);
+        }
+        // The property panel announces "currently editing this operator" to everyone
+        // sharing the workflow. That is right on the operator canvas; here it made this
+        // page's own session show up as a coeditor -- the user's own name printed in
+        // colour over an operator on the other view. Nobody is co-editing a graph from
+        // a form, so this page stays silent on that channel.
+        this.workflowActionService.getTexeraGraph().updateSharedModelAwareness("currentlyEditing", undefined);
+      });
+
+    // Clicking empty canvas clears the selection, and the panel should go with it.
+    this.workflowActionService
+      .getJointGraphWrapper()
+      .getJointOperatorUnhighlightStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(() => {
+        if (this.workflowActionService.getJointGraphWrapper().getCurrentHighlightedOperatorIDs().length === 0) {
+          this.clearSelection();
+          this.cdr.detectChanges();
+        }
       });
 
     // Ticking a property in the panel changes the definition; the list above has to
@@ -833,6 +872,33 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     this.instructionPreviewHtml = this.instructionBody.trim()
       ? await Promise.resolve(this.markdownService.parse(this.instructionBody))
       : "";
+    this.cdr.detectChanges();
+  }
+
+  /** No operator selected: this is what closes the property panel. */
+  private clearSelection(): void {
+    this.selectedOperatorId = undefined;
+    this.selectedOperatorLabel = "";
+  }
+
+  /** Dismiss the panel: the selection is what holds it open. */
+  public closeOperatorPanel(): void {
+    this.workflowActionService
+      .getJointGraphWrapper()
+      .unhighlightOperators(...this.workflowActionService.getJointGraphWrapper().getCurrentHighlightedOperatorIDs());
+    this.clearSelection();
+    this.cdr.detectChanges();
+  }
+
+  /** Clicking a step opens the workflow's own property panel for it. */
+  public onOperatorClicked(operatorID: string): void {
+    const graph = this.workflowActionService.getTexeraGraph();
+    if (!graph.hasOperator(operatorID)) {
+      this.clearSelection();
+      return;
+    }
+    this.selectedOperatorId = operatorID;
+    this.selectedOperatorLabel = this.parameterizationService.operatorLabel(graph.getOperator(operatorID));
     this.cdr.detectChanges();
   }
 

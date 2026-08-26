@@ -243,6 +243,36 @@
         <texera-mini-map
           *ngIf="workflowEverOpened"
           class="box"></texera-mini-map>
+
+        <!-- Zoom / fit / navigation is handled by the reused mini-map above, so the old
+             custom tool buttons are gone. -->
+
+        <!-- The workflow's own property panel, unchanged: same component, same look as
+             the operator canvas. It floats over the preview and takes no layout space,
+             and clicking empty canvas dismisses it, so it is only there while a step is
+             actually selected. -->
+        <!-- Outside the panel on purpose. The property editor inside opens its own
+             stacking context, and everything in that context paints over a button
+             nested within it -- visible, correctly placed and unclickable, whatever
+             z-index it was given. As a sibling it is simply above. -->
+        <button
+          class="panel-close"
+          *ngIf="selectedOperatorLabel"
+          (click)="closeOperatorPanel()"
+          nz-tooltip="Close">
+          <i
+            nz-icon
+            nzType="close"></i>
+        </button>
+        <!-- A reader can open a step to view its settings, read-only (inert); the authoring
+             PR turns the panel live for choosing what to expose. -->
+        <div
+          class="panel inert"
+          [hidden]="!selectedOperatorLabel">
+          <texera-property-editor
+            [exposeChoosing]="false"
+            [persistPlacement]="false"></texera-property-editor>
+        </div>
       </div>
     </section>
 

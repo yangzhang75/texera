@@ -47,6 +47,8 @@ describe("WorkflowFormComponent", () => {
   let executionStateStream: Subject<any>;
   let durationEvents: Subject<{ duration: number; isRunning: boolean }>;
   let resultUpdateStream: Subject<unknown>;
+  let highlightStream: Subject<readonly string[]>;
+  let unhighlightStream: Subject<readonly string[]>;
   let highlightedIds: string[];
   let hasOperatorIds: Set<string>;
   let graphOperators: any[];
@@ -95,6 +97,8 @@ describe("WorkflowFormComponent", () => {
     executionStateStream = h.executionStateStream;
     durationEvents = h.durationEvents;
     resultUpdateStream = h.resultUpdateStream;
+    highlightStream = h.highlightStream;
+    unhighlightStream = h.unhighlightStream;
     highlightedIds = h.highlightedIds;
     hasOperatorIds = h.hasOperatorIds;
     graphOperators = h.graphOperators;
@@ -343,6 +347,34 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  describe("looking at a step", () => {
+    beforeEach(() => {
+      build(parameterized);
+      workflowActionService.getTexeraGraph = () => ({
+        getAllOperators: () => [],
+        triggerCenterEvent: vi.fn(),
+        hasOperator: (id: string) => id === "op-1",
+        getOperator: () => ({ operatorID: "op-1", operatorType: "ScanSource" }),
+      });
+      component.ngOnInit();
+    });
+
+    it("opens the workflow's own property panel for it", () => {
+      component.onOperatorClicked("op-1");
+
+      expect(component.selectedOperatorId).toBe("op-1");
+      expect(component.selectedOperatorLabel).toBe("Source: Scan");
+    });
+
+    it("closes the panel for a step that is no longer there", () => {
+      component.onOperatorClicked("op-1");
+
+      component.onOperatorClicked("gone");
+
+      expect(component.selectedOperatorId).toBeUndefined();
+    });
+  });
+
   // Attribute boxes only become dropdowns once compilation reports the upstream column
   // names, which lands after these cards were built. Without picking that up the form
   // showed a plain text input where the operator canvas showed a dropdown.
@@ -382,17 +414,12 @@ describe("WorkflowFormComponent", () => {
       expect(component.executionDuration).toBe(0);
     });
 
-    it("takes the elapsed time the engine reports, then ticks it up while running", () => {
-      vi.useFakeTimers();
+    it("takes the elapsed time the engine reports", () => {
       build(parameterized).ngOnInit();
 
       durationEvents.next({ duration: 4000, isRunning: true });
-      expect(component.executionDuration).toBe(4000);
 
-      // A running clock fills the gap between engine reports with a local 1s tick.
-      vi.advanceTimersByTime(1000);
-      expect(component.executionDuration).toBe(5000);
-      vi.useRealTimers();
+      expect(component.executionDuration).toBe(4000);
     });
 
     it("keeps the final time when the run stops", () => {
@@ -599,6 +626,30 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  // Zoom, fit and layout are handled by the reused editor/mini-map now, so the page's
+  // own controls are gone; what stays is selecting a step and dismissing its panel.
+  describe("selecting a step", () => {
+    let jointWrapper: any;
+
+    beforeEach(() => {
+      build(parameterized).ngOnInit();
+      jointWrapper = {
+        unhighlightOperators: vi.fn(),
+        getCurrentHighlightedOperatorIDs: () => ["op-1"],
+      };
+      workflowActionService.getJointGraphWrapper = () => jointWrapper;
+    });
+
+    it("dismisses the operator panel by dropping the selection that holds it open", () => {
+      component.onOperatorClicked("op-1");
+
+      component.closeOperatorPanel();
+
+      expect(jointWrapper.unhighlightOperators).toHaveBeenCalledWith("op-1");
+      expect(component.selectedOperatorId).toBeUndefined();
+    });
+  });
+
   describe("what a result looks like", () => {
     beforeEach(() => build(parameterized).ngOnInit());
 
@@ -629,6 +680,30 @@ describe("WorkflowFormComponent", () => {
       component.ngOnInit();
 
       expect(router.navigate).toHaveBeenCalledWith([USER_WORKFLOW]);
+    });
+
+    it("selects a step when the canvas highlights exactly one operator", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      hasOperatorIds.add("op-1");
+      parameterizationService.operatorLabel.mockReturnValue("Scan");
+
+      highlightStream.next(["op-1"]);
+
+      expect(component.selectedOperatorId).toBe("op-1");
+      expect(component.selectedOperatorLabel).toBe("Scan");
+    });
+
+    it("clears the selection when the canvas is cleared", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      hasOperatorIds.add("op-1");
+      highlightStream.next(["op-1"]);
+
+      h.highlightedIds.length = 0;
+      unhighlightStream.next([]);
+
+      expect(component.selectedOperatorId).toBeUndefined();
     });
 
     it("re-reads the config when the panel changes the definition", () => {

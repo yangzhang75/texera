@@ -41,6 +41,8 @@ import { GuiConfigService } from "../../../common/service/gui-config.service";
 import { WorkflowConsoleService } from "../../service/workflow-console/workflow-console.service";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
 import { Point } from "../../types/workflow-common.interface";
+import { WorkflowEditorComponent } from "../workflow-editor/workflow-editor.component";
+import { MiniMapComponent } from "../workflow-editor/mini-map/mini-map.component";
 import { CoeditorUserIconComponent } from "../menu/coeditor-user-icon/coeditor-user-icon.component";
 import { CoeditorPresenceService } from "../../service/workflow-graph/model/coeditor-presence.service";
 import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
@@ -62,6 +64,8 @@ import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
     NzIconModule,
     NzAvatarModule,
     UserIconComponent,
+    WorkflowEditorComponent,
+    MiniMapComponent,
     CoeditorUserIconComponent,
   ],
 })
@@ -75,6 +79,11 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public canEdit = false;
   public authoring = false;
 
+  public workflowOpen = false;
+  /** Set once the reader collapses or expands it themselves, so we stop deciding for them. */
+  private workflowOpenTouched = false;
+  /** The canvas is built the first time the strip opens, never while collapsed. */
+  public workflowEverOpened = false;
 
   /** Set on teardown so deferred callbacks stop touching a view that is gone. */
   private destroyed = false;
@@ -174,6 +183,28 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
   // Layout
   // ---------------------------------------------------------------------------
+
+  public toggleWorkflow(): void {
+    this.workflowOpen = !this.workflowOpen;
+    this.workflowOpenTouched = true;
+    if (this.workflowOpen) {
+      this.openWorkflowStrip();
+    }
+  }
+
+  /**
+   * Reveal the strip, then build the canvas a frame later (so JointJS measures the strip's
+   * real size, not a zero-sized frame that misroutes links), then centre the graph a frame
+   * after that so the fit runs against a canvas that exists. The editor keeps its own paper
+   * sized via its container ResizeObserver, so nothing more is needed here.
+   */
+  private openWorkflowStrip(): void {
+    this.later(() => {
+      this.workflowEverOpened = true;
+      this.cdr.detectChanges();
+      this.later(() => this.workflowActionService.getTexeraGraph().triggerCenterEvent());
+    });
+  }
 
   /**
    * Edit mode makes operator properties editable; the graph shape stays locked in both
@@ -300,16 +331,21 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Run after a short delay, unless the page is gone by then: the callback touches the view,
-   * and detectChanges on a destroyed view throws -- reachable by navigating away while the
-   * name field is still waiting to be measured.
+   * Run after the current frame (or a delay), unless the page is gone by then: these
+   * callbacks touch the view, and detectChanges on a destroyed view throws -- reachable by
+   * navigating away while a chart is waiting to be fitted.
    */
-  private later(fn: () => void, delayMs = 0): void {
-    setTimeout(() => {
+  private later(fn: () => void, delayMs?: number): void {
+    const run = () => {
       if (!this.destroyed) {
         fn();
       }
-    }, delayMs);
+    };
+    if (delayMs === undefined) {
+      requestAnimationFrame(run);
+    } else {
+      setTimeout(run, delayMs);
+    }
   }
 
   /**

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, OnDestroy, OnInit } from "@angular/core";
 import { combineLatest, fromEvent, merge, Subject } from "rxjs";
 import { NzModalCommentBoxComponent } from "./comment-box-modal/nz-modal-comment-box.component";
 import { NzModalRef, NzModalService } from "ng-zorro-antd/modal";
@@ -95,7 +95,22 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   editor!: HTMLElement;
   editorWrapper!: HTMLElement;
   paper!: joint.dia.Paper;
-  private interactive: boolean = true;
+  private paperInteractive: boolean = true;
+  // Keeps the paper sized to its OWN container (not just the window) and rebuilds cell
+  // geometry when the container goes 0 -> real size. Needed by embedded previews like the
+  // Form View strip, which toggles this editor's container via display:none.
+  private paperResizeObserver?: ResizeObserver;
+
+  /**
+   * Set by a view that shows the graph but must never re-shape it. Separate from the
+   * workflow-modification lock (which also gates property editing, so reusing it disabled
+   * the property panel); this gates dragging, linking and deleting only.
+   */
+  @Input() structureLocked = false;
+
+  private get interactive(): boolean {
+    return this.paperInteractive && !this.structureLocked;
+  }
   private _onProcessKeyboardActionObservable: Subject<void> = new Subject();
   private wrapper;
   private currentOpenedOperatorID: string | null = null;
@@ -173,6 +188,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
     this.handlePaperRestoreDefaultOffset();
     this.handlePaperZoom();
     this.handleWindowResize();
+    this.handleContainerResize();
     this.handleViewDeleteOperator();
     if (this.workflowActionService.getHighlightingEnabled()) {
       this.handleCellHighlight();
@@ -210,6 +226,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
+    this.paperResizeObserver?.disconnect();
     document.removeEventListener("keydown", this._handleKeyboardAction.bind(this));
   }
 
@@ -257,7 +274,7 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       // marks all the available magnets or elements when a link is dragged
       markAvailable: true,
       // disable jointjs default action of adding vertexes to the link
-      interactive: defaultInteractiveOption,
+      interactive: this.interactive ? defaultInteractiveOption : disableInteractiveOption,
       // set a default link element used by jointjs when user creates a link on UI
       defaultLink: JointUIService.getDefaultLinkCell(),
       // disable jointjs default action that stops propagate click events on jointjs paper
@@ -285,13 +302,8 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       .getWorkflowModificationEnabledStream()
       .pipe(untilDestroyed(this))
       .subscribe(enabled => {
-        if (enabled) {
-          this.interactive = true;
-          this.paper.setInteractivity(defaultInteractiveOption);
-        } else {
-          this.interactive = false;
-          this.paper.setInteractivity(disableInteractiveOption);
-        }
+        this.paperInteractive = enabled;
+        this.paper.setInteractivity(this.interactive ? defaultInteractiveOption : disableInteractiveOption);
         this.changeDetectorRef.detectChanges();
       });
   }
@@ -392,22 +404,15 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   /**
-   * Single source of truth for the operator's border color. Both the
-   * validation stream and the operator-add stream route through here so
-   * the priority order is consistent regardless of which event fires last:
-   *   1. Invalid operator → red (validation takes priority).
-   *   2. Valid operator with a cached execution status → execution-state color.
-   *   3. Valid operator with no cached status → default valid (gray).
-   *
-   * Centralizing this here avoids the race where the validation pass
-   * overwrites a state-derived stroke (or vice versa) for an operator that
-   * is both invalid and has a cached execution status.
-   *
-   * Both callers obtain the Validation themselves and pass it in: the
-   * validation-stream subscriber forwards the result the stream just emitted,
-   * and the operator-add subscriber computes it via validateOperator. Keeping
-   * the parameter required means the color decision never silently depends on
-   * a recompute hidden inside this helper.
+   * Single source of truth for the operator's border color; both the validation stream and the
+   * operator-add stream route through here so priority is consistent no matter which fires last:
+   *   1. Invalid → red (validation wins).
+   *   2. Valid with a cached execution status → execution-state color.
+   *   3. Valid with no cached status → default gray.
+   * Centralizing avoids the race where one stream overwrites the other's stroke for an operator
+   * that is both invalid and has a cached status. Callers pass the Validation in (subscriber
+   * forwards the emitted result; operator-add computes it via validateOperator) so the color
+   * never depends on a recompute hidden here.
    */
   private applyOperatorBorder(operatorID: string, validation: Validation): void {
     if (!validation.isValid) {
@@ -564,6 +569,42 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       .pipe(untilDestroyed(this))
       .subscribe(() => this.paper.setDimensions(this.editorWrapper.offsetWidth, this.editorWrapper.offsetHeight));
   }
+
+  /**
+   * The window:resize handler reacts only to the window. When this editor is embedded in a
+   * self-resizing container -- e.g. the Form View's "Workflow" strip toggled via display:none
+   * -- the window never fires, so the paper is mis-sized and cells that repainted while 0-sized
+   * cache their port anchors at the origin (links tangle across boxes). A ResizeObserver on the
+   * editor's own container fixes both when the real size lands, instead of guessing with timers.
+   */
+  /* v8 ignore start -- ResizeObserver + JointJS paper geometry; jsdom has no layout to observe or measure */
+  private handleContainerResize(): void {
+    this.paperResizeObserver = new ResizeObserver(() => this.resizePaperToContainer());
+    this.paperResizeObserver.observe(this.editorWrapper);
+  }
+
+  private resizePaperToContainer(): void {
+    if (!this.paper) {
+      return;
+    }
+    const width = this.editorWrapper.offsetWidth;
+    const height = this.editorWrapper.offsetHeight;
+    // Collapsed/hidden container: do NOT measure or rebuild against zero -- that is exactly
+    // what caches the broken geometry in the first place.
+    if (width === 0 || height === 0) {
+      return;
+    }
+    this.paper.setDimensions(width, height);
+    // Rebuild cell geometry against the now-real DOM. Re-rendering each element recomputes
+    // its port anchors; re-routing each link then draws it between the real ports. A plain
+    // setDimensions (or a viewport zoom-to-fit) cannot undo anchors already cached at 0,0.
+    this.paper.model.getElements().forEach(element => this.paper.findViewByModel(element)?.update());
+    this.paper.model.getLinks().forEach(link => {
+      const linkView = this.paper.findViewByModel(link) as joint.dia.LinkView | undefined;
+      linkView?.requestConnectionUpdate();
+    });
+  }
+  /* v8 ignore stop */
 
   private handleCellHighlight(): void {
     this.handleHighlightMouseDBClickInput();
@@ -1039,7 +1080,43 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
       .getOperatorValidationStream()
       .pipe(untilDestroyed(this))
       .subscribe(value => this.applyOperatorBorder(value.operatorID, value.validation));
+
+    // Operators already in the graph when this editor mounts produced no add event and won't hit
+    // the validation stream until they change, so nothing corrects the border they were drawn
+    // with. The operator canvas mounts before the workflow loads and hears every event, so it
+    // already looks right; the Form View builds its preview only once opened, leaving operators
+    // in unvalidated red with a completed run's colours missing. Repaint only there -- a view
+    // that locks the structure is exactly the one that mounts its editor late.
+    /* v8 ignore start -- JointJS repaint on a paper that only exists once rendered */
+    if (this.structureLocked) {
+      this.paintCurrentOperatorState();
+    }
+    /* v8 ignore stop */
   }
+
+  /* v8 ignore start -- JointJS paper repaint; needs a rendered paper jsdom cannot provide */
+  private paintCurrentOperatorState(): void {
+    this.workflowActionService
+      .getTexeraGraph()
+      .getAllOperators()
+      .forEach(operator => {
+        const statistics = this.workflowStatusService.getCurrentStatus()[operator.operatorID];
+        if (statistics) {
+          this.jointUIService.changeOperatorStatistics(
+            this.paper,
+            operator.operatorID,
+            statistics,
+            this.isSource(operator.operatorID),
+            this.isSink(operator.operatorID)
+          );
+        }
+        this.applyOperatorBorder(
+          operator.operatorID,
+          this.validationWorkflowService.validateOperator(operator.operatorID)
+        );
+      });
+  }
+  /* v8 ignore stop */
 
   /**
    * This function is provided to JointJS to disable some invalid connections on the UI.
@@ -1428,6 +1505,14 @@ export class WorkflowEditorComponent implements OnInit, AfterViewInit, OnDestroy
    * Handles mouse events to enable shared cursor.
    */
   private handlePointerEvents(): void {
+    // A shared cursor is for co-editing the graph; a read-only view shouldn't broadcast one.
+    // The Form View otherwise left a stranded dot with the reader's name on the operator canvas,
+    // its last mouse position lingering in awareness state after the page was gone.
+    /* v8 ignore start -- read-only preview guard; the locked view only mounts once rendered */
+    if (this.structureLocked) {
+      return;
+    }
+    /* v8 ignore stop */
     fromEvent<MouseEvent>(this.editor, "mousemove")
       .pipe(untilDestroyed(this))
       .subscribe(e => {

@@ -196,3 +196,86 @@ $shell: #fafafa;
   background: #fff;
 }
 
+/* ---------- workflow ---------- */
+
+.wf {
+  margin-top: 28px;
+
+  .wf-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    cursor: pointer;
+    user-select: none;
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 2px 0 0;
+      font-size: 13px;
+      color: $text-2;
+    }
+
+    .chev {
+      color: $text-2;
+      transform: rotate(-90deg);
+      transition: transform 0.2s;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .to-canvas {
+      background: #fff;
+      border: 1px solid $border;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+
+      &:hover {
+        color: $blue;
+        border-color: $blue;
+      }
+    }
+  }
+
+  &.open .wf-bar .chev {
+    transform: rotate(0deg);
+  }
+
+  .wf-body {
+    position: relative;
+    border-top: 1px solid $divider;
+    height: 380px;
+    resize: vertical;
+    overflow: hidden;
+    background: #f7f8f9;
+
+    texera-workflow-editor {
+      display: block;
+      height: 100%;
+      width: 100%;
+    }
+
+    // The Hub preview's mini-map, parked in the corner for navigating a large graph.
+    // Reused as-is at its natural 300x200 (same as the workspace/Hub do) — no size
+    // override, so the whole graph shows instead of being clipped behind the toolbar.
+    // No overflow:hidden — the inner #mini-map-container already clips the paper, and
+    // clipping here hides the collapsed mini-map's re-open button (the host collapses to
+    // 0 when the map is hidden), so it could never be brought back.
+    .box {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      border: 1px solid $divider;
+      border-radius: 6px;
+      background: #fff;
+    }
+  }
+}

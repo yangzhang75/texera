@@ -190,9 +190,57 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
-  // A deferred callback (e.g. measuring the name field) touches the view; while the page is
-  // still alive it must run, and once it is gone it must not (detectChanges would throw).
-  describe("deferred callbacks", () => {
+  // JointJS measures the paper once, when the editor is created. Creating it in the same
+  // pass that uncollapses the strip races the browser's layout, and losing that race
+  // draws links up and over the boxes -- which is why the bad drawing only appeared
+  // sometimes.
+  describe("opening the workflow strip", () => {
+    const frame = () => new Promise(r => requestAnimationFrame(() => r(null)));
+
+    it("reveals the strip before building the canvas inside it", async () => {
+      build(parameterized).ngOnInit();
+
+      component.toggleWorkflow();
+
+      expect(component.workflowOpen).toBe(true);
+      expect(component.workflowEverOpened).toBe(false);
+    });
+
+    it("builds the canvas once the strip has a size", async () => {
+      build(parameterized).ngOnInit();
+
+      component.toggleWorkflow();
+      await frame();
+
+      expect(component.workflowEverOpened).toBe(true);
+    });
+
+    it("leaves the canvas alone when the strip is being closed", () => {
+      build(parameterized).ngOnInit();
+      component.toggleWorkflow();
+
+      component.toggleWorkflow();
+
+      expect(component.workflowOpen).toBe(false);
+    });
+  });
+
+  // Leaving for the dashboard is an ordinary in-app navigation, so a reader can walk out
+  // during the few hundred milliseconds a chart or a canvas is waiting to be fitted.
+  // Those callbacks call detectChanges, which throws on a view that is gone.
+  describe("walking away while something is still pending", () => {
+    const frame = () => new Promise(r => requestAnimationFrame(() => r(null)));
+
+    it("does not build the canvas for a page that has been left", async () => {
+      build(parameterized).ngOnInit();
+
+      component.toggleWorkflow();
+      component.ngOnDestroy();
+      await frame();
+
+      expect(component.workflowEverOpened).toBe(false);
+    });
+
     it("still runs a pending callback while the page is alive", async () => {
       build(parameterized).ngOnInit();
       const ran = vi.fn();

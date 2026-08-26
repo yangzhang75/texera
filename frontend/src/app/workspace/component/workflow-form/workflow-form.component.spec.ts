@@ -138,31 +138,38 @@ describe("WorkflowFormComponent", () => {
       expect(workflowActionService.enableWorkflowModification).not.toHaveBeenCalled();
     });
 
+    it("lets an author edit properties in edit mode", () => {
+      build(parameterized).ngOnInit();
+
+      component.toggleAuthoring();
+
+      expect(workflowActionService.enableWorkflowModification).toHaveBeenCalled();
+    });
+
+    it("puts them back to read-only on leaving edit mode", () => {
+      build(parameterized).ngOnInit();
+      component.toggleAuthoring();
+      workflowActionService.disableWorkflowModification.mockClear();
+
+      component.toggleAuthoring();
+
+      expect(workflowActionService.disableWorkflowModification).toHaveBeenCalled();
+    });
+
+    it("never unlocks for a reader without write access", () => {
+      build({ ...parameterized, readonly: true }).ngOnInit();
+
+      component.toggleAuthoring();
+
+      expect(workflowActionService.enableWorkflowModification).not.toHaveBeenCalled();
+    });
+
     it("offers author controls only with write access", () => {
       build({ ...parameterized, readonly: true }).ngOnInit();
       expect(component.canEdit).toBe(false);
 
       build(parameterized).ngOnInit();
       expect(component.canEdit).toBe(true);
-    });
-
-    it("unlocks operator properties while authoring with write access", () => {
-      build(parameterized).ngOnInit();
-      (component as any).authoring = true;
-      (component as any).canEdit = true;
-
-      (component as any).applyEditability();
-
-      expect(workflowActionService.enableWorkflowModification).toHaveBeenCalled();
-    });
-
-    it("toggles the instruction panel open and shut", () => {
-      build(parameterized).ngOnInit();
-      const open = component.instructionOpen;
-
-      component.toggleInstruction();
-
-      expect(component.instructionOpen).toBe(!open);
     });
 
     it("goes back to the list when the workflow cannot be opened", () => {
@@ -172,6 +179,29 @@ describe("WorkflowFormComponent", () => {
       component.ngOnInit();
 
       expect(router.navigate).toHaveBeenCalledWith([USER_WORKFLOW]);
+    });
+  });
+
+  describe("broken inputs", () => {
+    const healthy = resolved("n_hvg", "Number of genes");
+    const broken = resolved("gone", "Gone", { brokenReason: "the step it belonged to was removed" });
+
+    beforeEach(() => {
+      build(parameterized);
+      parameterizationService.resolveParameters.mockReturnValue([healthy, broken]);
+      component.ngOnInit();
+    });
+
+    // A broken input points nowhere, so a reader -- who cannot repair it -- is never shown
+    // it or warned about it; the author is, because they are the one who can fix it.
+    it("hides them from a reader, with no warning", () => {
+      expect(component.visibleParameters).toEqual([healthy]);
+    });
+
+    it("shows them to the author", () => {
+      component.authoring = true;
+
+      expect(component.visibleParameters).toEqual([healthy, broken]);
     });
   });
 
@@ -375,6 +405,43 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  // An input's own title and the titles of the boxes inside it are renamed the same way:
+  // by clicking the title. The name used to live in a separate "Display name" box in the
+  // card footer, which taught two gestures for one thing.
+  describe("renaming an input from its own title", () => {
+    const buildNode = (authoring: boolean) => {
+      build(parameterized);
+      (component as any).authoring = authoring;
+      const node: any = { key: "b1", props: { label: "File" } };
+      (component as any).applyFieldOverrides(node, { id: "b1", propertyKey: "fileName" }, "File");
+      return node;
+    };
+
+    it("makes the top-level title editable in place while authoring", () => {
+      const node = buildNode(true);
+
+      expect(node.wrappers).toContain("editable-label-wrapper");
+      expect(node.props.schemaLabel).toBe("File");
+    });
+
+    it("offers no eye on the top-level title, since Remove already takes it off the form", () => {
+      expect(buildNode(true).props.canHide).toBe(false);
+    });
+
+    it("writes the typed name onto the binding", () => {
+      const node = buildNode(true);
+      const updateBinding = vi.spyOn(parameterizationService, "updateBinding").mockImplementation(() => {});
+
+      node.props.renameField("Input file");
+
+      expect(updateBinding).toHaveBeenCalledWith("b1", { displayName: "Input file" });
+    });
+
+    it("leaves the reader a plain title with no rename control", () => {
+      expect(buildNode(false).wrappers ?? []).not.toContain("editable-label-wrapper");
+    });
+  });
+
   // Attribute boxes only become dropdowns once compilation reports the upstream column
   // names, which lands after these cards were built. Without picking that up the form
   // showed a plain text input where the operator canvas showed a dropdown.
@@ -517,6 +584,42 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  describe("renaming edge cases", () => {
+    const nodeFor = (name: string | undefined) => {
+      build(parameterized);
+      (component as any).authoring = true;
+      const node: any = { key: "b1", props: { label: "File" } };
+      (component as any).applyFieldOverrides(node, { id: "b1", propertyKey: "fileName", displayName: name }, "File");
+      return node;
+    };
+
+    // Clearing the box is how an author says "use the operator's own name", so it has to
+    // be storable -- not silently ignored as an empty edit.
+    it("treats an emptied name as a request to fall back to the schema label", () => {
+      const node = nodeFor("Input file");
+      const updateBinding = vi.spyOn(parameterizationService, "updateBinding").mockImplementation(() => {});
+
+      node.props.renameField("");
+
+      expect(updateBinding).toHaveBeenCalledWith("b1", { displayName: "" });
+      expect(node.props.schemaLabel).toBe("File");
+    });
+
+    it("shows the author's name in the box, not the schema's", () => {
+      expect(nodeFor("Input file").props.authorName).toBe("Input file");
+    });
+
+    it("starts empty when the author has not named it, so the placeholder shows through", () => {
+      expect(nodeFor(undefined).props.authorName).toBe("");
+    });
+
+    // The wrapper draws the label itself; leaving formly's own label on would print it
+    // twice, once editable and once not.
+    it("takes formly's own label off the field it wraps", () => {
+      expect(nodeFor("Input file").props.label).toBe("");
+    });
+  });
+
   // This page's whole promise is that what an author sets up is still there next time,
   // so a save that fails must say so rather than look like it worked.
   describe("when saving fails", () => {
@@ -562,6 +665,58 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  // Every one of these is a change the author or reader makes to the shared workflow,
+  // so each has to reach the service AND leave the page showing the result.
+  describe("editing what the form offers", () => {
+    let reread: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      build(parameterized).ngOnInit();
+      parameterizationService.removeBinding = vi.fn();
+      parameterizationService.reorder = vi.fn();
+      parameterizationService.toggleResultOperator = vi.fn();
+      parameterizationService.updateConfig = vi.fn();
+      reread = vi.spyOn(component as any, "readConfig");
+    });
+
+    it("removes an input and re-reads what is left", () => {
+      component.onRemoveBinding(resolved("b1", "A"));
+
+      expect(parameterizationService.removeBinding).toHaveBeenCalledWith("b1");
+      expect(reread).toHaveBeenCalled();
+    });
+
+    it("reorders by the positions the drag reports", () => {
+      component.onDrop({ previousIndex: 2, currentIndex: 0 } as any);
+
+      expect(parameterizationService.reorder).toHaveBeenCalledWith(2, 0);
+      expect(reread).toHaveBeenCalled();
+    });
+
+    it("toggles which operator's results are shown", () => {
+      component.onToggleResult({ operatorID: "op-1", label: "Scan", shown: false });
+
+      expect(parameterizationService.toggleResultOperator).toHaveBeenCalledWith("op-1");
+    });
+
+    it("stores the instruction as the author types it", () => {
+      component.instructionTitle = "How to use";
+      component.instructionBody = "Pick a file.";
+
+      component.onInstructionChange();
+
+      expect(parameterizationService.updateConfig).toHaveBeenCalledWith({
+        instruction: { title: "How to use", body: "Pick a file." },
+      });
+    });
+
+    it("writes help text through the binding", () => {
+      component.onEditBinding(resolved("b1", "A"), "helpText", "Any CSV file");
+
+      expect(parameterizationService.updateBinding).toHaveBeenCalledWith("b1", { helpText: "Any CSV file" });
+    });
+  });
+
   // A trackBy that is not stable rebuilt every row on every pass, which is why buttons
   // could not be clicked -- they never stood still long enough.
   describe("row identity", () => {
@@ -595,6 +750,36 @@ describe("WorkflowFormComponent", () => {
       component.resultChoices = [{ operatorID: "op-1", label: "Image Visualizer", shown: true }];
 
       expect(component.resultLabel("op-1")).toBe("Image Visualizer");
+    });
+  });
+
+  describe("the instruction panel", () => {
+    beforeEach(() => build(parameterized).ngOnInit());
+
+    it("opens and closes on the same control", () => {
+      const wasOpen = component.instructionOpen;
+
+      component.toggleInstruction();
+
+      expect(component.instructionOpen).toBe(!wasOpen);
+    });
+
+    it("renders the markdown when the author switches to preview", () => {
+      const render = vi.spyOn(component as any, "renderInstruction");
+
+      component.setInstructionMode("preview");
+
+      expect(component.instructionMode).toBe("preview");
+      expect(render).toHaveBeenCalled();
+    });
+
+    it("does not re-render while the author is still writing", () => {
+      component.setInstructionMode("preview");
+      const render = vi.spyOn(component as any, "renderInstruction");
+
+      component.setInstructionMode("write");
+
+      expect(render).not.toHaveBeenCalled();
     });
   });
 
@@ -735,6 +920,33 @@ describe("WorkflowFormComponent", () => {
       expect(component.runError).toContain("bad thing");
     });
 
+    it("drops inputs whose operator was deleted, in edit mode", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      component.loading = false;
+      parameterizationService.getConfig.mockReturnValue({
+        parameters: [{ id: "b", operatorID: "gone", propertyKey: "x", displayName: "" }],
+        resultOperatorIds: [],
+      });
+
+      (component as any).readConfig();
+
+      expect(parameterizationService.setParameters).toHaveBeenCalledWith([]);
+    });
+
+    it("renders a broken input as a card with no fields", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("gone", "Gone", { brokenReason: "removed" }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+      expect(component.rendered[0].fields).toEqual([]);
+    });
+
     it("has an instruction only when the body has text", () => {
       build(parameterized);
       component.instructionBody = "  ";
@@ -762,6 +974,16 @@ describe("WorkflowFormComponent", () => {
       executionStateStream.next({ current: { state: ExecutionState.Running } });
 
       expect(component.runButtonState.label).toBe("Stop");
+    });
+
+    it("edits a sub-field's name and visibility through the service", () => {
+      build(parameterized).ngOnInit();
+
+      (component as any).onSubFieldNamed("b", "alias", "Renamed");
+      (component as any).onSubFieldHiddenAt("b", "alias", true);
+
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b", "alias", { displayName: "Renamed" });
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b", "alias", { hidden: true });
     });
 
     it("saves on every debounced workflow change", () => {
@@ -903,7 +1125,40 @@ describe("WorkflowFormComponent", () => {
       expect(parameterizationService.writeValue).toHaveBeenCalled();
     });
 
-    it("renames and hides overridden sub-fields for a reader", () => {
+    it("applies the author's field overrides to nested and repeated fields", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nested", "Nested", {
+          binding: {
+            id: "n",
+            operatorID: "op-1",
+            propertyKey: "nested",
+            displayName: "N",
+            fields: { sub: { displayName: "Renamed", hidden: true } },
+          } as any,
+        }),
+        resolved("predicates", "Predicates", {
+          binding: { id: "p", operatorID: "op-1", propertyKey: "predicates", displayName: "P", fields: {} } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      // Invoke the decorated row-template builder so its per-row walk runs.
+      const predicates = component.rendered.find(r => r.parameter.binding.id === "p");
+      (predicates!.fields[0] as any).fieldArray?.({});
+      // Drive the sub-field's rename/hide callbacks the editable label would fire.
+      const sub = (component.rendered.find(r => r.parameter.binding.id === "n")!.fields[0] as any).fieldGroup[0];
+      sub.props.renameField("Renamed again");
+      sub.props.setFieldHidden(true);
+
+      expect(component.rendered).toHaveLength(2);
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalled();
+    });
+
+    it("hides an overridden sub-field for a reader", () => {
       build(parameterized).ngOnInit();
       component.authoring = false;
       hasOperatorIds.add("op-1");
@@ -914,21 +1169,32 @@ describe("WorkflowFormComponent", () => {
             operatorID: "op-1",
             propertyKey: "nested",
             displayName: "N",
-            fields: { sub: { hidden: true, displayName: "Renamed" } },
+            fields: { sub: { hidden: true } },
           } as any,
-        }),
-        resolved("predicates", "Predicates", {
-          binding: { id: "p", operatorID: "op-1", propertyKey: "predicates", displayName: "P" } as any,
         }),
       ]);
 
       (component as any).readConfig();
-      // Formly builds a repeated section's rows on demand; invoke the wrapped builder so the
-      // walk decorates the row's sub-fields.
-      const row = (component.rendered[1].fields[0] as any).fieldArray({});
 
-      expect(component.rendered).toHaveLength(2);
-      expect(row.fieldGroup[0].key).toBe("alias");
+      expect(component.rendered).toHaveLength(1);
+    });
+
+    it("keeps a still-set value when formly emits a blank before an edit", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.readValue.mockReturnValue("seed");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "";
+      card.form.addControl(key, new FormControl(""));
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
     });
 
     it("falls back to the static schema when the per-instance one is unavailable", () => {
@@ -948,6 +1214,27 @@ describe("WorkflowFormComponent", () => {
       (component as any).readConfig();
 
       expect(component.rendered).toHaveLength(1);
+    });
+
+    it("returns no schema when neither the per-instance nor the static one is available", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      (component as any).dynamicSchemaService = {
+        getDynamicSchema: () => {
+          throw new Error("no dynamic schema");
+        },
+      };
+      (component as any).operatorMetadataService = {
+        getOperatorSchema: () => {
+          throw new Error("no static schema");
+        },
+      };
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
     });
 
     it("switches to the operator canvas, saving on the way out", () => {
@@ -1003,45 +1290,6 @@ describe("WorkflowFormComponent", () => {
       vi.useRealTimers();
 
       expect(parameterizationService.writeValue).not.toHaveBeenCalled();
-    });
-
-    it("keeps a still-set value when formly emits a blank before an edit", () => {
-      build(parameterized).ngOnInit();
-      hasOperatorIds.add("op-1");
-      parameterizationService.readValue.mockReturnValue("seed");
-      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
-      (component as any).readConfig();
-      const card = component.rendered[0];
-      const key = card.parameter.binding.id;
-      vi.useFakeTimers();
-
-      card.model[key] = "";
-      card.form.addControl(key, new FormControl(""));
-      vi.advanceTimersByTime(300);
-      vi.useRealTimers();
-
-      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
-    });
-
-    it("returns no schema when neither the per-instance nor the static one is available", () => {
-      build(parameterized).ngOnInit();
-      hasOperatorIds.add("op-1");
-      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
-      (component as any).dynamicSchemaService = {
-        getDynamicSchema: () => {
-          throw new Error("no dynamic schema");
-        },
-      };
-      (component as any).operatorMetadataService = {
-        getOperatorSchema: () => {
-          throw new Error("no static schema");
-        },
-      };
-      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
-
-      (component as any).readConfig();
-
-      expect(component.rendered).toHaveLength(0);
     });
 
     it("re-fits results a moment after a run reports them", () => {

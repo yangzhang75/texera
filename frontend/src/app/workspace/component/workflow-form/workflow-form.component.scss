@@ -118,6 +118,28 @@ $shell: #fafafa;
   padding: 22px 24px 80px;
 }
 
+.pc-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+
+  .lede {
+    margin: 0;
+    color: $text-2;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .pc-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
 /* One workflow, two ways of working on it. Rendered identically in the operator canvas
    and the parameterized form, in the same slot of the same title row, so the control
    never moves when the view does -- that stillness is what makes the two read as two
@@ -209,6 +231,11 @@ $shell: #fafafa;
   color: $text-2;
 }
 
+.hint {
+  font-size: 12px;
+  color: $text-2;
+}
+
 .card {
   border: 1px solid $border;
   border-radius: 8px;
@@ -294,6 +321,29 @@ $shell: #fafafa;
   }
 }
 
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid $divider;
+  margin: -16px -16px 14px;
+  padding: 0 16px;
+
+  button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 9px 12px;
+    color: $text-2;
+    font-weight: 500;
+    cursor: pointer;
+
+    &[aria-current="true"] {
+      color: $blue;
+      border-bottom-color: $blue;
+    }
+  }
+}
+
 .md {
   :first-child {
     margin-top: 0;
@@ -314,6 +364,25 @@ $shell: #fafafa;
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 12.5px;
+  }
+}
+
+.md-input {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  background: $shell;
+
+  &:focus {
+    background: #fff;
+    border-color: $blue;
+    outline: none;
   }
 }
 
@@ -571,6 +640,24 @@ $shell: #fafafa;
   }
 }
 
+.cdk-drag-preview .param,
+.param.cdk-drag-preview {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.35;
+}
+
+.edit {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed $border;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 18px;
+}
+
 .field.wide {
   grid-column: 1 / -1;
 }
@@ -592,6 +679,29 @@ $shell: #fafafa;
       border-color: $blue;
       outline: none;
       box-shadow: 0 0 0 2px $blue-bg;
+    }
+  }
+}
+
+.edit-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+
+  .spacer {
+    flex: 1;
+  }
+
+  .remove {
+    background: none;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: #ff4d4f;
+    cursor: pointer;
+
+    &:hover {
+      border-color: #ff4d4f;
     }
   }
 }
@@ -1029,6 +1139,53 @@ $shell: #fafafa;
       width: 100% !important;
       max-width: none !important;
       height: 100% !important;
+    }
+  }
+}
+
+/* ---------- author: which results ---------- */
+
+.respick {
+  margin-top: 26px;
+  padding: 15px 18px;
+
+  h3 {
+    margin: 0 0 3px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0 0 11px;
+    font-size: 13px;
+    color: $text-2;
+  }
+
+  .opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pill {
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 13px;
+    border: 1px solid $border;
+    background: #fff;
+    color: $text-2;
+    cursor: pointer;
+
+    &:hover {
+      border-color: $blue;
+      color: $blue;
+    }
+
+    &[aria-pressed="true"] {
+      background: $blue-bg;
+      border-color: $blue;
+      color: $blue;
+      font-weight: 500;
     }
   }
 }

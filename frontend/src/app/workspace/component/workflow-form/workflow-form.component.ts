@@ -36,6 +36,7 @@ import { EMPTY, forkJoin, Subject, timer } from "rxjs";
 import { debounceTime, switchMap, takeUntil, tap } from "rxjs/operators";
 
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
+import { EditableLabelWrapperComponent } from "../../../common/formly/editable-label-wrapper/editable-label-wrapper.component";
 import { ParameterBinding, Workflow, WorkflowContent } from "../../../common/type/workflow";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
@@ -417,7 +418,27 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     return ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
   }
 
+  /**
+   * Drop exposed inputs whose operator was deleted: they can never be filled, and a
+   * re-added operator gets a fresh id so they could not reconnect. Guarded to edit mode
+   * and after load, so a reader never mutates the workflow and a not-yet-seeded mid-load
+   * graph never deletes a still-valid input. Only the operator-gone case, not a transiently
+   * missing property schema.
+   */
+  private pruneBrokenBindings(): void {
+    if (this.loading || !this.authoring) {
+      return;
+    }
+    const graph = this.workflowActionService.getTexeraGraph();
+    const params = this.parameterizationService.getConfig().parameters;
+    const alive = params.filter(p => graph.hasOperator(p.operatorID));
+    if (alive.length !== params.length) {
+      this.parameterizationService.setParameters(alive);
+    }
+  }
+
   private readConfig(): void {
+    this.pruneBrokenBindings();
     const config = this.parameterizationService.getConfig();
     this.parameters = this.parameterizationService.resolveParameters();
     this.instructionTitle = config.instruction?.title ?? "";
@@ -435,8 +456,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
         label: this.parameterizationService.operatorLabel(op),
         shown: config.resultOperatorIds.includes(op.operatorID),
       }));
-    // A reader always sees the instruction as rendered markdown.
-    void this.renderInstruction();
+    // Readers always see rendered markdown; authors only while previewing.
+    if (!this.authoring || this.instructionMode === "preview") {
+      void this.renderInstruction();
+    }
     this.buildForm();
   }
 
@@ -453,6 +476,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
 
   private renderParameter(parameter: ResolvedParameter): RenderedParameter | undefined {
     const { binding } = parameter;
+    if (parameter.brokenReason) {
+      return { parameter, fields: [], form: new FormGroup({}), model: {} };
+    }
     const schema = this.operatorSchemaFor(binding.operatorID);
     if (!schema) {
       return undefined;
@@ -515,7 +541,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       });
 
-    this.applyFieldOverrides(field, binding);
+    this.applyFieldOverrides(field, binding, schemaLabel);
     return { parameter, fields: [field], form, model };
   }
 
@@ -549,7 +575,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     return parent ? parent + "." + key : key;
   }
 
-  private applyFieldOverrides(field: FormlyFieldConfig, binding: ParameterBinding): void {
+  private applyFieldOverrides(field: FormlyFieldConfig, binding: ParameterBinding, schemaLabel: string): void {
     const walk = (node: FormlyFieldConfig, path: string): void => {
       // Drop the operator schema's own per-field description on every field, nested ones
       // included. Those are the operator author's notes ("Attribute name in the schema",
@@ -557,14 +583,45 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       // the form's author writes, rendered once by the card. Leaving the schema copies in
       // showed a second, unrelated line of helper text under half the inputs.
       node.props = { ...(node.props ?? {}), description: "" };
-      // Apply the author's stored overrides so a reader sees each field renamed and hidden
-      // as set up. (Editing these in place is added by the authoring PR.)
+      // The input's name is renamed in place by clicking the title, like every nested
+      // field. No eye here: a whole input leaves via Remove, not a hide toggle.
+      if (!path && this.authoring) {
+        EditableLabelWrapperComponent.decorate(
+          node,
+          {
+            authoring: true,
+            name: binding.displayName ?? "",
+            hidden: false,
+            fallback: schemaLabel,
+            canHide: false,
+          },
+          name => this.onBindingNamed(binding.id, name),
+          () => {}
+        );
+        // The editable label is now the single title; clear formly's own so it is not
+        // rendered twice (the duplicate that showed array titles twice).
+        node.props = { ...(node.props ?? {}), label: "" };
+      }
       if (path) {
         const override = binding.fields?.[path] ?? {};
         if (override.displayName) {
           node.props = { ...(node.props ?? {}), label: override.displayName };
         }
-        if (override.hidden) {
+        if (this.authoring) {
+          // The author edits the label where it appears, and keeps hidden fields on
+          // screen (faded) so they can be brought back.
+          EditableLabelWrapperComponent.decorate(
+            node,
+            {
+              authoring: true,
+              name: override.displayName ?? "",
+              hidden: override.hidden === true,
+              fallback: (node.props?.label as string) || path,
+            },
+            name => this.onSubFieldNamed(binding.id, path, name),
+            hidden => this.onSubFieldHiddenAt(binding.id, path, hidden)
+          );
+        } else if (override.hidden) {
           node.hide = true;
         }
       }
@@ -632,7 +689,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
    * because filling one in could not affect the run.
    */
   public get visibleParameters(): ResolvedParameter[] {
-    return this.parameters.filter(p => !p.brokenReason);
+    return this.authoring ? this.parameters : this.parameters.filter(p => !p.brokenReason);
   }
 
   public get hasInstruction(): boolean {
@@ -868,11 +925,63 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   // Author mode
   // ---------------------------------------------------------------------------
 
+  public toggleAuthoring(): void {
+    this.authoring = !this.authoring;
+    if (this.authoring) {
+      // An author picks parameters off the workflow, so show it.
+      this.showWorkflow();
+    } else {
+      this.workflowOpen = false;
+      this.workflowOpenTouched = false;
+    }
+    // Edit mode is what makes operator properties editable here.
+    this.applyEditability();
+    this.readConfig();
+  }
+
+  /**
+   * Only presentation is editable here. Which operator property an input drives is
+   * decided by ticking it in the property panel, so there is nothing to type and no way
+   * to point an input at a property that does not exist.
+   */
+  public onEditBinding(parameter: ResolvedParameter, field: "displayName" | "helpText", value: string): void {
+    this.parameterizationService.updateBinding(parameter.binding.id, { [field]: value });
+    this.readConfig();
+  }
+
+  public onRemoveBinding(parameter: ResolvedParameter): void {
+    this.parameterizationService.removeBinding(parameter.binding.id);
+    this.readConfig();
+  }
+
+  public onDrop(event: CdkDragDrop<unknown>): void {
+    this.parameterizationService.reorder(event.previousIndex, event.currentIndex);
+    this.readConfig();
+  }
+
+  public onInstructionChange(): void {
+    this.parameterizationService.updateConfig({
+      instruction: { title: this.instructionTitle, body: this.instructionBody },
+    });
+  }
+
+  public setInstructionMode(mode: "write" | "preview"): void {
+    this.instructionMode = mode;
+    if (mode === "preview") {
+      void this.renderInstruction();
+    }
+  }
+
   private async renderInstruction(): Promise<void> {
     this.instructionPreviewHtml = this.instructionBody.trim()
       ? await Promise.resolve(this.markdownService.parse(this.instructionBody))
       : "";
     this.cdr.detectChanges();
+  }
+
+  public onToggleResult(choice: ResultChoice): void {
+    this.parameterizationService.toggleResultOperator(choice.operatorID);
+    this.readConfig();
   }
 
   /** No operator selected: this is what closes the property panel. */
@@ -914,6 +1023,13 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     this.workflowOpen = !this.workflowOpen;
     this.workflowOpenTouched = true;
     if (this.workflowOpen) {
+      this.openWorkflowStrip();
+    }
+  }
+
+  private showWorkflow(): void {
+    if (!this.workflowOpen) {
+      this.workflowOpen = true;
       this.openWorkflowStrip();
     }
   }
@@ -979,6 +1095,22 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
             Intl.DateTimeFormat().resolvedOptions().timeZone,
             "en"
           ) ?? "");
+  }
+
+  /** Renaming the input itself, from its own title. */
+  private onBindingNamed(bindingId: string, value: string): void {
+    this.parameterizationService.updateBinding(bindingId, { displayName: value });
+    this.readConfig();
+  }
+
+  private onSubFieldNamed(bindingId: string, path: string, value: string): void {
+    this.parameterizationService.setFieldOverride(bindingId, path, { displayName: value });
+    this.readConfig();
+  }
+
+  private onSubFieldHiddenAt(bindingId: string, path: string, hidden: boolean): void {
+    this.parameterizationService.setFieldOverride(bindingId, path, { hidden });
+    this.readConfig();
   }
 
   /** Renaming here is the same edit as renaming on the operator canvas. */

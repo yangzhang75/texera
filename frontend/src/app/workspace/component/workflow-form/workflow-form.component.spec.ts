@@ -17,18 +17,20 @@
  * under the License.
  */
 
+import { FormControl } from "@angular/forms";
 import { Router } from "@angular/router";
 import { Subject, throwError } from "rxjs";
 
 import { WorkflowFormComponent } from "./workflow-form.component";
-import { setupHarness, parameterized } from "./workflow-form.spec-harness";
+import { setupHarness, resolved, parameterized } from "./workflow-form.spec-harness";
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
+import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * These exercise the shell's own decisions -- what a reader is shown, where an
- * unparameterized workflow is sent, and how the page saves -- without standing up the
- * JointJS canvas. Shared mocks come from the spec harness.
+ * Cover rendering the exposed inputs and writing values back, plus the shell decisions carried
+ * over. Shared mocks come from the spec harness; this slice's component takes the shell +
+ * inputs dependencies (no run/results services yet).
  */
 describe("WorkflowFormComponent", () => {
   let component: WorkflowFormComponent;
@@ -36,7 +38,11 @@ describe("WorkflowFormComponent", () => {
   let router: { navigate: ReturnType<typeof vi.fn> };
   let workflowActionService: any;
   let workflowPersistService: any;
+  let parameterizationService: any;
   let workflowChangedStream: Subject<unknown>;
+  let compilationChanged: Subject<unknown>;
+  let hasOperatorIds: Set<string>;
+  let graphOperators: any[];
 
   const build = (workflow: any) => {
     h.useWorkflow(workflow);
@@ -47,11 +53,15 @@ describe("WorkflowFormComponent", () => {
       h.workflowActionService as any,
       h.workflowPersistService as any,
       h.operatorMetadataService as any,
+      h.parameterizationService as any,
       h.executeWorkflowService as any,
       h.workflowResultService as any,
       h.notificationService as any,
       h.userService as any,
+      h.formlyJsonschema as any,
       h.cdr as any,
+      h.dynamicSchemaService as any,
+      h.workflowCompilingService as any,
       h.computingUnitStatusService as any,
       h.workflowConsoleService as any,
       h.host as any,
@@ -66,7 +76,11 @@ describe("WorkflowFormComponent", () => {
     router = h.router;
     workflowActionService = h.workflowActionService;
     workflowPersistService = h.workflowPersistService;
+    parameterizationService = h.parameterizationService;
     workflowChangedStream = h.workflowChangedStream;
+    compilationChanged = h.compilationChanged;
+    hasOperatorIds = h.hasOperatorIds;
+    graphOperators = h.graphOperators;
   });
 
   describe("who this page is for", () => {
@@ -187,6 +201,36 @@ describe("WorkflowFormComponent", () => {
       (component as any).save();
 
       expect(workflowPersistService.persistWorkflow).not.toHaveBeenCalled();
+    });
+  });
+
+  // Attribute boxes only become dropdowns once compilation reports the upstream column
+  // names, which lands after these cards were built. Without picking that up the form
+  // showed a plain text input where the operator canvas showed a dropdown.
+  describe("picking up attribute options when compilation reports them", () => {
+    const armed = () => {
+      build(parameterized).ngOnInit();
+      component.parameters = [resolved("a", "A")];
+      return vi.spyOn(component as any, "readConfig");
+    };
+
+    it("rebuilds the cards when compilation reports a new state", async () => {
+      const rebuild = armed();
+
+      compilationChanged.next("Succeeded");
+      await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
+
+      expect(rebuild).toHaveBeenCalled();
+    });
+
+    it("does not rebuild under the cursor of someone typing", async () => {
+      const rebuild = armed();
+      vi.spyOn(component as any, "isTypingInTheForm").mockReturnValue(true);
+
+      compilationChanged.next("Succeeded");
+      await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
+
+      expect(rebuild).not.toHaveBeenCalled();
     });
   });
 
@@ -341,6 +385,15 @@ describe("WorkflowFormComponent", () => {
       expect(router.navigate).toHaveBeenCalledWith([USER_WORKFLOW]);
     });
 
+    it("re-reads the config when the panel changes the definition", () => {
+      build(parameterized).ngOnInit();
+      const before = parameterizationService.resolveParameters.mock.calls.length;
+
+      workflowActionService.parameterizationChanged$.next(undefined);
+
+      expect(parameterizationService.resolveParameters.mock.calls.length).toBeGreaterThan(before);
+    });
+
     it("saves on every debounced workflow change", () => {
       build(parameterized).ngOnInit();
       const save = vi.spyOn(component as any, "save");
@@ -353,6 +406,124 @@ describe("WorkflowFormComponent", () => {
       expect(save).toHaveBeenCalled();
     });
 
+    it("does not run while typing in the form", () => {
+      build(parameterized).ngOnInit();
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      (component as any).host = { nativeElement: { contains: () => true } };
+      input.focus();
+
+      compilationChanged.next(undefined);
+
+      document.body.removeChild(input);
+      expect(true).toBe(true);
+    });
+
+    it("reports typing when a form field is focused", () => {
+      build(parameterized).ngOnInit();
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      (component as any).host = { nativeElement: { contains: () => true } };
+      input.focus();
+
+      expect((component as any).isTypingInTheForm()).toBe(true);
+
+      document.body.removeChild(input);
+    });
+
+    it("renders a healthy input into a real formly field", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+      expect(component.rendered[0].fields[0].key).toBe(component.rendered[0].parameter.binding.id);
+    });
+
+    it("renders nothing for an input whose operator is not on the graph", () => {
+      build(parameterized).ngOnInit();
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
+    });
+
+    it("identifies a rendered card by its binding id", () => {
+      build(parameterized);
+
+      const key = component.trackByRendered(0, { parameter: { binding: { id: "b-1" } } } as any);
+
+      expect(key).toBe("b-1");
+    });
+
+    it("writes a dirtied value back to the operator", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "typed";
+      card.form.addControl(key, new FormControl("typed"));
+      card.form.markAsDirty();
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).toHaveBeenCalled();
+    });
+
+    it("renames and hides overridden sub-fields for a reader", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = false;
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nested", "Nested", {
+          binding: {
+            id: "n",
+            operatorID: "op-1",
+            propertyKey: "nested",
+            displayName: "N",
+            fields: { sub: { hidden: true, displayName: "Renamed" } },
+          } as any,
+        }),
+        resolved("predicates", "Predicates", {
+          binding: { id: "p", operatorID: "op-1", propertyKey: "predicates", displayName: "P" } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+      // Formly builds a repeated section's rows on demand; invoke the wrapped builder so the
+      // walk decorates the row's sub-fields.
+      const row = (component.rendered[1].fields[0] as any).fieldArray({});
+
+      expect(component.rendered).toHaveLength(2);
+      expect(row.fieldGroup[0].key).toBe("alias");
+    });
+
+    it("falls back to the static schema when the per-instance one is unavailable", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      (component as any).dynamicSchemaService = {
+        getDynamicSchema: () => {
+          throw new Error("no dynamic schema");
+        },
+      };
+      (component as any).operatorMetadataService = {
+        getOperatorSchema: () => ({ jsonSchema: { properties: { n_hvg: {} } } }),
+      };
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+    });
+
     it("switches to the operator canvas, saving on the way out", () => {
       build(parameterized).ngOnInit();
       const save = vi.spyOn(component as any, "save");
@@ -360,6 +531,91 @@ describe("WorkflowFormComponent", () => {
       component.openRegularCanvas();
 
       expect(save).toHaveBeenCalled();
+    });
+
+    it("renders a file property through its own picker type", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("fileName", "File", {
+          binding: { id: "f", operatorID: "op-1", propertyKey: "fileName", displayName: "File" } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered[0].fields[0].type).toBe("inputautocomplete");
+    });
+
+    it("skips an exposed property that has no matching schema field", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nonesuch", "Missing", {
+          binding: { id: "m", operatorID: "op-1", propertyKey: "nonesuch", displayName: "Missing" } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
+    });
+
+    it("ignores an unchanged form emission", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.readValue.mockReturnValue("seed");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "seed";
+      card.form.addControl(key, new FormControl("seed"));
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
+    });
+
+    it("keeps a still-set value when formly emits a blank before an edit", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.readValue.mockReturnValue("seed");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "";
+      card.form.addControl(key, new FormControl(""));
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
+    });
+
+    it("returns no schema when neither the per-instance nor the static one is available", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      (component as any).dynamicSchemaService = {
+        getDynamicSchema: () => {
+          throw new Error("no dynamic schema");
+        },
+      };
+      (component as any).operatorMetadataService = {
+        getOperatorSchema: () => {
+          throw new Error("no static schema");
+        },
+      };
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
     });
 
   });

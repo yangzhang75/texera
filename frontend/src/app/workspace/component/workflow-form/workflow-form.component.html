@@ -75,8 +75,64 @@
        out to nobody while the operator canvas, whose selector is always mounted, ran
        fine. Being present from the start is what keeps the two views connected. -->
   <div [hidden]="loading">
-    <!-- The workflow. Out of the way unless you go looking. Inputs, running and results
-         are added on top of this shell by the following PRs. -->
+    <!-- Inputs -->
+    <div class="pc-section-head">
+      <span class="label">Inputs</span>
+    </div>
+
+    <div
+      class="empty"
+      *ngIf="visibleParameters.length === 0">
+      This workflow has no inputs to fill in — just press Run.
+    </div>
+
+    <div class="params">
+      <section
+        class="card param"
+        *ngFor="let r of rendered; trackBy: trackByRendered">
+        <div
+          class="broken"
+          *ngIf="r.parameter.brokenReason">
+          <i
+            nz-icon
+            nzType="warning"></i>
+          <!-- Name the input by what the author called it (or the setting name), never the
+               raw operator id, so the author can tell which broken input to remove. -->
+          <b>{{ r.parameter.binding.displayName || r.parameter.binding.propertyKey }}</b> — not connected; {{
+          r.parameter.brokenReason }}.
+        </div>
+
+        <div
+          class="control"
+          *ngIf="!r.parameter.brokenReason">
+          <!-- The operator's own field, so a file property gets the real file picker
+               and an attribute property a column dropdown. -->
+          <form
+            [formGroup]="r.form"
+            class="param-form">
+            <formly-form
+              [model]="r.model"
+              [fields]="r.fields"
+              [form]="r.form"></formly-form>
+          </form>
+
+          <!-- Under the boxes it describes, the way a hint about how to fill something
+               in is read after you have seen what there is to fill in.
+               It is rendered here rather than handed to formly as the field's
+               `description`: formly only shows that through nz-form-control's `extra`,
+               which an array property never goes through, so anything an author wrote
+               about a repeated input was silently dropped. -->
+          <p
+            class="param-help-text"
+            *ngIf="r.parameter.binding.helpText">
+            {{ r.parameter.binding.helpText }}
+          </p>
+        </div>
+
+      </section>
+    </div>
+
+    <!-- The workflow. Out of the way unless you go looking, or you are the author. -->
     <section
       class="card wf"
       [class.open]="workflowOpen">
@@ -97,9 +153,13 @@
       <div
         class="wf-body"
         [hidden]="!workflowOpen">
+        <!-- Built once the strip is open (never while collapsed). The editor keeps its own
+             paper sized/rebuilt via its container ResizeObserver, so it draws correctly
+             wherever it is mounted -- the same read-only editor the Hub preview uses. -->
         <texera-workflow-editor
           *ngIf="workflowEverOpened"
           [structureLocked]="true"></texera-workflow-editor>
+        <!-- Reuse the Hub preview's mini-map for navigating a large graph in this strip. -->
         <texera-mini-map
           *ngIf="workflowEverOpened"
           class="box"></texera-mini-map>

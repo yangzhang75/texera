@@ -19,23 +19,29 @@
 
 import { ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit } from "@angular/core";
 import { CommonModule, DatePipe } from "@angular/common";
-import { FormsModule } from "@angular/forms";
+import { FormGroup, FormsModule, ReactiveFormsModule } from "@angular/forms";
+import { FormlyFieldConfig, FormlyModule } from "@ngx-formly/core";
+import { FormlyJsonschema } from "@ngx-formly/core/json-schema";
 import { ActivatedRoute, Router } from "@angular/router";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { NzIconModule } from "ng-zorro-antd/icon";
 import { NzAvatarModule } from "ng-zorro-antd/avatar";
 import { UserIconComponent } from "../../../dashboard/component/user/user-icon/user-icon.component";
-import { forkJoin } from "rxjs";
-import { debounceTime } from "rxjs/operators";
+import { cloneDeep } from "lodash-es";
+import { forkJoin, Subject } from "rxjs";
+import { debounceTime, takeUntil } from "rxjs/operators";
 
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
-import { Workflow, WorkflowContent } from "../../../common/type/workflow";
+import { ParameterBinding, Workflow, WorkflowContent } from "../../../common/type/workflow";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { WorkflowPersistService } from "../../../common/service/workflow-persist/workflow-persist.service";
 import { NotificationService } from "../../../common/service/notification/notification.service";
 import { UserService } from "../../../common/service/user/user.service";
+import { DynamicSchemaService } from "../../service/dynamic-schema/dynamic-schema.service";
+import { WorkflowCompilingService } from "../../service/compile-workflow/workflow-compiling.service";
 import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-workflow.service";
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
+import { ParameterizationService, ResolvedParameter } from "../../service/parameterization/parameterization.service";
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
 import { GuiConfigService } from "../../../common/service/gui-config.service";
 import { WorkflowConsoleService } from "../../service/workflow-console/workflow-console.service";
@@ -46,12 +52,24 @@ import { MiniMapComponent } from "../workflow-editor/mini-map/mini-map.component
 import { CoeditorUserIconComponent } from "../menu/coeditor-user-icon/coeditor-user-icon.component";
 import { CoeditorPresenceService } from "../../service/workflow-graph/model/coeditor-presence.service";
 import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
+import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * The Form View: a second way to use a workflow. This PR lays down the page shell -- loading
- * the workflow behind the feature flag, the title bar and its rename/save, and the collapsible
- * read-only workflow preview. Inputs, running and results are added on top by later PRs.
- * A view, not a new object -- it opens the same workflow the canvas does.
+ * One rendered input: the binding plus the operator's own formly field for that property.
+ * Building the field from the operator's JSON schema (not guessing from the value) is what
+ * gives a file its picker and an attribute its column dropdown.
+ */
+interface RenderedParameter {
+  parameter: ResolvedParameter;
+  fields: FormlyFieldConfig[];
+  form: FormGroup;
+  model: Record<string, unknown>;
+}
+
+/**
+ * The Form View: renders the inputs an author exposed and writes filled-in values back to
+ * their operators. This PR adds the inputs on top of the page shell; the instruction panel,
+ * running the workflow and showing results are added by the following PRs.
  */
 @UntilDestroy()
 @Component({
@@ -61,6 +79,8 @@ import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
   imports: [
     CommonModule,
     FormsModule,
+    ReactiveFormsModule,
+    FormlyModule,
     NzIconModule,
     NzAvatarModule,
     UserIconComponent,
@@ -85,6 +105,10 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   /** The canvas is built the first time the strip opens, never while collapsed. */
   public workflowEverOpened = false;
 
+  public parameters: ResolvedParameter[] = [];
+  public rendered: RenderedParameter[] = [];
+  /** Torn down and replaced whenever the form is rebuilt, so old fields stop writing. */
+  private formsRebuilt = new Subject<void>();
   /** Set on teardown so deferred callbacks stop touching a view that is gone. */
   private destroyed = false;
 
@@ -106,11 +130,21 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     private workflowActionService: WorkflowActionService,
     private workflowPersistService: WorkflowPersistService,
     private operatorMetadataService: OperatorMetadataService,
+    private parameterizationService: ParameterizationService,
     private executeWorkflowService: ExecuteWorkflowService,
     private workflowResultService: WorkflowResultService,
     private notificationService: NotificationService,
     private userService: UserService,
+    private formlyJsonschema: FormlyJsonschema,
     private cdr: ChangeDetectorRef,
+    // Injected for its side effect: it fills its map from the operator-add stream, so
+    // it has to exist before the workflow loads or every operator arrives unregistered
+    // and anything asking for a schema later throws.
+    private dynamicSchemaService: DynamicSchemaService,
+    // Injected for its side effect: it compiles on graph changes and writes column names
+    // into each operator's dynamic schema (what turns an attribute box into a dropdown).
+    // Nothing else on this page injects it, so without this line it never ran.
+    private workflowCompilingService: WorkflowCompilingService,
     private computingUnitStatusService: ComputingUnitStatusService,
     private workflowConsoleService: WorkflowConsoleService,
     private host: ElementRef<HTMLElement>,
@@ -126,6 +160,28 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     }
     this.wid = wid;
     this.load(wid);
+
+    // Attribute boxes become dropdowns only after compilation writes the column enums into
+    // each operator's dynamic schema -- which lands after these cards were built. Rebuild on
+    // the compilation-state stream, a ReplaySubject(1) so a late subscriber (this page
+    // reloads fresh on every Canvas<->Form switch) gets the current state at once; the
+    // per-operator dynamic-schema stream is not replayed, so its emissions were missed.
+    this.workflowCompilingService
+      .getCompilationStateInfoChangedStream()
+      .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), untilDestroyed(this))
+      .subscribe(() => {
+        if (this.isTypingInTheForm()) {
+          return;
+        }
+        this.readConfig();
+      });
+
+    // Ticking a property in the panel changes the definition; the list above has to
+    // follow immediately, which is the whole point of editing them side by side.
+    this.workflowActionService.parameterizationChanged$.pipe(untilDestroyed(this)).subscribe(() => {
+      this.readConfig();
+      this.cdr.detectChanges();
+    });
   }
 
   private load(wid: number): void {
@@ -153,6 +209,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
           this.applyEditability();
           this.refreshSavedState();
           this.later(() => this.adjustWorkflowNameWidth(), 0);
+          this.readConfig();
           this.registerAutoPersist();
           this.loading = false;
           this.cdr.detectChanges();
@@ -164,13 +221,218 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       });
   }
 
+  /** Whether the cursor is currently inside one of this page's inputs. */
+  private isTypingInTheForm(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !this.host.nativeElement.contains(active)) {
+      return false;
+    }
+    return ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
+  }
+
+  private readConfig(): void {
+    this.parameters = this.parameterizationService.resolveParameters();
+    this.buildForm();
+  }
+
+  /**
+   * Build the form from the operators' JSON schemas (FormlyJsonschema), keeping the one
+   * field per exposed property. Each input gets its own form keyed by binding id.
+   */
+  private buildForm(): void {
+    this.formsRebuilt.next();
+    this.rendered = this.visibleParameters
+      .map(parameter => this.renderParameter(parameter))
+      .filter((r): r is RenderedParameter => r !== undefined);
+  }
+
+  private renderParameter(parameter: ResolvedParameter): RenderedParameter | undefined {
+    const { binding } = parameter;
+    const schema = this.operatorSchemaFor(binding.operatorID);
+    if (!schema) {
+      return undefined;
+    }
+    const full = this.formlyJsonschema.toFieldConfig(cloneDeep(schema) as never, {
+      map: mapped => {
+        // The dataset file picker is registered under this formly type; the raw schema
+        // only says "string", so without this a file input renders as a text box.
+        if (mapped.key === "fileName") {
+          mapped.type = "inputautocomplete";
+        }
+        return mapped;
+      },
+    });
+    const source = (full.fieldGroup ?? []).find(child => child.key === binding.propertyKey);
+    if (!source) {
+      return undefined;
+    }
+
+    const field = cloneDeep(source);
+    // The schema's own title ("Attributes", "Limit", "File") -- the reader's title when
+    // unnamed, and the author's placeholder. Falls back to this, not the lower-camel key
+    // ("fileName"), which would leave reader titles inconsistently cased.
+    const schemaLabel = (source.props?.label as string) || binding.propertyKey;
+    field.key = binding.id;
+    field.props = {
+      ...(field.props ?? {}),
+      label: binding.displayName || schemaLabel,
+      // Help text is rendered once by the card itself (.param-help-text in the reader,
+      // the "Help text" box for the author). Do NOT also hand it to formly as the field
+      // description, or scalar fields show it twice (formly's copy + the card's copy).
+      description: "",
+    };
+
+    const form = new FormGroup({});
+    const model: Record<string, unknown> = { [binding.id]: cloneDeep(parameter.value) };
+    form.valueChanges
+      .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), takeUntil(this.formsRebuilt), untilDestroyed(this))
+      .subscribe(() => {
+        // Formly emits the schema's empty default while building the control, before any
+        // edit; writing that back silently wiped the operator's real value (both views edit
+        // one workflow). So only accept a dirtied form, or a value that differs from the
+        // operator's without being emptier (some controls set values without marking dirty).
+        const next = model[binding.id];
+        const current = this.parameterizationService.readValue(binding.operatorID, binding.propertyKey);
+        const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
+        const unchanged = JSON.stringify(next ?? null) === JSON.stringify(current ?? null);
+        if (unchanged || (!form.dirty && isEmpty(next) && !isEmpty(current))) {
+          return;
+        }
+        // Write straight onto the operator (the same edit the canvas makes) and refresh this
+        // card's snapshot, which the template reads.
+        this.parameterizationService.writeValue(binding, next);
+        this.parameters = this.parameterizationService.resolveParameters();
+        const refreshed = this.parameters.find(p => p.binding.id === binding.id);
+        const card = this.rendered.find(r => r.parameter.binding.id === binding.id);
+        if (refreshed && card) {
+          card.parameter = refreshed;
+        }
+        this.cdr.detectChanges();
+      });
+
+    this.applyFieldOverrides(field, binding);
+    return { parameter, fields: [field], form, model };
+  }
+
+  /**
+   * The template for one row of a repeated section. formly's `fieldArray` may be the
+   * template or a function that builds one per row; resolve both so an array property's
+   * sub-fields are reachable (treating the function case as a leaf hid them). @internal
+   */
+  public static arrayItemOf(node: FormlyFieldConfig): FormlyFieldConfig | undefined {
+    const fa = node.fieldArray;
+    if (!fa) {
+      return undefined;
+    }
+    if (typeof fa !== "function") {
+      return fa;
+    }
+    try {
+      return fa(node);
+    } catch {
+      // A builder that needs more context than we can give it tells us nothing about
+      // the row's shape; better to list no sub-fields than to guess at them.
+      return undefined;
+    }
+  }
+
+  /** @internal exported for tests */
+  public static childPath(parent: string, key: unknown): string {
+    if (typeof key !== "string" || key === "" || /^\d+$/.test(key)) {
+      return parent;
+    }
+    return parent ? parent + "." + key : key;
+  }
+
+  private applyFieldOverrides(field: FormlyFieldConfig, binding: ParameterBinding): void {
+    const walk = (node: FormlyFieldConfig, path: string): void => {
+      // Drop the operator schema's own per-field description on every field, nested ones
+      // included. Those are the operator author's notes ("Attribute name in the schema",
+      // "Renamed attribute name"); on this page the one piece of guidance is the help text
+      // the form's author writes, rendered once by the card. Leaving the schema copies in
+      // showed a second, unrelated line of helper text under half the inputs.
+      node.props = { ...(node.props ?? {}), description: "" };
+      // Apply the author's stored overrides so a reader sees each field renamed and hidden
+      // as set up. (Editing these in place is added by the authoring PR.)
+      if (path) {
+        const override = binding.fields?.[path] ?? {};
+        if (override.displayName) {
+          node.props = { ...(node.props ?? {}), label: override.displayName };
+        }
+        if (override.hidden) {
+          node.hide = true;
+        }
+      }
+      // A repeated section may build its row template on demand, once per row. Decorating
+      // the object it returns is pointless -- the next row gets a fresh one. Wrap the
+      // builder instead, so every row that formly ever creates comes out decorated.
+      if (typeof node.fieldArray === "function") {
+        const build = node.fieldArray;
+        node.fieldArray = (f: FormlyFieldConfig) => {
+          const row = build(f);
+          // Walk what is INSIDE each row, never the row container itself. The container
+          // carries the array property's own name, so decorating it as a root (path "")
+          // printed the group title a second time above the rows -- the duplicate
+          // "Attributes"/"Predicates" title. Its sub-fields keep their own key paths, the
+          // same ones their overrides are stored under.
+          for (const child of row.fieldGroup ?? []) {
+            walk(child, WorkflowFormComponent.childPath(path, child.key));
+          }
+          return row;
+        };
+        return;
+      }
+      const arrayItem = WorkflowFormComponent.arrayItemOf(node);
+      const children = node.fieldGroup ?? arrayItem?.fieldGroup ?? [];
+      for (const child of children) {
+        walk(child, WorkflowFormComponent.childPath(path, child.key));
+      }
+      /* v8 ignore start -- leaf array-item shape only formly produces at render */
+      if (arrayItem && !arrayItem.fieldGroup) {
+        walk(arrayItem, path);
+      }
+      /* v8 ignore stop */
+    };
+    walk(field, "");
+  }
+
+  private operatorSchemaFor(operatorID: string): object | undefined {
+    const graph = this.workflowActionService.getTexeraGraph();
+    if (!graph.hasOperator(operatorID)) {
+      return undefined;
+    }
+    try {
+      // Prefer the per-instance schema: it carries the upstream column names, so an
+      // attribute picker renders as a dropdown of real columns rather than a text box.
+      return this.dynamicSchemaService.getDynamicSchema(operatorID).jsonSchema;
+    } catch {
+      try {
+        return this.operatorMetadataService.getOperatorSchema(graph.getOperator(operatorID).operatorType).jsonSchema;
+      } catch {
+        return undefined;
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // What each reader sees
   // ---------------------------------------------------------------------------
 
+  /**
+   * The author sees broken inputs so they can repair them; everyone else does not,
+   * because filling one in could not affect the run.
+   */
+  public get visibleParameters(): ResolvedParameter[] {
+    return this.parameters.filter(p => !p.brokenReason);
+  }
+
 
 
   /* v8 ignore stop */
+
+  public trackByRendered(_: number, rendered: RenderedParameter): string {
+    return rendered.parameter.binding.id;
+  }
 
   // ---------------------------------------------------------------------------
   // Running. The same call the operator canvas makes, on the same workflow.

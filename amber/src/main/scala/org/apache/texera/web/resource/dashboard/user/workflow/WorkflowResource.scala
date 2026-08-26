@@ -138,7 +138,9 @@ object WorkflowResource {
       creationTime: Timestamp,
       lastModifiedTime: Timestamp,
       isPublished: Boolean,
-      readonly: Boolean
+      readonly: Boolean,
+      // Whether this workflow also offers a Form View; both views load through this endpoint.
+      isParameterized: Boolean
   )
 
   case class WorkflowIDs(wids: List[Integer], pid: Option[Integer])
@@ -417,7 +419,8 @@ class WorkflowResource extends LazyLogging {
         workflow.getCreationTime,
         workflow.getLastModifiedTime,
         workflow.getIsPublic,
-        !WorkflowAccessResource.hasWriteAccess(wid, user.getUid)
+        !WorkflowAccessResource.hasWriteAccess(wid, user.getUid),
+        workflow.getIsParameterized == true
       )
     } else {
       throw new ForbiddenException("No sufficient access privilege.")
@@ -439,6 +442,14 @@ class WorkflowResource extends LazyLogging {
   @Path("/persist")
   def persistWorkflow(workflow: Workflow, @Auth sessionUser: SessionUser): Workflow = {
     val user = sessionUser.getUser
+
+    // `is_parameterized` is owned by /parameterized and /unparameterized alone; a plain save
+    // sends the whole POJO to workflowDao.update, so without this its default clears the flag.
+    if (workflow.getWid != null) {
+      Option(workflowDao.fetchOneByWid(workflow.getWid))
+        .foreach(stored => workflow.setIsParameterized(stored.getIsParameterized))
+    }
+
     if (workflowOfUserExists(workflow.getWid, user.getUid)) {
       WorkflowVersionResource.insertVersion(workflow, insertingNewWorkflow = false)
       workflowDao.update(workflow)
@@ -507,7 +518,9 @@ class WorkflowResource extends LazyLogging {
               assignNewOperatorIds(oldWorkflow.getContent),
               null,
               null,
-              false
+              false,
+              // the Form View is part of the workflow, so a copy keeps it
+              oldWorkflow.getIsParameterized
             ),
             sessionUser
           )
@@ -557,7 +570,9 @@ class WorkflowResource extends LazyLogging {
         assignNewOperatorIds(oldWorkflow.getContent),
         null,
         null,
-        false
+        false,
+        // a biologist's path is hub -> clone -> use, so the clone must stay usable
+        oldWorkflow.getIsParameterized
       ),
       sessionUser
     )
@@ -726,6 +741,34 @@ class WorkflowResource extends LazyLogging {
     workflowDao.update(workflow)
   }
 
+  /**
+    * Turn the Form View on for a workflow. Only this on/off flag lives in a column; the
+    * form's definition travels in workflow.content under `parameterization`, so turning it
+    * off does not erase it -- toggling back on restores the author's setup.
+    */
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/parameterized/{wid}")
+  def enableParameterized(@PathParam("wid") wid: Integer, @Auth user: SessionUser): Unit = {
+    setParameterized(wid, user, enabled = true)
+  }
+
+  @PUT
+  @RolesAllowed(Array("REGULAR", "ADMIN"))
+  @Path("/unparameterized/{wid}")
+  def disableParameterized(@PathParam("wid") wid: Integer, @Auth user: SessionUser): Unit = {
+    setParameterized(wid, user, enabled = false)
+  }
+
+  private def setParameterized(wid: Integer, user: SessionUser, enabled: Boolean): Unit = {
+    if (!WorkflowAccessResource.hasWriteAccess(wid, user.getUid)) {
+      throw new ForbiddenException(s"You do not have permission to modify workflow $wid")
+    }
+    val workflow: Workflow = workflowDao.fetchOneByWid(wid)
+    workflow.setIsParameterized(enabled)
+    workflowDao.update(workflow)
+  }
+
   /** Returns the workflow's cover image; 404 if none set. */
   @GET
   @RolesAllowed(Array("REGULAR", "ADMIN"))
@@ -848,7 +891,8 @@ class WorkflowResource extends LazyLogging {
       workflow.getCreationTime,
       workflow.getLastModifiedTime,
       workflow.getIsPublic,
-      readonly = true
+      readonly = true,
+      isParameterized = workflow.getIsParameterized == true
     )
   }
 

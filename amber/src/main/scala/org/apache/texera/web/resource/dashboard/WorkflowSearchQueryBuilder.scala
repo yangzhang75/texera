@@ -54,7 +54,8 @@ object WorkflowSearchQueryBuilder extends SearchQueryBuilder {
       ownerId = WORKFLOW_OF_USER.UID,
       userName = USER.NAME,
       projectsOfWorkflow = groupConcatDistinct(WORKFLOW_OF_PROJECT.PID),
-      workflowCoverImage = DSL.max(WORKFLOW_COVER_IMAGE.IMAGE).as("workflow_cover_image")
+      workflowCoverImage = DSL.max(WORKFLOW_COVER_IMAGE.IMAGE).as("workflow_cover_image"),
+      workflowIsParameterized = WORKFLOW.IS_PARAMETERIZED.as("workflow_is_parameterized")
     )
   }
 
@@ -157,7 +158,13 @@ object WorkflowSearchQueryBuilder extends SearchQueryBuilder {
         .map(_.toString)
         .getOrElse(PrivilegeEnum.NONE.toString),
       record.into(USER).getName,
-      record.into(WORKFLOW).into(classOf[Workflow]),
+      {
+        // The select lists specific columns, so the POJO built from the record does not carry
+        // this one. Without it the listing forgets the Form View marker on every refresh.
+        val w = record.into(WORKFLOW).into(classOf[Workflow])
+        w.setIsParameterized(record.get("workflow_is_parameterized", classOf[java.lang.Boolean]) == true)
+        w
+      },
       if (record.get(pidField) == null) {
         List[Integer]()
       } else {

@@ -166,7 +166,9 @@ CREATE TABLE IF NOT EXISTS workflow
     content            TEXT NOT NULL,
     creation_time      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_modified_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_public          BOOLEAN NOT NULL DEFAULT false
+    is_public          BOOLEAN NOT NULL DEFAULT false,
+    -- Form View on/off flag; its definition lives in workflow.content (`parameterization`).
+    is_parameterized   BOOLEAN NOT NULL DEFAULT false
     );
 
 -- workflow_of_user

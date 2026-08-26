@@ -435,7 +435,9 @@ class WorkflowVersionResource {
             assignNewOperatorIds(workflowVersion.getContent),
             null,
             null,
-            false
+            false,
+            // the version's content carries the parameterized form, so keep it usable
+            workflowVersion.getIsParameterized
           ),
           sessionUser
         )

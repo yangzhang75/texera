@@ -31,6 +31,51 @@ export interface WorkflowSettings {
 }
 
 /**
+ * One input exposed on the Form View: a binding to a single operator property. That property
+ * is always the live value (filling the form is the same edit as changing it on the canvas);
+ * the rest is presentation. `id` is a stable identity so reorder/remove never use the raw key.
+ */
+export interface ParameterBinding {
+  id: string;
+  operatorID: string;
+  /** The operator property this input writes to. */
+  propertyKey: string;
+  displayName: string;
+  helpText?: string;
+  /** Per-field overrides within the property, keyed by field path (`alias`, `predicates.value`
+   *  -- array indices dropped, so one entry covers every row). Only where the author changed it. */
+  fields?: { [path: string]: ParameterFieldOverride };
+}
+
+export interface ParameterFieldOverride {
+  /** Kept out of the reader's form. The value the author set still applies. */
+  hidden?: boolean;
+  /** Replaces the schema's label. Empty or absent keeps the schema's own. */
+  displayName?: string;
+}
+
+/**
+ * How a workflow presents itself on the Form View. The on/off flag lives in
+ * `workflow.is_parameterized` (single source of truth), and nothing here affects execution.
+ */
+export interface ParameterizationConfig {
+  instruction?: {
+    /** Empty title hides the heading rather than showing a placeholder. */
+    title?: string;
+    /** Markdown. */
+    body: string;
+  };
+  /** Array order is display order; the author reorders by dragging. */
+  parameters: ParameterBinding[];
+  /** Operators whose results are shown under the workflow after a run. */
+  resultOperatorIds: string[];
+}
+
+export function getDefaultParameterization(): ParameterizationConfig {
+  return { parameters: [], resultOperatorIds: [] };
+}
+
+/**
  * WorkflowContent is used to store the information of the workflow
  *  1. all existing operators and their properties
  *  2. operator's position on the JointJS paper
@@ -49,6 +94,9 @@ export interface WorkflowContent
     links: OperatorLink[];
     commentBoxes: CommentBox[];
     settings: WorkflowSettings;
+    /** Present once an author set up the Form View. Rides in the content (like `settings`),
+     *  so it is saved/cloned/versioned/published with the workflow for free. */
+    parameterization?: ParameterizationConfig;
   }> {}
 
 export type Workflow = { content: WorkflowContent } & WorkflowMetadata;

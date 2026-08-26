@@ -29,6 +29,8 @@ import {
   WORKFLOW_CREATE_URL,
   WORKFLOW_DUPLICATE_URL,
   WORKFLOW_DELETE_URL,
+  WORKFLOW_PARAMETERIZED_URL,
+  WORKFLOW_UNPARAMETERIZED_URL,
   WORKFLOW_LIST_URL,
   WORKFLOW_UPDATENAME_URL,
   WORKFLOW_UPDATEDESCRIPTION_URL,
@@ -498,6 +500,24 @@ describe("WorkflowPersistService", () => {
       const sizes = { 24: 100, 25: 200, 26: 300 };
       req.flush(sizes);
       expect(result).toEqual(sizes);
+    });
+
+    it("setParameterized PUTs to the parameterized url when turning the Form View on", () => {
+      let responded = false;
+      service.setParameterized(30, true).subscribe(() => (responded = true));
+
+      const req = httpTestingController.expectOne(`${API}/${WORKFLOW_PARAMETERIZED_URL}/30`);
+      expect(req.request.method).toBe("PUT");
+      req.flush(null);
+      expect(responded).toBe(true);
+    });
+
+    it("setParameterized PUTs to the unparameterized url when turning it off", () => {
+      service.setParameterized(31, false).subscribe();
+
+      const req = httpTestingController.expectOne(`${API}/${WORKFLOW_UNPARAMETERIZED_URL}/31`);
+      expect(req.request.method).toBe("PUT");
+      req.flush(null);
     });
   });
 });

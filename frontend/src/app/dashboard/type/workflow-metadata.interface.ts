@@ -25,4 +25,7 @@ export interface WorkflowMetadata {
   lastModifiedTime: number | undefined;
   isPublished: number;
   readonly: boolean;
+  /** Whether this workflow offers a Form View. From the workflow row, so listings need not
+   *  load content. Absent on payloads predating the column. */
+  isParameterized?: boolean;
 }

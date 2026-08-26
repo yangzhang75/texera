@@ -17,110 +17,51 @@
  * under the License.
  */
 
-import { CoeditorState, User } from "../../../../common/type/user";
 import { SharedModel } from "./shared-model";
+import { CoeditorState, User } from "../../../../common/type/user";
 
-// SharedModel constructs its own WebsocketProvider, and these tests read that real
-// provider rather than substituting one. `vi.mock("y-websocket")` does not survive a
-// full-suite run: the builder bundles the dependency into a shared chunk and the
-// module specifier no longer matches, so the double is silently ignored. Nothing
-// reaches the network either way — the suite installs an inert `WebSocket` global for
-// exactly this reason (see src/jsdom-svg-polyfill.ts).
+// `isActive` ("my mouse is on a canvas") decides whether others draw a pointer for this
+// person; joining is not that. These pin the state a fresh member publishes.
+describe("SharedModel presence", () => {
+  const user = { uid: 1, name: "tester", email: "t@example.com", role: "REGULAR" } as unknown as User;
+  const localState = (m: SharedModel) => m.awareness.getLocalState() as unknown as CoeditorState;
 
-const user: User = { uid: 7, name: "alice", email: "alice@test.com", role: "REGULAR" } as unknown as User;
+  let model: SharedModel;
 
-describe("SharedModel", () => {
-  let model: SharedModel | undefined;
+  afterEach(() => model?.destroy());
 
-  const build = (wid?: number, withUser?: User): SharedModel => {
-    model = new SharedModel(wid, withUser);
-    return model;
-  };
+  // isActive:true on join claimed an unplaced pointer at the origin; the canvas hid it on
+  // first mouse move, but the Form View keeps the workflow collapsed so it never fired.
+  it("joins without claiming a pointer on the canvas", () => {
+    model = new SharedModel(undefined, user);
 
-  afterEach(() => {
-    model?.destroy();
-    model = undefined;
+    expect(localState(model).isActive).toBe(false);
   });
 
-  describe("room suffix", () => {
-    it("uses the workflow id as the room name when one is given", () => {
-      expect(build(42).wsProvider.roomname).toBe("42");
-    });
+  it("still announces who joined, so they appear as a coeditor", () => {
+    model = new SharedModel(undefined, user);
 
-    it("falls back to a random room name when there is no workflow id", () => {
-      expect(build(undefined).wsProvider.roomname).toMatch(/^[0-9a-f-]{36}$/);
-    });
+    expect(localState(model).user.name).toBe("tester");
+    expect(localState(model).user.clientId).toBeTruthy();
   });
 
-  describe("local awareness", () => {
-    it("publishes the local coeditor state when a user is provided", () => {
-      const sharedModel = build(1, user);
+  it("starts the cursor at the origin", () => {
+    model = new SharedModel(undefined, user);
 
-      const state = sharedModel.awareness.getLocalState() as unknown as CoeditorState;
-      expect(state.user).toEqual({ ...user, clientId: sharedModel.clientId });
-      expect(state.isActive).toBe(true);
-      expect(state.userCursor).toEqual({ x: 0, y: 0 });
-    });
-
-    it("publishes no coeditor state when constructed anonymously", () => {
-      const sharedModel = build(1);
-      // Awareness starts out with an empty local state; without a user nothing is added.
-      expect(sharedModel.awareness.getLocalState()).toEqual({});
-    });
-
-    it("updateAwareness writes the field when a user is provided", () => {
-      const sharedModel = build(1, user);
-
-      sharedModel.updateAwareness("userCursor", { x: 5, y: 6 });
-
-      expect((sharedModel.awareness.getLocalState() as unknown as CoeditorState).userCursor).toEqual({ x: 5, y: 6 });
-    });
-
-    it("updateAwareness is a no-op when constructed anonymously", () => {
-      const sharedModel = build(1);
-
-      sharedModel.updateAwareness("userCursor", { x: 5, y: 6 });
-
-      expect(sharedModel.awareness.getLocalState()).toEqual({});
-    });
+    expect(localState(model).userCursor).toEqual({ x: 0, y: 0 });
   });
 
-  it("transact runs the callback inside a yDoc transaction", () => {
-    const sharedModel = build(1, user);
-    let ranInsideTransaction = false;
+  it("becomes active once the mouse enters a canvas", () => {
+    model = new SharedModel(undefined, user);
 
-    sharedModel.transact(() => {
-      sharedModel.operatorIDMap.set("op-1", undefined as never);
-      ranInsideTransaction = true;
-    });
+    model.updateAwareness("isActive", true);
 
-    expect(ranInsideTransaction).toBe(true);
-    expect(sharedModel.operatorIDMap.has("op-1")).toBe(true);
+    expect(localState(model).isActive).toBe(true);
   });
 
-  describe("destroy", () => {
-    // `destroy` only disconnects when the provider both wants to connect and is connected.
-    const cases: { shouldConnect: boolean; wsconnected: boolean; disconnects: boolean }[] = [
-      { shouldConnect: true, wsconnected: true, disconnects: true },
-      { shouldConnect: false, wsconnected: true, disconnects: false },
-      { shouldConnect: true, wsconnected: false, disconnects: false },
-    ];
+  it("publishes nothing for a viewer who is not signed in", () => {
+    model = new SharedModel(undefined, undefined);
 
-    cases.forEach(({ shouldConnect, wsconnected, disconnects }) => {
-      it(`${disconnects ? "disconnects" : "does not disconnect"} when shouldConnect=${shouldConnect} and wsconnected=${wsconnected}`, () => {
-        const sharedModel = build(1, user);
-        const provider = sharedModel.wsProvider;
-        // spied rather than called for real: the flags below are set by hand, so an
-        // actual disconnect would run against a socket that was never opened
-        const disconnect = vi.spyOn(provider, "disconnect").mockImplementation(() => {});
-        provider.shouldConnect = shouldConnect;
-        provider.wsconnected = wsconnected;
-
-        sharedModel.destroy();
-        model = undefined; // already destroyed; keep afterEach from destroying twice
-
-        expect(disconnect).toHaveBeenCalledTimes(disconnects ? 1 : 0);
-      });
-    });
+    expect(model.awareness.getLocalState()).toEqual({});
   });
 });

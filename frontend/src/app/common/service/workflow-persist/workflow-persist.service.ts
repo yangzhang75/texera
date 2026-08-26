@@ -47,6 +47,8 @@ export const WORKFLOW_PUBLIC_WORKFLOW = WORKFLOW_BASE_URL + "/publicised";
 export const WORKFLOW_DESCRIPTION = WORKFLOW_BASE_URL + "/workflow_description";
 export const WORKFLOW_USER_ACCESS = WORKFLOW_BASE_URL + "/workflow_user_access";
 export const WORKFLOW_SIZE = WORKFLOW_BASE_URL + "/size";
+export const WORKFLOW_PARAMETERIZED_URL = WORKFLOW_BASE_URL + "/parameterized";
+export const WORKFLOW_UNPARAMETERIZED_URL = WORKFLOW_BASE_URL + "/unparameterized";
 
 export const DEFAULT_WORKFLOW_NAME = "Untitled workflow";
 
@@ -291,5 +293,12 @@ export class WorkflowPersistService {
       params = params.append("wid", wid.toString());
     });
     return this.http.get<Record<number, number>>(`${AppSettings.getApiEndpoint()}/${WORKFLOW_SIZE}`, { params });
+  }
+
+  /** Turn the Form View on/off. Only the flag moves; the definition lives in the workflow
+   *  content, so turning it off keeps the author's setup. */
+  public setParameterized(wid: number, enabled: boolean): Observable<void> {
+    const path = enabled ? WORKFLOW_PARAMETERIZED_URL : WORKFLOW_UNPARAMETERIZED_URL;
+    return this.http.put<void>(`${AppSettings.getApiEndpoint()}/${path}/${wid}`, {});
   }
 }

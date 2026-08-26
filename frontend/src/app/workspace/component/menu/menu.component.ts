@@ -46,7 +46,7 @@ import { ResultExportationComponent } from "../result-exportation/result-exporta
 import { ReportGenerationService } from "../../service/report-generation/report-generation.service";
 import { ShareAccessComponent } from "src/app/dashboard/component/user/share-access/share-access.component";
 import { PanelService } from "../../service/panel/panel.service";
-import { USER_WORKFLOW } from "../../../app-routing.constant";
+import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
@@ -604,6 +604,25 @@ export class MenuComponent implements OnInit, OnDestroy {
     const workflowContentJson = JSON.stringify(workflowContent, null, 2);
     const fileName = this.currentWorkflowName + ".json";
     saveAs(new Blob([workflowContentJson], { type: "text/plain;charset=utf-8" }), fileName);
+  }
+
+  /** Whether this workflow offers a Form View; if not, the view switch is not rendered. */
+  public get isParameterized(): boolean {
+    return this.workflowActionService.getWorkflowMetadata().isParameterized === true;
+  }
+
+  /**
+   * Open the Form View -- a full page load, not a route: the two views share root-level
+   * singletons (graph, Yjs shared model), and routing left the old collaboration client
+   * alive (you appeared as your own coeditor). A fresh document is the clean handover.
+   */
+  public onClickOpenParameterizedCanvas(): void {
+    const wid = this.workflowActionService.getWorkflowMetadata().wid;
+    if (wid !== undefined) {
+      /* v8 ignore start -- full-document navigation; jsdom cannot navigate */
+      window.location.href = `${USER_WORKSPACE}/${wid}/parameters`;
+      /* v8 ignore stop */
+    }
   }
 
   /**

@@ -70,6 +70,7 @@ import { FormsModule } from "@angular/forms";
 import { UserAvatarComponent } from "../user-avatar/user-avatar.component";
 import { NzWaveDirective } from "ng-zorro-antd/core/wave";
 import { NzPopconfirmDirective } from "ng-zorro-antd/popconfirm";
+import { GuiConfigService } from "../../../../common/service/gui-config.service";
 
 @UntilDestroy()
 @Component({
@@ -110,6 +111,8 @@ export class ListItemComponent implements OnChanges {
   entryLink: string[] = [];
   size: number | undefined = 0;
   public iconType: string = "";
+  /** Whether this workflow also offers a Form View. */
+  public parameterized = false;
   isLiked: boolean = false;
   @Input() isPrivateSearch = false;
   @Input() editable = false;
@@ -141,7 +144,8 @@ export class ListItemComponent implements OnChanges {
     private hubService: HubService,
     private downloadService: DownloadService,
     private cdr: ChangeDetectorRef,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    protected config: GuiConfigService
   ) {}
 
   initializeEntry() {
@@ -156,7 +160,11 @@ export class ListItemComponent implements OnChanges {
         }
         this.size = this.entry.size;
       }
-      this.iconType = "project";
+      // With the flag off, a stored parameterized workflow reads as an ordinary one -- no
+      // Form View icon, no deep-link into the form -- so the feature stays fully hidden.
+      this.applyParameterizedState(
+        this.config.env.formViewEnabled && this.entry.workflow?.workflow?.isParameterized === true
+      );
     } else if (this.entry.type === "project") {
       this.entryLink = [USER_PROJECT, String(this.entry.id)];
       this.iconType = "container";
@@ -201,6 +209,39 @@ export class ListItemComponent implements OnChanges {
       this.initializeEntry();
       this.renderMarkdownPreview(this.entry.description);
     }
+  }
+
+  /**
+   * A workflow with a Form View is marked with the Form View icon and opens straight
+   * into its form. The operator canvas is still one click away from there, so nothing
+   * is taken away.
+   */
+  private applyParameterizedState(enabled: boolean): void {
+    this.parameterized = enabled;
+    this.iconType = enabled ? "solution" : "project";
+    // Leave hub links alone; only the owner's own entry point moves.
+    if (this.entryLink[0] === USER_WORKSPACE) {
+      this.entryLink = enabled
+        ? [USER_WORKSPACE, String(this.entry.id), "parameters"]
+        : [USER_WORKSPACE, String(this.entry.id)];
+    }
+  }
+
+  public onToggleParameterized(): void {
+    const enabled = !this.parameterized;
+    this.workflowPersistService
+      .setParameterized(this.entry.id as number, enabled)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: () => {
+          if (this.entry.workflow?.workflow) {
+            this.entry.workflow.workflow.isParameterized = enabled;
+          }
+          this.applyParameterizedState(enabled);
+          this.cdr.detectChanges();
+        },
+        error: (err: unknown) => this.notificationService.error(extractErrorMessage(err)),
+      });
   }
 
   onCheckboxChange(entry: DashboardEntry): void {

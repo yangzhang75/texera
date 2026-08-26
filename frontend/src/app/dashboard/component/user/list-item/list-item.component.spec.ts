@@ -33,6 +33,7 @@ import { RouterTestingModule } from "@angular/router/testing";
 import { StubUserService } from "../../../../common/service/user/stub-user.service";
 import { UserService } from "../../../../common/service/user/user.service";
 import { commonTestProviders } from "../../../../common/testing/test-utils";
+import { GuiConfigService } from "../../../../common/service/gui-config.service";
 import type { Mocked } from "vitest";
 import { DashboardEntry } from "src/app/dashboard/type/dashboard-entry";
 import { DatasetService, DEFAULT_DATASET_NAME } from "../../../service/user/dataset/dataset.service";
@@ -74,6 +75,12 @@ describe("ListItemComponent", () => {
     datasetService = TestBed.inject(DatasetService) as unknown as Mocked<DatasetService>;
     hubService = TestBed.inject(HubService);
     modalService = TestBed.inject(NzModalService);
+    // The Form View entry points (deep-link, solution icon, toggle) are gated on the
+    // form-view-enabled flag, which this PR turns on. The shared config mock defaults it
+    // off (matching the production default), so enable it here for the parameterized cases.
+    (TestBed.inject(GuiConfigService) as unknown as { setConfig: (c: object) => void }).setConfig({
+      formViewEnabled: true,
+    });
     // initializeEntry() needs a fully-formed workflow entry to avoid throwing
     // when the template renders for the first time. Each test below overwrites
     // component.entry directly, which exercises confirm methods without going
@@ -143,6 +150,61 @@ describe("ListItemComponent", () => {
     expect(component.editingDescription).toBe(false);
   });
 
+  describe("Form View toggle", () => {
+    const parameterizedEntry = (isParameterized: boolean) =>
+      ({
+        id: 42,
+        type: "workflow",
+        workflow: { isOwner: true, workflow: { isParameterized } },
+        accessibleUserIds: [1],
+        likeCount: 0,
+        viewCount: 0,
+        isLiked: false,
+      }) as unknown as DashboardEntry;
+
+    beforeEach(() => {
+      component.currentUid = 1;
+      (workflowPersistService as any).setParameterized = vi.fn().mockReturnValue(of(undefined));
+    });
+
+    it("turns it on, showing the flask and repointing the row", () => {
+      component.entry = parameterizedEntry(false);
+      component.initializeEntry();
+      expect(component.iconType).toBe("project");
+
+      component.onToggleParameterized();
+
+      expect(workflowPersistService.setParameterized).toHaveBeenCalledWith(42, true);
+      expect(component.parameterized).toBe(true);
+      expect(component.iconType).toBe("solution");
+      expect(component.entryLink).toEqual([USER_WORKSPACE, "42", "parameters"]);
+    });
+
+    it("turns it back off, restoring the plain row", () => {
+      component.entry = parameterizedEntry(true);
+      component.initializeEntry();
+
+      component.onToggleParameterized();
+
+      expect(workflowPersistService.setParameterized).toHaveBeenCalledWith(42, false);
+      expect(component.parameterized).toBe(false);
+      expect(component.iconType).toBe("project");
+      expect(component.entryLink).toEqual([USER_WORKSPACE, "42"]);
+    });
+
+    // A failed call must not leave the row claiming a state the server never took.
+    it("keeps the previous state when the request fails", () => {
+      component.entry = parameterizedEntry(false);
+      component.initializeEntry();
+      (workflowPersistService as any).setParameterized = vi.fn().mockReturnValue(throwError(() => new Error("nope")));
+
+      component.onToggleParameterized();
+
+      expect(component.parameterized).toBe(false);
+      expect(component.iconType).toBe("project");
+    });
+  });
+
   describe("initializeEntry routes", () => {
     const baseStats = { likeCount: 0, viewCount: 0, isLiked: false };
 
@@ -157,6 +219,38 @@ describe("ListItemComponent", () => {
       } as unknown as DashboardEntry;
       component.initializeEntry();
       expect(component.entryLink).toEqual([USER_WORKSPACE, "100"]);
+    });
+
+    it("sends an owned parameterized workflow straight to its form", () => {
+      component.currentUid = 1;
+      component.entry = {
+        id: 100,
+        type: "workflow",
+        workflow: { isOwner: true, workflow: { isParameterized: true } },
+        accessibleUserIds: [1],
+        ...baseStats,
+      } as unknown as DashboardEntry;
+      component.initializeEntry();
+
+      expect(component.entryLink).toEqual([USER_WORKSPACE, "100", "parameters"]);
+      expect(component.iconType).toBe("solution");
+      expect(component.parameterized).toBe(true);
+    });
+
+    // The flask is the owner's entry point; a hub visitor still lands on the detail page.
+    it("leaves the hub link alone for a parameterized workflow the user does not own", () => {
+      component.currentUid = 1;
+      component.entry = {
+        id: 101,
+        type: "workflow",
+        workflow: { isOwner: false, workflow: { isParameterized: true } },
+        accessibleUserIds: [2],
+        ...baseStats,
+      } as unknown as DashboardEntry;
+      component.initializeEntry();
+
+      expect(component.entryLink).toEqual([HUB_WORKFLOW_RESULT_DETAIL, "101"]);
+      expect(component.iconType).toBe("solution");
     });
 
     it("routes non-owned workflows to the hub workflow detail page", () => {

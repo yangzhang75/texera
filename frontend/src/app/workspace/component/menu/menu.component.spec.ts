@@ -119,6 +119,15 @@ describe("MenuComponent", () => {
     expect(component).toBeTruthy();
   });
 
+  it("does not open the Form View for a workflow that has not been saved yet", () => {
+    vi.spyOn(component["workflowActionService"], "getWorkflowMetadata").mockReturnValue({ wid: undefined } as any);
+    const href = window.location.href;
+
+    component.onClickOpenParameterizedCanvas();
+
+    expect(window.location.href).toBe(href);
+  });
+
   describe("getRunButtonBehavior", () => {
     it("returns 'Invalid Workflow' when the workflow is invalid", () => {
       component.isWorkflowValid = false;
@@ -1647,6 +1656,16 @@ describe("MenuComponent", () => {
 
       expect(component.displayParticularWorkflowVersion).toBe(true);
       expect(component.particularVersionDate).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
+    });
+  });
+
+  describe("isParameterized", () => {
+    it("reflects whether the workflow offers a Form View", () => {
+      vi.spyOn(workflowActionService, "getWorkflowMetadata").mockReturnValue({ isParameterized: true } as any);
+      expect(component.isParameterized).toBe(true);
+
+      vi.spyOn(workflowActionService, "getWorkflowMetadata").mockReturnValue({ isParameterized: false } as any);
+      expect(component.isParameterized).toBe(false);
     });
   });
 });

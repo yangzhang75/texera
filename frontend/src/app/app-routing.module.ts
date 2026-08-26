@@ -27,6 +27,7 @@ import { UserProjectComponent } from "./dashboard/component/user/user-project/us
 import { UserComputingUnitComponent } from "./dashboard/component/user/user-computing-unit/user-computing-unit.component";
 import { UserVenvComponent } from "./dashboard/component/user/user-venv/user-venv.component";
 import { WorkspaceComponent } from "./workspace/component/workspace.component";
+import { WorkflowFormComponent } from "./workspace/component/workflow-form/workflow-form.component";
 import { AboutComponent } from "./hub/component/about/about.component";
 import { TexeraLoginComponent } from "./hub/component/login/texera-login.component";
 import { AuthGuardService } from "./common/service/user/auth-guard.service";
@@ -118,6 +119,12 @@ routes.push({
         {
           path: "workflow",
           component: UserWorkflowComponent,
+        },
+        {
+          // The same workflow as a form. Before "workflow/:id" so the segment is not
+          // swallowed; the component redirects non-Form-View workflows to the canvas.
+          path: "workflow/:id/parameters",
+          component: WorkflowFormComponent,
         },
         {
           path: "workflow/:id",

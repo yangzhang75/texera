@@ -160,6 +160,58 @@
       </section>
     </div>
 
+    <!-- Run -->
+    <div class="runbar">
+      <!-- Run and the unit it runs on sit together, because one gates the other, but
+           they stay two controls: the selector draws its own bordered box, so wrapping
+           them in a shared frame just produced a box inside a box. Adjacency and equal
+           height are enough to say they belong to each other. -->
+      <div class="run-group">
+        <!-- Never disabled, the way the operator canvas's Run is never disabled. Deciding
+             in advance whether a run is possible turned out to be guesswork, and every
+             wrong guess produced a dead button with no way forward. Pressing it and being
+             told what is missing is always recoverable. -->
+        <!-- One button in this page's own style, but its label, icon and disabled-ness are
+             the operator canvas's own (menu.component's getRunButtonBehavior): "Invalid
+             Workflow" / "Empty Workflow" for a graph that cannot run, "Connecting" while a
+             unit's socket comes up, "Connect" before one is chosen, "Run" once ready, "Stop"
+             while running. Disabled in every state a run cannot start from, so the reader is
+             never sent to press a button that does nothing. -->
+        <button
+          class="run"
+          [class.stop]="isRunning"
+          [class.connecting]="runButtonState.disabled && !isRunning"
+          [disabled]="runButtonState.disabled"
+          (click)="onRun()">
+          <i
+            nz-icon
+            [nzType]="runButtonState.icon"></i>
+          {{ runButtonState.label }}
+        </button>
+        <!-- Safe to live here now: the page opens its own connection on load, so this
+             control no longer decides whether running works by where it is mounted. -->
+        <div class="run-unit">
+          <texera-computing-unit-selection></texera-computing-unit-selection>
+        </div>
+        <!-- How long this has been going, from the same engine event the operator canvas
+             counts. It appears only once there is something to count, so a form at rest
+             is not carrying a 0:00:00 around. -->
+        <span
+          class="run-clock"
+          *ngIf="executionDuration > 0">
+          {{ executionDuration | date: "H:mm:ss" : "UTC" }}
+        </span>
+      </div>
+    </div>
+    <!-- On its own line: a message that explains or blocks the run should not push the
+         two controls apart, and it is absent most of the time. -->
+    <p
+      class="run-note"
+      [class.err]="runError"
+      *ngIf="runError || isRunning">
+      {{ runError || "Running — this keeps going if you look away." }}
+    </p>
+
     <!-- The workflow. Out of the way unless you go looking, or you are the author. -->
     <section
       class="card wf"

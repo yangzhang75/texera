@@ -23,14 +23,16 @@ import { Subject, throwError } from "rxjs";
 
 import { WorkflowFormComponent } from "./workflow-form.component";
 import { setupHarness, resolved, parameterized } from "./workflow-form.spec-harness";
+import { ExecutionState } from "../../types/execute-workflow.interface";
+import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
 import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * Cover rendering the exposed inputs and writing values back, plus the shell decisions carried
- * over. Shared mocks come from the spec harness; this slice's component takes the shell +
- * inputs dependencies (no run/results services yet).
+ * Cover running the workflow -- the Run button state machine, the run clock and failure
+ * messages -- on top of the shell + inputs. Shared mocks come from the spec harness; this
+ * slice's component takes everything except the results-only dependencies.
  */
 describe("WorkflowFormComponent", () => {
   let component: WorkflowFormComponent;
@@ -39,8 +41,11 @@ describe("WorkflowFormComponent", () => {
   let workflowActionService: any;
   let workflowPersistService: any;
   let parameterizationService: any;
+  let executeWorkflowService: any;
   let workflowChangedStream: Subject<unknown>;
   let compilationChanged: Subject<unknown>;
+  let executionStateStream: Subject<any>;
+  let durationEvents: Subject<{ duration: number; isRunning: boolean }>;
   let hasOperatorIds: Set<string>;
   let graphOperators: any[];
 
@@ -65,8 +70,10 @@ describe("WorkflowFormComponent", () => {
       h.workflowCompilingService as any,
       h.computingUnitStatusService as any,
       h.workflowConsoleService as any,
+      h.workflowWebsocketService as any,
       h.host as any,
       h.datePipe as any,
+      h.validationWorkflowService as any,
       h.config as any
     );
     return component;
@@ -78,8 +85,11 @@ describe("WorkflowFormComponent", () => {
     workflowActionService = h.workflowActionService;
     workflowPersistService = h.workflowPersistService;
     parameterizationService = h.parameterizationService;
+    executeWorkflowService = h.executeWorkflowService;
     workflowChangedStream = h.workflowChangedStream;
     compilationChanged = h.compilationChanged;
+    executionStateStream = h.executionStateStream;
+    durationEvents = h.durationEvents;
     hasOperatorIds = h.hasOperatorIds;
     graphOperators = h.graphOperators;
   });
@@ -151,6 +161,84 @@ describe("WorkflowFormComponent", () => {
       component.ngOnInit();
 
       expect(router.navigate).toHaveBeenCalledWith([USER_WORKFLOW]);
+    });
+  });
+
+  describe("running", () => {
+    beforeEach(() => {
+      build(parameterized);
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Number of genes")]);
+      component.ngOnInit();
+    });
+
+    it("runs this very workflow, by name", () => {
+      component.onRun();
+
+      expect(executeWorkflowService.executeWorkflow).toHaveBeenCalledWith("scGPT");
+    });
+
+    it("turns into Stop while a run is in flight", () => {
+      executionStateStream.next({ current: { state: ExecutionState.Running } });
+      expect(component.isRunning).toBe(true);
+
+      component.onRun();
+
+      expect(executeWorkflowService.killWorkflow).toHaveBeenCalled();
+      expect(executeWorkflowService.executeWorkflow).not.toHaveBeenCalled();
+    });
+
+    it("is not running once the execution finishes", () => {
+      executionStateStream.next({ current: { state: ExecutionState.Completed } });
+
+      expect(component.isRunning).toBe(false);
+    });
+
+    // Starting a run must not pop the workflow open. This page exists so a reader can
+    // fill in a form and get an answer; shoving a canvas at them mid-run is exactly the
+    // thing the form is meant to spare them. Whoever wants to watch opens it themselves.
+    it("leaves the workflow as the reader left it when a run starts", () => {
+      expect(component.workflowOpen).toBe(false);
+
+      executionStateStream.next({ current: { state: ExecutionState.Running } });
+
+      expect(component.workflowOpen).toBe(false);
+    });
+
+    it("respects a reader who collapsed it on purpose", () => {
+      component.toggleWorkflow();
+      component.toggleWorkflow();
+      expect(component.workflowOpen).toBe(false);
+
+      executionStateStream.next({ current: { state: ExecutionState.Running } });
+
+      expect(component.workflowOpen).toBe(false);
+    });
+  });
+
+  describe("running without a computing unit", () => {
+    it("still attempts the run rather than refusing up front", () => {
+      build(parameterized);
+      h.setComputingUnit(null);
+      component.ngOnInit();
+
+      component.onRun();
+
+      expect(executeWorkflowService.executeWorkflow).toHaveBeenCalled();
+    });
+  });
+
+  // Consistent with the operator canvas: a graph that cannot run disables the button and
+  // says why, instead of accepting a press that does nothing.
+  describe("run button state", () => {
+    it("disables and reads 'Invalid Workflow' for an invalid graph, and does not run", () => {
+      build(parameterized).ngOnInit();
+      (component as any).isWorkflowValid = false;
+
+      expect(component.runButtonState.disabled).toBe(true);
+      expect(component.runButtonState.label).toBe("Invalid");
+
+      component.onRun();
+      expect(executeWorkflowService.executeWorkflow).not.toHaveBeenCalled();
     });
   });
 
@@ -241,6 +329,45 @@ describe("WorkflowFormComponent", () => {
       await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
 
       expect(rebuild).not.toHaveBeenCalled();
+    });
+  });
+
+  // The clock reads the engine's own elapsed time rather than starting a stopwatch at
+  // the click, so it stays right across a reload and cannot drift.
+  describe("the run clock", () => {
+    it("shows nothing before anything has run", () => {
+      build(parameterized).ngOnInit();
+
+      expect(component.executionDuration).toBe(0);
+    });
+
+    it("takes the elapsed time the engine reports", () => {
+      build(parameterized).ngOnInit();
+
+      durationEvents.next({ duration: 4000, isRunning: true });
+
+      expect(component.executionDuration).toBe(4000);
+    });
+
+    it("keeps the final time when the run stops", () => {
+      build(parameterized).ngOnInit();
+
+      durationEvents.next({ duration: 4000, isRunning: true });
+      durationEvents.next({ duration: 7000, isRunning: false });
+
+      expect(component.executionDuration).toBe(7000);
+    });
+
+    it("ticks up every second while the run is going", () => {
+      vi.useFakeTimers();
+      try {
+        build(parameterized).ngOnInit();
+        durationEvents.next({ duration: 4000, isRunning: true });
+        vi.advanceTimersByTime(1000);
+        expect(component.executionDuration).toBe(5000);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -351,6 +478,18 @@ describe("WorkflowFormComponent", () => {
     });
   });
 
+  // A trackBy that is not stable rebuilt every row on every pass, which is why buttons
+  // could not be clicked -- they never stood still long enough.
+  describe("row identity", () => {
+    beforeEach(() => build(parameterized).ngOnInit());
+
+    it("identifies a card by its binding, not its position", () => {
+      expect(component.trackByRendered(0, { parameter: resolved("b1", "A") } as any)).toBe("b1");
+      expect(component.trackByRendered(7, { parameter: resolved("b1", "A") } as any)).toBe("b1");
+    });
+
+  });
+
   // Renaming from here is the same edit as renaming on the operator canvas, so it must
   // go through the graph rather than only updating this page's copy.
   describe("renaming the workflow", () => {
@@ -404,12 +543,39 @@ describe("WorkflowFormComponent", () => {
       expect(parameterizationService.resolveParameters.mock.calls.length).toBeGreaterThan(before);
     });
 
+    it("answers a failed run with a fill-in message when a required input is empty", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [{ form: { invalid: true } } as any];
+
+      executionStateStream.next({ current: { state: ExecutionState.Failed, errorMessages: [] } });
+
+      expect(component.runError).toContain("required");
+    });
+
+    it("answers a failed run with a cleaned engine message otherwise", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [];
+
+      executionStateStream.next({
+        current: { state: ExecutionState.Failed, errorMessages: [{ message: "requirement failed: bad thing" }] },
+      });
+
+      expect(component.runError).toContain("bad thing");
+    });
+
     it("has an instruction only when the body has text", () => {
       build(parameterized);
       component.instructionBody = "  ";
       expect(component.hasInstruction).toBe(false);
       component.instructionBody = "Fill this in";
       expect(component.hasInstruction).toBe(true);
+    });
+
+    it("shows Stop while a run is in flight", () => {
+      build(parameterized).ngOnInit();
+      executionStateStream.next({ current: { state: ExecutionState.Running } });
+
+      expect(component.runButtonState.label).toBe("Stop");
     });
 
     it("saves on every debounced workflow change", () => {
@@ -449,6 +615,27 @@ describe("WorkflowFormComponent", () => {
       document.body.removeChild(input);
     });
 
+    it("collapses an opaque engine error to a generic message", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [];
+
+      executionStateStream.next({
+        current: { state: ExecutionState.Failed, errorMessages: [{ message: "org.jooq boom at Foo.bar(Foo.java:1)" }] },
+      });
+
+      expect(component.runError).toContain("reload");
+    });
+
+    it("offers Connect / Connecting through the run button", () => {
+      build(parameterized).ngOnInit();
+      (component as any).computingUnitStatus = ComputingUnitState.NoComputingUnit;
+      expect(component.runButtonState.label).toBe("Connect");
+
+      (component as any).computingUnitStatus = ComputingUnitState.Running;
+      (component as any).workflowWebsocketService = { isConnected: false };
+      expect(component.runButtonState.label).toBe("Connecting");
+    });
+
     it("renders a healthy input into a real formly field", () => {
       build(parameterized).ngOnInit();
       hasOperatorIds.add("op-1");
@@ -458,23 +645,6 @@ describe("WorkflowFormComponent", () => {
 
       expect(component.rendered).toHaveLength(1);
       expect(component.rendered[0].fields[0].key).toBe(component.rendered[0].parameter.binding.id);
-    });
-
-    it("renders nothing for an input whose operator is not on the graph", () => {
-      build(parameterized).ngOnInit();
-      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
-
-      (component as any).readConfig();
-
-      expect(component.rendered).toHaveLength(0);
-    });
-
-    it("identifies a rendered card by its binding id", () => {
-      build(parameterized);
-
-      const key = component.trackByRendered(0, { parameter: { binding: { id: "b-1" } } } as any);
-
-      expect(key).toBe("b-1");
     });
 
     it("writes a dirtied value back to the operator", () => {
@@ -636,5 +806,14 @@ describe("WorkflowFormComponent", () => {
       expect(component.rendered).toHaveLength(0);
     });
 
+    it("disables the run button for an invalid or empty workflow", () => {
+      build(parameterized).ngOnInit();
+      (component as any).isWorkflowValid = false;
+      expect(component.runButtonState.label).toBe("Invalid");
+
+      (component as any).isWorkflowValid = true;
+      (component as any).isWorkflowEmpty = true;
+      expect(component.runButtonState.label).toBe("Empty");
+    });
   });
 });

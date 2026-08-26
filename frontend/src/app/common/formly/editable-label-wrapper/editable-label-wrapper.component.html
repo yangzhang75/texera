@@ -1,0 +1,36 @@
+<!-- Authoring: the label is the input, so what you type is what the reader reads. -->
+<div
+  class="lbl-row"
+  *ngIf="props.authoring">
+  <input
+    class="lbl-input"
+    [value]="props.authorName"
+    [placeholder]="props.schemaLabel"
+    (change)="onRename($event)"
+    [title]="'Shown above this box. Empty keeps ' + props.schemaLabel" />
+  <!-- An input the reader can only lose by removing it altogether has no eye: offering
+       one here would be a second place to decide the same thing. -->
+  <button
+    *ngIf="props.canHide !== false"
+    type="button"
+    class="lbl-eye"
+    [class.off]="props.authorHidden"
+    (click)="onToggleHidden()"
+    [title]="props.authorHidden ? 'Hidden from the form' : 'Shown on the form'">
+    <i
+      nz-icon
+      [nzType]="props.authorHidden ? 'eye-invisible' : 'eye'"
+      nzTheme="outline"></i>
+  </button>
+</div>
+
+<!-- Everyone else just reads it. -->
+<label
+  class="lbl-static"
+  *ngIf="!props.authoring && (props.authorName || props.schemaLabel)">
+  {{ props.authorName || props.schemaLabel }}
+</label>
+
+<div [class.dimmed]="props.authoring && props.authorHidden">
+  <ng-container #fieldComponent></ng-container>
+</div>

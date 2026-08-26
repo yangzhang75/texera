@@ -1,0 +1,13 @@
+<div class="expose-row choosing">
+  <label
+    class="expose-box"
+    title="Show this on the Form View">
+    <input
+      type="checkbox"
+      [checked]="props.exposed"
+      (change)="onToggle($event)" />
+  </label>
+  <div class="expose-field">
+    <ng-container #fieldComponent></ng-container>
+  </div>
+</div>

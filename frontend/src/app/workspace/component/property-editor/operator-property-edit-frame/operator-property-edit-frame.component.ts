@@ -18,6 +18,8 @@
  */
 
 import { ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges } from "@angular/core";
+import { ExposePropertyWrapperComponent } from "../../../../common/formly/expose-property-wrapper/expose-property-wrapper.component";
+import { ParameterizationService } from "../../../service/parameterization/parameterization.service";
 import { ExecuteWorkflowService } from "../../../service/execute-workflow/execute-workflow.service";
 import { WorkflowStatusService } from "../../../service/workflow-status/workflow-status.service";
 import { Subject } from "rxjs";
@@ -131,6 +133,9 @@ export function isAggregateAttributeRequired(aggFunction: unknown): boolean {
 })
 export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, OnDestroy {
   @Input() currentOperatorId?: string;
+  /** True while an author is choosing which properties appear on the Form View; adds a tick
+   *  box beside each. Off, the property editor is unchanged. */
+  @Input() exposeChoosing = false;
 
   currentOperatorSchema?: OperatorSchema;
 
@@ -450,6 +455,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
   }
 
   constructor(
+    private parameterizationService: ParameterizationService,
     private formlyJsonschema: FormlyJsonschema,
     private workflowActionService: WorkflowActionService,
     public executeWorkflowService: ExecuteWorkflowService,
@@ -789,6 +795,12 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     // intercept JsonSchema -> FormlySchema process, adding custom options
     // this requires a one-to-one mapping.
     // for relational custom options, have to do it after FormlySchema is generated.
+    // Names of the operator's own top-level properties. Object-identity fails here (formly
+    // resolves $ref/allOf and passes a merged copy), so match by name -- nested fields like
+    // fileKey/alias are never top-level property names.
+    const schemaForFormly = cloneDeep(schema);
+    const rootPropertyNames = new Set(Object.keys(schemaForFormly.properties ?? {}));
+
     const jsonSchemaMapIntercept = (
       mappedField: FormlyFieldConfig,
       mapSource: CustomJSONSchema7
@@ -1296,13 +1308,28 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         };
       }
 
+      // A tick box beside each TOP-LEVEL property only. The map callback runs for every
+      // field at every depth, so without this an array-of-objects property sprouted one on
+      // the array, each item and each nested field. Membership in the schema's own
+      // `properties` distinguishes a top-level field from a same-named nested one.
+      const isTopLevel = typeof mappedField.key === "string" && rootPropertyNames.has(mappedField.key);
+      if (this.exposeChoosing && isTopLevel && typeof mappedField.key === "string" && this.currentOperatorId) {
+        const operatorId = this.currentOperatorId;
+        const propertyKey = mappedField.key;
+        ExposePropertyWrapperComponent.decorate(
+          mappedField,
+          this.parameterizationService.isExposed(operatorId, propertyKey),
+          (checked: boolean) => this.parameterizationService.setExposed(operatorId, propertyKey, checked)
+        );
+      }
+
       return mappedField;
     };
 
     this.formlyFormGroup = new FormGroup({});
     this.formlyOptions = {};
     // convert the json schema to formly config, pass a copy because formly mutates the schema object
-    const field = this.formlyJsonschema.toFieldConfig(cloneDeep(schema), {
+    const field = this.formlyJsonschema.toFieldConfig(schemaForFormly, {
       map: jsonSchemaMapIntercept,
     });
     field.hooks = {

@@ -30,6 +30,7 @@ import { WorkflowActionService } from "../../service/workflow-graph/model/workfl
 import { OperatorPropertyEditFrameComponent } from "./operator-property-edit-frame/operator-property-edit-frame.component";
 import { PortPropertyEditFrameComponent } from "./port-property-edit-frame/port-property-edit-frame.component";
 import { PanelService } from "../../service/panel/panel.service";
+import { ParameterizationService } from "../../service/parameterization/parameterization.service";
 import { HttpClientTestingModule } from "@angular/common/http/testing";
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
 import { StubOperatorMetadataService } from "../../service/operator-metadata/stub-operator-metadata.service";
@@ -96,6 +97,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: false,
     });
 
     // unhighlight the operator
@@ -145,6 +147,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: false,
     });
 
     // unhighlight the operator
@@ -160,6 +163,7 @@ describe("PropertyEditorComponent", () => {
     expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({
       currentOperatorId: mockResultPredicate.operatorID,
+      exposeChoosing: false,
     });
   });
 
@@ -175,6 +179,21 @@ describe("PropertyEditorComponent", () => {
     expect(jointGraphWrapper.getCurrentHighlightedPortIDs()).toEqual([port]);
     expect(component.currentComponent).toBe(PortPropertyEditFrameComponent);
     expect(component.componentInputs).toEqual({ currentPortID: port });
+  });
+
+  // The Form View mounts this same panel and asks it to offer a tick box
+  // beside each property, so the flag has to reach the operator frame.
+  it("should pass the expose-choosing flag through to the operator frame", () => {
+    component.exposeChoosing = true;
+    const jointGraphWrapper = workflowActionService.getJointGraphWrapper();
+    workflowActionService.addOperator(mockScanPredicate, mockPoint);
+
+    jointGraphWrapper.highlightOperators(mockScanPredicate.operatorID);
+
+    expect(component.componentInputs).toEqual({
+      currentOperatorId: mockScanPredicate.operatorID,
+      exposeChoosing: true,
+    });
   });
 
   it("should switch from the operator frame to the port frame when the highlight moves from an operator to a port", () => {
@@ -298,12 +317,53 @@ describe("PropertyEditorComponent", () => {
     expect(heightSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("resetPanelPosition should snap the drag position back to the return position", () => {
-    component.returnPosition = { x: 12, y: -34 };
+  // Reset has to be able to rescue a panel dragged out of the window, so home is the
+  // docked position rather than anything derived from where the panel currently is.
+  it("resetPanelPosition docks the panel and forgets the saved placement", () => {
+    component.dragPosition = { x: 12, y: -34 };
+    localStorage.setItem("right-panel-style", "transform: translate3d(-4000px, 0px, 0px);");
 
     component.resetPanelPosition();
 
-    expect(component.dragPosition).toEqual({ x: 12, y: -34 });
+    expect(component.dragPosition).toEqual({ x: 0, y: 0 });
+    expect(localStorage.getItem("right-panel-style")).toBeNull();
+  });
+
+  // The Form View mounts this same component inside its preview box, where
+  // the panel is restyled to sit inline. That copy sharing the operator canvas's saved
+  // geometry meant a trip through the form view left the real panel unusable.
+  describe("a copy that does not own the saved placement", () => {
+    it("writes nothing back when it is destroyed", () => {
+      localStorage.setItem("right-panel-width", "300");
+      localStorage.setItem("right-panel-style", "width: 300px;");
+      component.persistPlacement = false;
+      component.width = 0;
+      component.height = 65;
+
+      component.ngOnDestroy();
+
+      expect(localStorage.getItem("right-panel-width")).toBe("300");
+      expect(localStorage.getItem("right-panel-style")).toBe("width: 300px;");
+    });
+
+    it("still persists when it is the operator canvas's own panel", () => {
+      component.persistPlacement = true;
+      component.width = 420;
+
+      component.ngOnDestroy();
+
+      expect(localStorage.getItem("right-panel-width")).toBe("420");
+    });
+  });
+
+  // A width of zero is stored as the string "0", which is truthy; reading it back
+  // unguarded left the panel collapsed on every load with no visible way to reopen it.
+  it("ignores a stored width that is really a closed panel", () => {
+    localStorage.setItem("right-panel-width", "0");
+
+    const reopened = TestBed.createComponent(PropertyEditorComponent).componentInstance;
+
+    expect(reopened.width).toBeGreaterThanOrEqual(260);
   });
 
   it("should close the panel in response to the panel service close stream", () => {
@@ -318,13 +378,13 @@ describe("PropertyEditorComponent", () => {
 
   it("should reset position and re-open the panel in response to the panel service reset stream", () => {
     const heightSpy = vi.spyOn(component as any, "updateHeightBasedOnContent").mockImplementation(() => {});
-    component.returnPosition = { x: 7, y: 9 };
+    component.dragPosition = { x: 7, y: 9 };
     component.width = 0;
     component.height = 65;
 
     panelService.resetPanels();
 
-    expect(component.dragPosition).toEqual({ x: 7, y: 9 });
+    expect(component.dragPosition).toEqual({ x: 0, y: 0 });
     expect(component.width).toBe(280);
     expect(component.height).toBe(300);
     expect(heightSpy).toHaveBeenCalled();
@@ -389,38 +449,98 @@ describe("PropertyEditorComponent", () => {
     }
   });
 
-  // ─── template rendering ────────────────────────────────────────────────────
-  // The docked buttons swap between a collapse and an expand item depending on the
-  // panel width; drive both through the DOM so each (click) binding executes.
-  describe("template rendering", () => {
-    const dockedItems = (): HTMLElement[] =>
-      Array.from(fixture.nativeElement.querySelectorAll("#docked-buttons li")) as HTMLElement[];
+  describe("choosing which properties the Form View exposes", () => {
+    it("toggles choosing through the shared service", () => {
+      const service = TestBed.inject(ParameterizationService);
+      vi.spyOn(service, "isChoosing").mockReturnValue(false);
+      const setChoosing = vi.spyOn(service, "setChoosing");
 
-    it("collapses the panel when the docked collapse item is clicked", () => {
-      component.width = 280;
-      fixture.detectChanges();
+      component.toggleChoosingParameters();
 
-      const items = dockedItems();
-      expect(items).toHaveLength(1); // only the collapse arm renders while open
-      items[0].click();
-      fixture.detectChanges();
-
-      expect(component.width).toBe(0);
+      expect(setChoosing).toHaveBeenCalledWith(true);
     });
 
-    it("reopens the panel when the collapsed docked item is clicked", () => {
-      // openPanel() schedules a setTimeout that would call detectChanges() after the
-      // fixture is destroyed in afterEach; stub it the way the specs above do.
-      vi.spyOn(component as any, "updateHeightBasedOnContent").mockImplementation(() => {});
-      component.width = 0;
-      fixture.detectChanges();
+    it("remounts the operator frame when the expose-choosing input changes after first render", fakeAsync(() => {
+      component.currentComponent = OperatorPropertyEditFrameComponent;
 
-      const items = dockedItems();
-      expect(items).toHaveLength(1); // only the expand arm renders while collapsed
-      items[0].click();
-      fixture.detectChanges();
+      component.ngOnChanges({
+        exposeChoosing: { firstChange: false, currentValue: true, previousValue: false, isFirstChange: () => false },
+      });
+      expect(component.currentComponent).toBeNull();
+      tick();
 
-      expect(component.width).toBe(280);
+      expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
+    }));
+
+    it("does not remount when no operator frame is showing", () => {
+      component.currentComponent = null;
+
+      component.ngOnChanges({
+        exposeChoosing: { firstChange: false, currentValue: true, previousValue: false, isFirstChange: () => false },
+      });
+
+      expect(component.currentComponent).toBeNull();
+    });
+
+    it("leaves the frame alone on the input's first change", () => {
+      component.currentComponent = OperatorPropertyEditFrameComponent;
+
+      component.ngOnChanges({
+        exposeChoosing: { firstChange: true, currentValue: true, previousValue: undefined, isFirstChange: () => true },
+      });
+
+      expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
+    });
+
+    it("remounts the frame when the toolbar toggles choosing", fakeAsync(() => {
+      component.currentComponent = OperatorPropertyEditFrameComponent;
+
+      TestBed.inject(ParameterizationService).setChoosing(true);
+      expect(component.currentComponent).toBeNull();
+      tick();
+
+      expect(component.currentComponent).toBe(OperatorPropertyEditFrameComponent);
+    }));
+  });
+
+  describe("restoring a dragged-away placement", () => {
+    const withContainer = () => {
+      const el = document.createElement("div");
+      vi.spyOn(document, "getElementById").mockReturnValue(el);
+      return el;
+    };
+
+    it("does nothing when the container is not in the document", () => {
+      vi.spyOn(document, "getElementById").mockReturnValue(null);
+      expect(() => (component as any).restoreSavedPlacement()).not.toThrow();
+    });
+
+    it("applies a saved offset that is still on screen", () => {
+      const el = withContainer();
+      localStorage.setItem("right-panel-style", "transform: translate3d(10px, 20px, 0px);");
+
+      (component as any).restoreSavedPlacement();
+
+      expect(el.style.transform).toContain("translate3d");
+    });
+
+    it("discards a saved style that carries no drag offset", () => {
+      withContainer();
+      localStorage.setItem("right-panel-style", "position: relative;");
+
+      (component as any).restoreSavedPlacement();
+
+      expect(localStorage.getItem("right-panel-style")).toBeNull();
+    });
+
+    it("discards an offset that would leave the panel out of reach", () => {
+      const el = withContainer();
+      localStorage.setItem("right-panel-style", "transform: translate3d(100000px, 0px, 0px);");
+
+      (component as any).restoreSavedPlacement();
+
+      expect(localStorage.getItem("right-panel-style")).toBeNull();
+      expect(el.style.transform).toBe("");
     });
   });
 });

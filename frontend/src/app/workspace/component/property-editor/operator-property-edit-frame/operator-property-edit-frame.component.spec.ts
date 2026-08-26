@@ -49,6 +49,7 @@ import {
 } from "../../../service/operator-metadata/mock-operator-metadata.data";
 import { configure } from "rxjs-marbles";
 import { SimpleChange } from "@angular/core";
+import { ParameterizationService } from "../../../service/parameterization/parameterization.service";
 import { cloneDeep } from "lodash-es";
 
 import Ajv from "ajv";
@@ -2897,6 +2898,25 @@ describe("OperatorPropertyEditFrameComponent", () => {
       expect(getField("child")?.expressions?.["templateOptions.description"]).toBe(
         "[\"eventTime\"].includes(model.parent)? 'Input a datetime string' : 'Input a positive number'"
       );
+    });
+  });
+
+  describe("choosing which properties the Form View exposes", () => {
+    it("wires each top-level tick box to the exposure service", () => {
+      const parameterizationService = TestBed.inject(ParameterizationService);
+      const setExposed = vi.spyOn(parameterizationService, "setExposed");
+      component.exposeChoosing = true;
+      workflowActionService.addOperator(mockScanPredicate, mockPoint);
+
+      component.ngOnChanges({
+        currentOperatorId: new SimpleChange(undefined, mockScanPredicate.operatorID, true),
+      });
+      fixture.detectChanges();
+
+      const field = component.formlyFields?.[0]?.fieldGroup?.find(f => f.props?.["toggleExposed"] !== undefined);
+      (field!.props as any).toggleExposed(true);
+
+      expect(setExposed).toHaveBeenCalledWith(mockScanPredicate.operatorID, field!.key, true);
     });
   });
 });

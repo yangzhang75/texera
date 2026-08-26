@@ -1,0 +1,354 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { TestBed } from "@angular/core/testing";
+import { ParameterizationService } from "./parameterization.service";
+import { WorkflowActionService } from "../workflow-graph/model/workflow-action.service";
+import { WorkflowUtilService } from "../workflow-graph/util/workflow-util.service";
+import { JointUIService } from "../joint-ui/joint-ui.service";
+import { UndoRedoService } from "../undo-redo/undo-redo.service";
+import { OperatorMetadataService } from "../operator-metadata/operator-metadata.service";
+import { StubOperatorMetadataService } from "../operator-metadata/stub-operator-metadata.service";
+import { commonTestProviders } from "../../../common/testing/test-utils";
+import { mockPoint, mockScanPredicate, mockSentimentPredicate } from "../workflow-graph/model/mock-workflow-data";
+
+describe("ParameterizationService", () => {
+  let service: ParameterizationService;
+  let workflowActionService: WorkflowActionService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ParameterizationService,
+        WorkflowActionService,
+        WorkflowUtilService,
+        JointUIService,
+        UndoRedoService,
+        { provide: OperatorMetadataService, useClass: StubOperatorMetadataService },
+        ...commonTestProviders,
+      ],
+    });
+    service = TestBed.inject(ParameterizationService);
+    workflowActionService = TestBed.inject(WorkflowActionService);
+    workflowActionService.addOperator(mockScanPredicate, mockPoint);
+  });
+
+  const scanId = mockScanPredicate.operatorID;
+
+  it("starts with nothing exposed", () => {
+    expect(service.getConfig().parameters).toEqual([]);
+    expect(service.getConfig().resultOperatorIds).toEqual([]);
+  });
+
+  describe("exposing a property", () => {
+    it("seeds the input from the operator's schema and current value", () => {
+      workflowActionService.setOperatorProperty(scanId, { tableName: "twitter" });
+
+      service.addBinding(scanId, "tableName");
+
+      const [binding] = service.getConfig().parameters;
+      expect(binding.operatorID).toBe(scanId);
+      expect(binding.propertyKey).toBe("tableName");
+      // taken from the schema, so the author starts from a readable label
+      expect(binding.displayName).toBe("table name");
+      // Not seeded from the schema: that description is written for whoever wired the
+      // operator up, and shown to a reader it reads as advice the author never gave.
+      expect(binding.helpText).toBeUndefined();
+    });
+
+    it("does not expose the same property twice", () => {
+      service.addBinding(scanId, "tableName");
+      service.addBinding(scanId, "tableName");
+
+      expect(service.getConfig().parameters.length).toBe(1);
+    });
+  });
+
+  // Filling in an input is the same edit as changing the property on the regular
+  // canvas. That equivalence is what lets both views run the very same workflow.
+  describe("filling in a value", () => {
+    it("writes through to the operator's property", () => {
+      service.addBinding(scanId, "tableName");
+      const [binding] = service.getConfig().parameters;
+
+      service.writeValue(binding, "reddit");
+
+      expect(workflowActionService.getTexeraGraph().getOperator(scanId).operatorProperties["tableName"]).toBe("reddit");
+    });
+
+    it("leaves the operator's other properties alone", () => {
+      workflowActionService.setOperatorProperty(scanId, { tableName: "twitter", keep: "me" });
+      service.addBinding(scanId, "tableName");
+      const [binding] = service.getConfig().parameters;
+
+      service.writeValue(binding, "reddit");
+
+      expect(workflowActionService.getTexeraGraph().getOperator(scanId).operatorProperties["keep"]).toBe("me");
+    });
+  });
+
+  describe("resolving against the live graph", () => {
+    it("pairs a healthy binding with its value and schema", () => {
+      workflowActionService.setOperatorProperty(scanId, { tableName: "twitter" });
+      service.addBinding(scanId, "tableName");
+
+      const [resolved] = service.resolveParameters();
+
+      expect(resolved.value).toBe("twitter");
+      expect(resolved.schema?.title).toBe("table name");
+      expect(resolved.operatorLabel).toBe("Source: Scan");
+      expect(resolved.brokenReason).toBeUndefined();
+    });
+
+    // Deleting the operator on the regular canvas must not leave the form offering an
+    // input that can no longer do anything.
+    it("flags a binding whose operator is gone", () => {
+      service.addBinding(scanId, "tableName");
+      workflowActionService.deleteOperator(scanId);
+
+      const [resolved] = service.resolveParameters();
+
+      expect(resolved.brokenReason).toContain("removed from the workflow");
+    });
+
+    it("flags a raw key that is not a property of its operator", () => {
+      service.addBinding(scanId, "tableName");
+      const [binding] = service.getConfig().parameters;
+
+      service.updateBinding(binding.id, { propertyKey: "nonsense" });
+
+      expect(service.resolveParameters()[0].brokenReason).toContain("not a setting of");
+    });
+  });
+
+  describe("arranging the form", () => {
+    beforeEach(() => {
+      workflowActionService.addOperator(mockSentimentPredicate, mockPoint);
+      service.addBinding(scanId, "tableName");
+      service.addBinding(mockSentimentPredicate.operatorID, "attribute");
+    });
+
+    it("reorders by moving an input to a new position", () => {
+      service.reorder(1, 0);
+
+      expect(service.getConfig().parameters.map(p => p.propertyKey)).toEqual(["attribute", "tableName"]);
+    });
+
+    it("ignores a move that goes nowhere or out of range", () => {
+      service.reorder(0, 0);
+      service.reorder(0, 5);
+      service.reorder(-1, 0);
+
+      expect(service.getConfig().parameters.map(p => p.propertyKey)).toEqual(["tableName", "attribute"]);
+    });
+
+    // The id is what reordering and removal key on, so renaming must not disturb them.
+    it("keeps identity when the display name or raw key changes", () => {
+      const [first] = service.getConfig().parameters;
+
+      service.updateBinding(first.id, { displayName: "Input table", propertyKey: "tableName" });
+
+      expect(service.getConfig().parameters[0].id).toBe(first.id);
+      expect(service.getConfig().parameters[0].displayName).toBe("Input table");
+    });
+
+    it("removes an input", () => {
+      const [first] = service.getConfig().parameters;
+
+      service.removeBinding(first.id);
+
+      expect(service.getConfig().parameters.map(p => p.propertyKey)).toEqual(["attribute"]);
+    });
+  });
+
+  // The tick box in the property editor drives these two, so they have to be exact
+  // inverses of each other for a double-click to be a no-op.
+  describe("the property editor's expose tick box", () => {
+    it("reports whether a property is already on the form", () => {
+      expect(service.isExposed(scanId, "tableName")).toBe(false);
+
+      service.addBinding(scanId, "tableName");
+
+      expect(service.isExposed(scanId, "tableName")).toBe(true);
+      expect(service.isExposed(scanId, "somethingElse")).toBe(false);
+    });
+
+    it("adds the property when ticked and removes it when unticked", () => {
+      service.setExposed(scanId, "tableName", true);
+      expect(service.getConfig().parameters.map(p => p.propertyKey)).toEqual(["tableName"]);
+
+      service.setExposed(scanId, "tableName", false);
+      expect(service.getConfig().parameters).toEqual([]);
+    });
+
+    it("is idempotent in both directions", () => {
+      service.setExposed(scanId, "tableName", true);
+      service.setExposed(scanId, "tableName", true);
+      expect(service.getConfig().parameters.length).toBe(1);
+
+      service.setExposed(scanId, "tableName", false);
+      service.setExposed(scanId, "tableName", false);
+      expect(service.getConfig().parameters.length).toBe(0);
+    });
+  });
+
+  // Choosing what a form offers means visiting several operators, so the mode has to
+  // survive each tick rather than closing itself.
+  describe("the choose-parameters mode", () => {
+    it("starts off", () => {
+      expect(service.isChoosing()).toBe(false);
+    });
+
+    it("stays on across ticking properties", () => {
+      service.setChoosing(true);
+
+      service.setExposed(scanId, "tableName", true);
+      service.setExposed(scanId, "tableName", false);
+
+      expect(service.isChoosing()).toBe(true);
+    });
+
+    it("only ends when it is switched off", () => {
+      service.setChoosing(true);
+      service.setChoosing(false);
+
+      expect(service.isChoosing()).toBe(false);
+    });
+
+    it("announces changes, and only real ones", () => {
+      const seen: boolean[] = [];
+      const sub = service.choosing$.subscribe(v => seen.push(v));
+
+      service.setChoosing(true);
+      service.setChoosing(true);
+      service.setChoosing(false);
+
+      expect(seen).toEqual([false, true, false]);
+      sub.unsubscribe();
+    });
+  });
+
+  // A property is rarely one box. The author names what the reader sees and hides what
+  // is none of their business; the schema's own labels are only the default.
+  describe("naming and hiding the fields inside an input", () => {
+    let bindingId: string;
+
+    beforeEach(() => {
+      service.addBinding(scanId, "tableName");
+      bindingId = service.getConfig().parameters[0].id;
+    });
+
+    it("says nothing until the author decides something", () => {
+      expect(service.getConfig().parameters[0].fields).toBeUndefined();
+      expect(service.getConfig().parameters[0].fields?.["alias"]).toBeUndefined();
+    });
+
+    it("renames one field without touching the others", () => {
+      service.setFieldOverride(bindingId, "alias", { displayName: "Rename to" });
+
+      const b = service.getConfig().parameters[0];
+      expect(b.fields?.["alias"]?.displayName).toBe("Rename to");
+      expect(b.fields?.["attribute"]).toBeUndefined();
+    });
+
+    it("hides a field and can bring it back", () => {
+      service.setFieldOverride(bindingId, "alias", { hidden: true });
+      expect(service.getConfig().parameters[0].fields?.["alias"]?.hidden).toBe(true);
+
+      service.setFieldOverride(bindingId, "alias", { hidden: false });
+      expect(service.getConfig().parameters[0].fields?.["alias"]?.hidden).toBeUndefined();
+    });
+
+    // Otherwise the definition slowly fills up with every field the author looked at.
+    it("keeps no entry for a field back at its defaults", () => {
+      service.setFieldOverride(bindingId, "alias", { displayName: "x" });
+      service.setFieldOverride(bindingId, "alias", { displayName: "" });
+
+      expect(service.getConfig().parameters[0].fields).toBeUndefined();
+    });
+
+    it("leaves a field alone when the binding does not exist", () => {
+      service.setFieldOverride("no-such-binding", "alias", { hidden: true });
+
+      expect(service.getConfig().parameters[0].fields).toBeUndefined();
+    });
+  });
+
+  describe("choosing which results to show", () => {
+    it("toggles an operator in and out of the shown set", () => {
+      service.toggleResultOperator(scanId);
+      expect(service.getConfig().resultOperatorIds).toEqual([scanId]);
+
+      service.toggleResultOperator(scanId);
+      expect(service.getConfig().resultOperatorIds).toEqual([]);
+    });
+  });
+
+  describe("reading, labeling and schema lookup", () => {
+    it("reads a value off the operator, undefined once the operator is gone", () => {
+      workflowActionService.setOperatorProperty(scanId, { tableName: "twitter" });
+      expect(service.readValue(scanId, "tableName")).toBe("twitter");
+      expect(service.readValue("missing", "tableName")).toBeUndefined();
+    });
+
+    it("writing to a missing operator is a no-op", () => {
+      expect(() =>
+        service.writeValue({ id: "b", operatorID: "gone", propertyKey: "x", displayName: "" }, 1)
+      ).not.toThrow();
+    });
+
+    it("labels by custom name (trimmed), else falls back to the operator type", () => {
+      expect(service.operatorLabel({ customDisplayName: "  My Step  ", operatorType: "X" } as any)).toBe("My Step");
+      expect(service.operatorLabel({ operatorType: "UnknownType" } as any)).toBe("UnknownType");
+    });
+
+    it("returns empty properties for a missing operator", () => {
+      expect((service as any).operatorSchemaProperties("gone")).toEqual({});
+    });
+
+    it("falls back to the static schema when there is no dynamic one", () => {
+      vi.spyOn((service as any).dynamicSchemaService, "getDynamicSchema").mockImplementation(() => {
+        throw new Error("none");
+      });
+      expect((service as any).operatorSchemaProperties(scanId)).toBeDefined();
+    });
+
+    it("returns empty properties when neither dynamic nor static resolves", () => {
+      vi.spyOn((service as any).dynamicSchemaService, "getDynamicSchema").mockImplementation(() => {
+        throw new Error("none");
+      });
+      vi.spyOn((service as any).operatorMetadataService, "getOperatorSchema").mockImplementation(() => {
+        throw new Error("none");
+      });
+      expect((service as any).operatorSchemaProperties(scanId)).toEqual({});
+    });
+  });
+
+  // The definition is presentation only; a run reads operator properties and the
+  // graph. This is what guarantees a workflow still runs when its form is broken.
+  it("keeps the definition out of the executable graph", () => {
+    service.addBinding(scanId, "tableName");
+
+    const content = workflowActionService.getWorkflowContent();
+
+    expect(content.parameterization?.parameters.length).toBe(1);
+    expect(Object.keys(content.operators[0])).not.toContain("parameterization");
+    expect(Object.keys(content.operators[0].operatorProperties)).not.toContain("displayName");
+  });
+});

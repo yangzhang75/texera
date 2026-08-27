@@ -39,6 +39,7 @@ import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { EditableLabelWrapperComponent } from "../../../common/formly/editable-label-wrapper/editable-label-wrapper.component";
 import { ParameterBinding, Workflow, WorkflowContent } from "../../../common/type/workflow";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
+import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { WorkflowPersistService } from "../../../common/service/workflow-persist/workflow-persist.service";
 import { NotificationService } from "../../../common/service/notification/notification.service";
 import { UserService } from "../../../common/service/user/user.service";
@@ -167,6 +168,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    * Clears itself the moment a unit appears.
    */
   public needsComputingUnit = false;
+  /** Latest computing-unit state, so the page can show "Connecting…" while the unit's
+   *  websocket is still coming up -- the same signal the operator canvas uses. */
+  public computingUnitStatus: ComputingUnitState = ComputingUnitState.NoComputingUnit;
 
   /** The step whose property panel is open, if any. */
   public selectedOperatorId?: string;
@@ -286,7 +290,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     this.computingUnitStatusService
       .getStatus()
       .pipe(untilDestroyed(this))
-      .subscribe(() => this.cdr.markForCheck());
+      .subscribe(status => {
+        this.computingUnitStatus = status;
+        this.cdr.markForCheck();
+      });
 
     // Selecting a step on the embedded canvas is how an author picks what to expose.
     // The canvas is read-only, but highlighting still works, so we reuse it rather
@@ -714,6 +721,17 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       this.executionState !== ExecutionState.Failed &&
       this.executionState !== ExecutionState.Killed &&
       this.executionState !== ExecutionState.Terminated
+    );
+  }
+
+  /**
+   * A computing unit is chosen but its websocket is still coming up. The same signal the
+   * operator canvas shows as "Connecting" -- without it, pressing Run in this window did
+   * nothing visible and looked broken. A run started now simply waits for the connection.
+   */
+  public get isConnecting(): boolean {
+    return (
+      this.computingUnitStatus !== ComputingUnitState.NoComputingUnit && !this.workflowWebsocketService.isConnected
     );
   }
 

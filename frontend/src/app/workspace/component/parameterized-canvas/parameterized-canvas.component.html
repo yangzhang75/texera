@@ -333,8 +333,9 @@
     <p
       class="run-note"
       [class.err]="runError"
-      *ngIf="runError || isRunning || needsComputingUnit">
-      {{ runError || (isRunning ? "Running — this keeps going if you look away." : "Choose a computing unit beside Run
+      *ngIf="runError || isRunning || isConnecting || needsComputingUnit">
+      {{ runError || (isRunning ? "Running — this keeps going if you look away." : isConnecting ? "Connecting to the
+      computing unit — this takes a moment; Run will start once it is ready." : "Choose a computing unit beside Run
       first — this workflow needs one to run.") }}
     </p>
 

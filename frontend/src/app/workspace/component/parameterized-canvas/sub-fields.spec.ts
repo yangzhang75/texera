@@ -19,21 +19,15 @@
 
 import { ParameterizedCanvasComponent } from "./parameterized-canvas.component";
 
-/**
- * Locating a field inside one input means walking what formly built, which is shaped three
- * different ways depending on the property: a plain box, an object, or a repeated section
- * whose row template may be a value or a function. Each of those has already been got wrong
- * once. These helpers back the per-field rename/hide the author does on each input.
- */
+// Helpers that back per-field rename/hide: locating a field means walking formly's output,
+// which is a plain box, an object, or a repeated section (row template = value or function).
 describe("sub-fields of a parameter", () => {
   describe("paths", () => {
-    // Relative to the property the binding names, so `value` covers pairs.value.
     it("joins nested keys", () => {
       expect(ParameterizedCanvasComponent.childPath("pairs", "key")).toBe("pairs.key");
       expect(ParameterizedCanvasComponent.childPath("", "value")).toBe("value");
     });
 
-    // Every row of a repeated section is the same field; one decision covers them all.
     it("drops array indices so every row shares one decision", () => {
       expect(ParameterizedCanvasComponent.childPath("pairs", "0")).toBe("pairs");
       expect(ParameterizedCanvasComponent.childPath("pairs", "12")).toBe("pairs");
@@ -51,7 +45,6 @@ describe("sub-fields of a parameter", () => {
       expect(ParameterizedCanvasComponent.arrayItemOf({ fieldArray: item })).toBe(item);
     });
 
-    // This is what made array properties look like leaves and list nothing at all.
     it("calls it when formly supplies a builder", () => {
       const item = { key: "row" };
       expect(ParameterizedCanvasComponent.arrayItemOf({ fieldArray: () => item })).toBe(item);

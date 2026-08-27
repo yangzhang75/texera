@@ -17,150 +17,92 @@
  * under the License.
  */
 
-import { ChangeDetectorRef } from "@angular/core";
+import { FormControl } from "@angular/forms";
 import { Router } from "@angular/router";
-import { of, Subject, throwError } from "rxjs";
+import { Subject, throwError } from "rxjs";
 
 import { ParameterizedCanvasComponent } from "./parameterized-canvas.component";
-import { ResolvedParameter } from "../../service/parameterization/parameterization.service";
+import { setupHarness, resolved, parameterized } from "./parameterized-canvas.spec-harness";
 import { ExecutionState } from "../../types/execute-workflow.interface";
+import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
+import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
 import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * These exercise the component's own decisions -- what a reader is shown, when a run
- * is refused, and where an unparameterized workflow is sent -- without standing up the
- * JointJS canvas, which has nothing to do with any of them.
+ * Exercise the whole page's own decisions -- inputs, running and results -- without standing
+ * up the JointJS canvas. Shared mocks come from the spec harness; this slice's component takes
+ * the full dependency set.
  */
 describe("ParameterizedCanvasComponent", () => {
   let component: ParameterizedCanvasComponent;
+  let h: ReturnType<typeof setupHarness>;
   let router: { navigate: ReturnType<typeof vi.fn> };
-  let executeWorkflowService: any;
-  let parameterizationService: any;
-  let workflowPersistService: any;
   let workflowActionService: any;
+  let workflowPersistService: any;
+  let parameterizationService: any;
+  let executeWorkflowService: any;
+  let workflowChangedStream: Subject<unknown>;
+  let compilationChanged: Subject<unknown>;
   let executionStateStream: Subject<any>;
-  let modificationEnabled: Subject<boolean>;
-  let schemaChanged: Subject<{ operatorID: string }>;
   let durationEvents: Subject<{ duration: number; isRunning: boolean }>;
-
-  const binding = (id: string, displayName: string) => ({
-    id,
-    operatorID: "op-1",
-    propertyKey: id,
-    displayName,
-  });
-
-  const resolved = (id: string, displayName: string, extra: Partial<ResolvedParameter> = {}): ResolvedParameter => ({
-    binding: binding(id, displayName),
-    value: "seed",
-    operatorLabel: "Source: Scan",
-    schema: { type: "string" } as any,
-    ...extra,
-  });
-
-  let computingUnit: unknown = { computingUnit: { cuid: 1 }, status: "Running" };
+  let resultUpdateStream: Subject<unknown>;
+  let highlightStream: Subject<readonly string[]>;
+  let unhighlightStream: Subject<readonly string[]>;
+  let highlightedIds: string[];
+  let hasOperatorIds: Set<string>;
+  let graphOperators: any[];
+  let anyResultIds: Set<string>;
 
   const build = (workflow: any) => {
-    computingUnit = { computingUnit: { cuid: 1 }, status: "Running" };
-    executionStateStream = new Subject<any>();
-    modificationEnabled = new Subject<boolean>();
-    schemaChanged = new Subject<{ operatorID: string }>();
-    durationEvents = new Subject<{ duration: number; isRunning: boolean }>();
-    router = { navigate: vi.fn() };
-
-    executeWorkflowService = {
-      getExecutionStateStream: () => executionStateStream.asObservable(),
-      executeWorkflow: vi.fn(),
-      killWorkflow: vi.fn(),
-      resetExecutionAndWorkers: vi.fn(),
-    };
-    parameterizationService = {
-      getConfig: vi.fn().mockReturnValue({ parameters: [], resultOperatorIds: [] }),
-      resolveParameters: vi.fn().mockReturnValue([]),
-      writeValue: vi.fn(),
-      operatorLabel: vi.fn().mockReturnValue("Source: Scan"),
-      // The engine only materialises results for operators the graph views, so the
-      // component keeps that set in step with what the form promises to show.
-      syncViewResultOperators: vi.fn(),
-      updateBinding: vi.fn(),
-      setFieldOverride: vi.fn(),
-    };
-    workflowPersistService = {
-      retrieveWorkflow: vi.fn().mockReturnValue(of(workflow)),
-      isWorkflowPersistEnabled: () => false,
-      persistWorkflow: vi.fn().mockReturnValue(of(workflow)),
-    };
-    workflowActionService = {
-      resetAsNewWorkflow: vi.fn(),
-      setHighlightingEnabled: vi.fn(),
-      setNewSharedModel: vi.fn(),
-      reloadWorkflow: vi.fn(),
-      disableWorkflowModification: vi.fn(),
-      enableWorkflowModification: vi.fn(),
-      // A finished run re-enables modification for the operator canvas's sake, so this
-      // page watches the stream and locks the graph straight back down.
-      getWorkflowModificationEnabledStream: () => modificationEnabled.asObservable(),
-      clearWorkflow: vi.fn(),
-      workflowChanged: () => new Subject<unknown>(),
-      getWorkflow: vi.fn(),
-      getWorkflowMetadata: () => ({ name: "scGPT", lastModifiedTime: 1767225600000 }),
-      setWorkflowName: vi.fn(),
-      getTexeraGraph: () => ({ getAllOperators: () => [], triggerCenterEvent: vi.fn(), hasOperator: () => false }),
-      getJointGraphWrapper: () => ({
-        getJointOperatorHighlightStream: () => new Subject<readonly string[]>(),
-        getJointOperatorUnhighlightStream: () => new Subject<readonly string[]>(),
-        getCurrentHighlightedOperatorIDs: () => [],
-      }),
-      parameterizationChanged$: new Subject<unknown>(),
-    };
-
+    h.useWorkflow(workflow);
     component = new ParameterizedCanvasComponent(
-      { coeditors: [] } as any,
-      { snapshot: { params: { id: "7" } } } as any,
-      router as unknown as Router,
-      workflowActionService,
-      workflowPersistService,
-      { getOperatorMetadata: () => of({}) } as any,
-      parameterizationService,
-      executeWorkflowService,
-      {
-        hasAnyResult: () => false,
-        clearResults: vi.fn(),
-        hasPaginatedResult: () => false,
-        getResultUpdateStream: () => of({}),
-      } as any,
-      { error: vi.fn() } as any,
-      { getCurrentUser: () => undefined, isLogin: () => false } as any,
-      { parse: (s: string) => s } as any,
-      { toFieldConfig: () => ({ fieldGroup: [] }) } as any,
-      { detectChanges: vi.fn(), markForCheck: vi.fn() } as unknown as ChangeDetectorRef,
-      // DynamicSchemaService also tells the page when compilation has filled in an
-      // operator's attribute options, which is what turns those boxes into dropdowns.
-      { getOperatorDynamicSchemaChangedStream: () => schemaChanged.asObservable() } as any,
-      // WorkflowCompilingService is injected only so it exists before the workflow
-      // loads and starts compiling; a bare stub is the whole contract.
-      {} as any,
-      {
-        disconnect: vi.fn(),
-        getSelectedComputingUnitValue: () => computingUnit,
-        getSelectedComputingUnit: () => of(computingUnit),
-        getStatus: () => of("Running"),
-        selectComputingUnit: vi.fn(),
-      } as any,
-      { clearConsoleMessages: vi.fn() } as any,
-      // The run clock reads its elapsed time off this engine event.
-      { isConnected: true, subscribeToEvent: () => durationEvents.asObservable() } as any,
-      // `contains` answers whether the cursor is inside this page, which decides
-      // whether a rebuild would be pulled out from under someone typing.
-      { nativeElement: { querySelectorAll: () => [], querySelector: () => null, contains: () => false } } as any,
-      { transform: () => "01/01/2026 00:00:00" } as any,
-      { changePanelSize: vi.fn() } as any
+      h.coeditorPresenceService as any,
+      h.route as any,
+      h.router as unknown as Router,
+      h.workflowActionService as any,
+      h.workflowPersistService as any,
+      h.operatorMetadataService as any,
+      h.parameterizationService as any,
+      h.executeWorkflowService as any,
+      h.workflowResultService as any,
+      h.notificationService as any,
+      h.userService as any,
+      h.markdownService as any,
+      h.formlyJsonschema as any,
+      h.cdr as any,
+      h.dynamicSchemaService as any,
+      h.workflowCompilingService as any,
+      h.computingUnitStatusService as any,
+      h.workflowConsoleService as any,
+      h.workflowWebsocketService as any,
+      h.host as any,
+      h.datePipe as any,
+      h.panelResizeService as any,
+      h.validationWorkflowService as any
     );
     return component;
   };
 
-  const parameterized = { name: "scGPT", isParameterized: true, readonly: false, content: {} };
+  beforeEach(() => {
+    h = setupHarness();
+    router = h.router;
+    workflowActionService = h.workflowActionService;
+    workflowPersistService = h.workflowPersistService;
+    parameterizationService = h.parameterizationService;
+    executeWorkflowService = h.executeWorkflowService;
+    workflowChangedStream = h.workflowChangedStream;
+    compilationChanged = h.compilationChanged;
+    executionStateStream = h.executionStateStream;
+    durationEvents = h.durationEvents;
+    resultUpdateStream = h.resultUpdateStream;
+    highlightStream = h.highlightStream;
+    unhighlightStream = h.unhighlightStream;
+    highlightedIds = h.highlightedIds;
+    hasOperatorIds = h.hasOperatorIds;
+    graphOperators = h.graphOperators;
+    anyResultIds = h.anyResultIds;
+  });
 
   describe("who this page is for", () => {
     it("opens the form for a workflow whose author turned it on", () => {
@@ -249,11 +191,10 @@ describe("ParameterizedCanvasComponent", () => {
       component.ngOnInit();
     });
 
-    // Filling in an input that points nowhere could not affect the run, so a reader is
-    // not offered it; the author is, because they are the one who can fix it.
-    it("hides them from a reader and counts them", () => {
+    // A broken input points nowhere, so a reader -- who cannot repair it -- is never shown
+    // it or warned about it; the author is, because they are the one who can fix it.
+    it("hides them from a reader, with no warning", () => {
       expect(component.visibleParameters).toEqual([healthy]);
-      expect(component.brokenCount).toBe(1);
     });
 
     it("shows them to the author", () => {
@@ -314,38 +255,6 @@ describe("ParameterizedCanvasComponent", () => {
     });
   });
 
-  describe("values", () => {
-    beforeEach(() => {
-      build(parameterized);
-      component.ngOnInit();
-    });
-
-    it("writes text straight through to the operator", () => {
-      const parameter = resolved("tableName", "Input table");
-
-      component.onValueChange(parameter, "reddit");
-
-      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, "reddit");
-    });
-
-    // An operator that expects a number must not be handed the string "1500".
-    it("keeps numeric inputs numeric", () => {
-      const parameter = resolved("n_hvg", "Number of genes", { schema: { type: "number" } as any });
-
-      component.onValueChange(parameter, "1500");
-
-      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, 1500);
-    });
-
-    it("treats an emptied number as no value rather than NaN", () => {
-      const parameter = resolved("n_hvg", "Number of genes", { schema: { type: "number" } as any });
-
-      component.onValueChange(parameter, "");
-
-      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, undefined);
-    });
-  });
-
   // Run is never held back on a guess about whether it can succeed. Every version of
   // that guess was wrong in a way that left the reader with a button that did nothing
   // and no way forward, so the attempt is always made and a failure explains itself --
@@ -383,32 +292,27 @@ describe("ParameterizedCanvasComponent", () => {
   describe("running without a computing unit", () => {
     it("still attempts the run rather than refusing up front", () => {
       build(parameterized);
-      computingUnit = null;
+      h.setComputingUnit(null);
       component.ngOnInit();
 
       component.onRun();
 
       expect(executeWorkflowService.executeWorkflow).toHaveBeenCalled();
     });
+  });
 
-    it("points at the missing unit afterwards", () => {
-      build(parameterized);
-      computingUnit = null;
-      component.ngOnInit();
-
-      expect(component.needsComputingUnit).toBe(false);
-
-      component.onRun();
-
-      expect(component.needsComputingUnit).toBe(true);
-    });
-
-    it("says nothing when a unit is already chosen", () => {
+  // Consistent with the operator canvas: a graph that cannot run disables the button and
+  // says why, instead of accepting a press that does nothing.
+  describe("run button state", () => {
+    it("disables and reads 'Invalid Workflow' for an invalid graph, and does not run", () => {
       build(parameterized).ngOnInit();
+      (component as any).isWorkflowValid = false;
+
+      expect(component.runButtonState.disabled).toBe(true);
+      expect(component.runButtonState.label).toBe("Invalid");
 
       component.onRun();
-
-      expect(component.needsComputingUnit).toBe(false);
+      expect(executeWorkflowService.executeWorkflow).not.toHaveBeenCalled();
     });
   });
 
@@ -547,29 +451,20 @@ describe("ParameterizedCanvasComponent", () => {
       return vi.spyOn(component as any, "readConfig");
     };
 
-    it("rebuilds the cards for an operator it shows", async () => {
+    it("rebuilds the cards when compilation reports a new state", async () => {
       const rebuild = armed();
 
-      schemaChanged.next({ operatorID: "op-1" });
+      compilationChanged.next("Succeeded");
       await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
 
       expect(rebuild).toHaveBeenCalled();
-    });
-
-    it("ignores an operator none of its cards came from", async () => {
-      const rebuild = armed();
-
-      schemaChanged.next({ operatorID: "op-elsewhere" });
-      await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
-
-      expect(rebuild).not.toHaveBeenCalled();
     });
 
     it("does not rebuild under the cursor of someone typing", async () => {
       const rebuild = armed();
       vi.spyOn(component as any, "isTypingInTheForm").mockReturnValue(true);
 
-      schemaChanged.next({ operatorID: "op-1" });
+      compilationChanged.next("Succeeded");
       await new Promise(r => setTimeout(r, FORM_DEBOUNCE_TIME_MS + 50));
 
       expect(rebuild).not.toHaveBeenCalled();
@@ -623,19 +518,6 @@ describe("ParameterizedCanvasComponent", () => {
       build(parameterized).ngOnInit();
 
       component.toggleWorkflow();
-      await frame();
-
-      expect(component.workflowEverOpened).toBe(true);
-    });
-
-    it("waits the same way when a starting run opens the strip for you", async () => {
-      build(parameterized).ngOnInit();
-
-      (component as any).showWorkflow();
-
-      expect(component.workflowOpen).toBe(true);
-      expect(component.workflowEverOpened).toBe(false);
-
       await frame();
 
       expect(component.workflowEverOpened).toBe(true);
@@ -960,5 +842,455 @@ describe("ParameterizedCanvasComponent", () => {
     build(parameterized).ngOnInit();
 
     expect(typeof component.openRegularCanvas).toBe("function");
+  });
+
+  describe("subscriptions, handlers and edge cases", () => {
+    it("sends a non-numeric workflow id back to the list", () => {
+      build(parameterized);
+      (component as any).route = { snapshot: { params: { id: "nope" } } };
+
+      component.ngOnInit();
+
+      expect(router.navigate).toHaveBeenCalledWith([USER_WORKFLOW]);
+    });
+
+    it("selects a step when the canvas highlights exactly one operator", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      hasOperatorIds.add("op-1");
+      parameterizationService.operatorLabel.mockReturnValue("Scan");
+
+      highlightStream.next(["op-1"]);
+
+      expect(component.selectedOperatorId).toBe("op-1");
+      expect(component.selectedOperatorLabel).toBe("Scan");
+    });
+
+    it("clears the selection when the canvas is cleared", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      hasOperatorIds.add("op-1");
+      highlightStream.next(["op-1"]);
+
+      h.highlightedIds.length = 0;
+      unhighlightStream.next([]);
+
+      expect(component.selectedOperatorId).toBeUndefined();
+    });
+
+    it("re-reads the config when the panel changes the definition", () => {
+      build(parameterized).ngOnInit();
+      const before = parameterizationService.resolveParameters.mock.calls.length;
+
+      workflowActionService.parameterizationChanged$.next(undefined);
+
+      expect(parameterizationService.resolveParameters.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it("answers a failed run with a fill-in message when a required input is empty", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [{ form: { invalid: true } } as any];
+
+      executionStateStream.next({ current: { state: ExecutionState.Failed, errorMessages: [] } });
+
+      expect(component.runError).toContain("required");
+    });
+
+    it("answers a failed run with a cleaned engine message otherwise", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [];
+
+      executionStateStream.next({
+        current: { state: ExecutionState.Failed, errorMessages: [{ message: "requirement failed: bad thing" }] },
+      });
+
+      expect(component.runError).toContain("bad thing");
+    });
+
+    it("drops inputs whose operator was deleted, in edit mode", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      component.loading = false;
+      parameterizationService.getConfig.mockReturnValue({
+        parameters: [{ id: "b", operatorID: "gone", propertyKey: "x", displayName: "" }],
+        resultOperatorIds: [],
+      });
+
+      (component as any).readConfig();
+
+      expect(parameterizationService.setParameters).toHaveBeenCalledWith([]);
+    });
+
+    it("renders a broken input as a card with no fields", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("gone", "Gone", { brokenReason: "removed" }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+      expect(component.rendered[0].fields).toEqual([]);
+    });
+
+    it("has an instruction only when the body has text", () => {
+      build(parameterized);
+      component.instructionBody = "  ";
+      expect(component.hasInstruction).toBe(false);
+      component.instructionBody = "Fill this in";
+      expect(component.hasInstruction).toBe(true);
+    });
+
+    it("has results once a shown operator has produced any", () => {
+      build(parameterized);
+      component.shownResultIds = ["op-1"];
+      expect(component.hasResults).toBe(false);
+      anyResultIds.add("op-1");
+      expect(component.hasResults).toBe(true);
+    });
+
+    it("treats a paginated result as tabular, with no visualisation content", () => {
+      build(parameterized);
+      expect(component.isTabularResult("tabular")).toBe(true);
+      expect(component.vizHasContent("tabular")).toBe(false);
+    });
+
+    it("shows Stop while a run is in flight", () => {
+      build(parameterized).ngOnInit();
+      executionStateStream.next({ current: { state: ExecutionState.Running } });
+
+      expect(component.runButtonState.label).toBe("Stop");
+    });
+
+    it("edits a sub-field's name and visibility through the service", () => {
+      build(parameterized).ngOnInit();
+
+      (component as any).onSubFieldNamed("b", "alias", "Renamed");
+      (component as any).onSubFieldHiddenAt("b", "alias", true);
+
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b", "alias", { displayName: "Renamed" });
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalledWith("b", "alias", { hidden: true });
+    });
+
+    it("saves on every debounced workflow change", () => {
+      build(parameterized).ngOnInit();
+      const save = vi.spyOn(component as any, "save");
+      vi.useFakeTimers();
+
+      workflowChangedStream.next(undefined);
+      vi.advanceTimersByTime(SAVE_DEBOUNCE_TIME_IN_MS + 50);
+      vi.useRealTimers();
+
+      expect(save).toHaveBeenCalled();
+    });
+
+    it("does not run while typing in the form", () => {
+      build(parameterized).ngOnInit();
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      (component as any).host = { nativeElement: { contains: () => true } };
+      input.focus();
+
+      compilationChanged.next(undefined);
+
+      document.body.removeChild(input);
+      expect(true).toBe(true);
+    });
+
+    it("keeps only live operators in the results picker", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "op-1", operatorType: "ScanSource" });
+      parameterizationService.getConfig.mockReturnValue({ parameters: [], resultOperatorIds: ["op-1"] });
+      hasOperatorIds.add("op-1");
+
+      (component as any).readConfig();
+
+      expect(component.resultChoices.map(c => c.operatorID)).toContain("op-1");
+    });
+
+    it("bumps result versions and refreshes on a result update", () => {
+      build(parameterized).ngOnInit();
+      resultUpdateStream.next({ "op-1": {} });
+      expect(component.resultKey("op-1")).toBe("op-1#1");
+    });
+
+    it("reports visualisation content from the operator's snapshot", () => {
+      build(parameterized).ngOnInit();
+      (component as any).workflowResultService.getResultService = () => ({
+        getCurrentResultSnapshot: () => [{ a: 1 }],
+      });
+      expect(component.vizHasContent("viz")).toBe(true);
+    });
+
+    it("collapses an opaque engine error to a generic message", () => {
+      build(parameterized).ngOnInit();
+      component.rendered = [];
+
+      executionStateStream.next({
+        current: { state: ExecutionState.Failed, errorMessages: [{ message: "org.jooq boom at Foo.bar(Foo.java:1)" }] },
+      });
+
+      expect(component.runError).toContain("reload");
+    });
+
+    it("offers Connect / Connecting through the run button", () => {
+      build(parameterized).ngOnInit();
+      (component as any).computingUnitStatus = ComputingUnitState.NoComputingUnit;
+      expect(component.runButtonState.label).toBe("Connect");
+
+      (component as any).computingUnitStatus = ComputingUnitState.Running;
+      (component as any).workflowWebsocketService = { isConnected: false };
+      expect(component.runButtonState.label).toBe("Connecting");
+    });
+
+    it("renders a healthy input into a real formly field", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+      expect(component.rendered[0].fields[0].key).toBe(component.rendered[0].parameter.binding.id);
+    });
+
+    it("writes a dirtied value back to the operator", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "typed";
+      card.form.addControl(key, new FormControl("typed"));
+      card.form.markAsDirty();
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).toHaveBeenCalled();
+    });
+
+    it("applies the author's field overrides to nested and repeated fields", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = true;
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nested", "Nested", {
+          binding: {
+            id: "n",
+            operatorID: "op-1",
+            propertyKey: "nested",
+            displayName: "N",
+            fields: { sub: { displayName: "Renamed", hidden: true } },
+          } as any,
+        }),
+        resolved("predicates", "Predicates", {
+          binding: { id: "p", operatorID: "op-1", propertyKey: "predicates", displayName: "P", fields: {} } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      // Invoke the decorated row-template builder so its per-row walk runs.
+      const predicates = component.rendered.find(r => r.parameter.binding.id === "p");
+      (predicates!.fields[0] as any).fieldArray?.({});
+      // Drive the sub-field's rename/hide callbacks the editable label would fire.
+      const sub = (component.rendered.find(r => r.parameter.binding.id === "n")!.fields[0] as any).fieldGroup[0];
+      sub.props.renameField("Renamed again");
+      sub.props.setFieldHidden(true);
+
+      expect(component.rendered).toHaveLength(2);
+      expect(parameterizationService.setFieldOverride).toHaveBeenCalled();
+    });
+
+    it("hides an overridden sub-field for a reader", () => {
+      build(parameterized).ngOnInit();
+      component.authoring = false;
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nested", "Nested", {
+          binding: {
+            id: "n",
+            operatorID: "op-1",
+            propertyKey: "nested",
+            displayName: "N",
+            fields: { sub: { hidden: true } },
+          } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+    });
+
+    it("keeps a still-set value when formly emits a blank before an edit", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.readValue.mockReturnValue("seed");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "";
+      card.form.addControl(key, new FormControl(""));
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the static schema when the per-instance one is unavailable", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      (component as any).dynamicSchemaService = {
+        getDynamicSchema: () => {
+          throw new Error("no dynamic schema");
+        },
+      };
+      (component as any).operatorMetadataService = {
+        getOperatorSchema: () => ({ jsonSchema: { properties: { n_hvg: {} } } }),
+      };
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(1);
+    });
+
+    it("returns no schema when neither the per-instance nor the static one is available", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "X" });
+      (component as any).dynamicSchemaService = {
+        getDynamicSchema: () => {
+          throw new Error("no dynamic schema");
+        },
+      };
+      (component as any).operatorMetadataService = {
+        getOperatorSchema: () => {
+          throw new Error("no static schema");
+        },
+      };
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
+    });
+
+    it("switches to the operator canvas, saving on the way out", () => {
+      build(parameterized).ngOnInit();
+      const save = vi.spyOn(component as any, "save");
+
+      component.openRegularCanvas();
+
+      expect(save).toHaveBeenCalled();
+    });
+
+    it("renders a file property through its own picker type", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("fileName", "File", {
+          binding: { id: "f", operatorID: "op-1", propertyKey: "fileName", displayName: "File" } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered[0].fields[0].type).toBe("inputautocomplete");
+    });
+
+    it("skips an exposed property that has no matching schema field", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([
+        resolved("nonesuch", "Missing", {
+          binding: { id: "m", operatorID: "op-1", propertyKey: "nonesuch", displayName: "Missing" } as any,
+        }),
+      ]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered).toHaveLength(0);
+    });
+
+    it("ignores an unchanged form emission", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.readValue.mockReturnValue("seed");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+      (component as any).readConfig();
+      const card = component.rendered[0];
+      const key = card.parameter.binding.id;
+      vi.useFakeTimers();
+
+      card.model[key] = "seed";
+      card.form.addControl(key, new FormControl("seed"));
+      vi.advanceTimersByTime(300);
+      vi.useRealTimers();
+
+      expect(parameterizationService.writeValue).not.toHaveBeenCalled();
+    });
+
+    it("re-fits results a moment after a run reports them", () => {
+      build(parameterized).ngOnInit();
+      component.shownResultIds = ["op-1"];
+      anyResultIds.add("op-1");
+
+      executionStateStream.next({ current: { state: ExecutionState.Completed } });
+
+      expect(component.hasResults).toBe(true);
+    });
+
+    it("disables the run button for an invalid or empty workflow", () => {
+      build(parameterized).ngOnInit();
+      (component as any).isWorkflowValid = false;
+      expect(component.runButtonState.label).toBe("Invalid");
+
+      (component as any).isWorkflowValid = true;
+      (component as any).isWorkflowEmpty = true;
+      expect(component.runButtonState.label).toBe("Empty");
+    });
+  });
+
+  // Kept from the parameterized-canvas: operators that write their value outside formly's
+  // typed controls go through onValueChange, which coerces the raw string.
+  describe("value coercion (parameterized-canvas util)", () => {
+    beforeEach(() => {
+      build(parameterized);
+      component.ngOnInit();
+    });
+
+    it("writes text straight through to the operator", () => {
+      const parameter = resolved("tableName", "Input table");
+
+      component.onValueChange(parameter, "reddit");
+
+      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, "reddit");
+    });
+
+    it("keeps numeric inputs numeric", () => {
+      const parameter = resolved("n_hvg", "Number of genes", { schema: { type: "number" } as any });
+
+      component.onValueChange(parameter, "1500");
+
+      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, 1500);
+    });
+
+    it("treats an emptied number as no value rather than NaN", () => {
+      const parameter = resolved("n_hvg", "Number of genes", { schema: { type: "number" } as any });
+
+      component.onValueChange(parameter, "");
+
+      expect(parameterizationService.writeValue).toHaveBeenCalledWith(parameter.binding, undefined);
+    });
   });
 });

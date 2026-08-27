@@ -49,6 +49,7 @@ import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-w
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
 import { ParameterizationService, ResolvedParameter } from "../../service/parameterization/parameterization.service";
 import { WorkflowActionService } from "../../service/workflow-graph/model/workflow-action.service";
+import { ValidationWorkflowService } from "../../service/validation/validation-workflow.service";
 import { isSink } from "../../service/workflow-graph/model/workflow-graph";
 import { WorkflowConsoleService } from "../../service/workflow-console/workflow-console.service";
 import { WorkflowResultService } from "../../service/workflow-result/workflow-result.service";
@@ -68,11 +69,9 @@ import { SAVE_DEBOUNCE_TIME_IN_MS } from "../workspace.component";
 import { FORM_DEBOUNCE_TIME_MS } from "../../service/execute-workflow/execute-workflow.service";
 
 /**
- * One input as it is actually rendered: the binding, plus the operator's own form field
- * for that property. Building the field from the operator's JSON schema -- rather than
- * guessing a control from the value -- is what makes a file property render the real
- * file picker, an attribute property a column dropdown, and so on. It is the same slice
- * the template and macro pages take.
+ * One rendered input: the binding plus the operator's own formly field for that property.
+ * Building the field from the operator's JSON schema (not guessing from the value) is what
+ * gives a file its picker and an attribute its column dropdown.
  */
 interface RenderedParameter {
   parameter: ResolvedParameter;
@@ -89,13 +88,9 @@ interface ResultChoice {
 }
 
 /**
- * The Parameterized Canvas: the second way to use a workflow.
- *
- * It shows the inputs an author chose to expose, a Run button, the workflow itself
- * (collapsed unless you go looking), and the results underneath. It is a view, not a
- * new kind of object -- it opens the same workflow the operator canvas opens, edits
- * the same operator properties, and runs the very same execution. Switching between
- * the two views changes what you see, never what you are working on.
+ * The Form View: a second way to use a workflow. Shows the inputs an author exposed, a Run
+ * button, the (collapsed) workflow and its results. A view, not a new object -- it opens the
+ * same workflow the canvas does, edits the same properties, runs the same execution.
  */
 @UntilDestroy()
 @Component({
@@ -143,7 +138,6 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   public rendered: RenderedParameter[] = [];
   /** Torn down and replaced whenever the form is rebuilt, so old fields stop writing. */
   private formsRebuilt = new Subject<void>();
-  public brokenCount = 0;
   /** Set on teardown so deferred callbacks stop touching a view that is gone. */
   private destroyed = false;
   /**
@@ -161,26 +155,23 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
 
   public executionState: ExecutionState = ExecutionState.Uninitialized;
   public runError = "";
-  /**
-   * Set when Run was pressed with no computing unit chosen. A hint after the fact, not a
-   * condition checked beforehand: the run is always attempted, and every earlier attempt
-   * to decide in advance whether it could succeed left the button dead with no recourse.
-   * Clears itself the moment a unit appears.
-   */
-  public needsComputingUnit = false;
-  /** Latest computing-unit state, so the page can show "Connecting…" while the unit's
-   *  websocket is still coming up -- the same signal the operator canvas uses. */
+
+  /** The picked unit's connection state, mirrored from the same stream the operator
+   *  canvas reads, so "Connecting" here means exactly what it means there. */
   public computingUnitStatus: ComputingUnitState = ComputingUnitState.NoComputingUnit;
+
+  /** Workflow validity, read from the same validation stream the operator canvas uses,
+   *  so Run is disabled ("Invalid Workflow" / "Empty Workflow") in the same cases. */
+  public isWorkflowValid = true;
+  public isWorkflowEmpty = false;
 
   /** The step whose property panel is open, if any. */
   public selectedOperatorId?: string;
   public selectedOperatorLabel = "";
   /**
-   * The operator positions as they were stored. This page shows the workflow in a short
-   * strip that starts out collapsed, and a canvas measured while hidden reports
-   * meaningless geometry -- which autosave would then write back, flattening the
-   * author's layout to the origin. Positions are therefore carried through saves
-   * untouched: arranging the canvas belongs to the canvas.
+   * Operator positions as stored. The workflow shows in a collapsible strip, and a canvas
+   * measured while hidden reports junk geometry that autosave would flatten to the origin --
+   * so positions are carried through saves untouched.
    */
   private storedPositions: { [operatorID: string]: Point } = {};
 
@@ -204,12 +195,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     // it has to exist before the workflow loads or every operator arrives unregistered
     // and anything asking for a schema later throws.
     private dynamicSchemaService: DynamicSchemaService,
-    // Injected for its side effect too, and for the same reason. It compiles the
-    // workflow in response to graph changes and writes the upstream column names into
-    // each operator's dynamic schema -- that is what turns an attribute box into a
-    // dropdown. Nothing else on this page injects it, so without this line it was never
-    // constructed, never subscribed, never compiled, and every attribute on the form
-    // fell back to a plain text input while the operator canvas showed a dropdown.
+    // Injected for its side effect: it compiles on graph changes and writes column names
+    // into each operator's dynamic schema (what turns an attribute box into a dropdown).
+    // Nothing else on this page injects it, so without this line it never ran.
     private workflowCompilingService: WorkflowCompilingService,
     private computingUnitStatusService: ComputingUnitStatusService,
     private workflowConsoleService: WorkflowConsoleService,
@@ -219,7 +207,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     // The result table sizes its rows-per-page from this shared panel height. On the
     // operator canvas the docked panel drives it; this page has no such panel, so it was
     // left at the tiny default (300px) and every table showed a single row per page.
-    private panelResizeService: PanelResizeService
+    private panelResizeService: PanelResizeService,
+    // Same source the operator canvas reads its "Invalid Workflow" / "Empty Workflow"
+    // states from, so Run is disabled here exactly when it is disabled there.
+    private validationWorkflowService: ValidationWorkflowService
   ) {}
 
   ngOnInit(): void {
@@ -252,46 +243,47 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       });
 
-    // An attribute box is a dropdown only once the workflow has been compiled and the
-    // upstream column names written into the operator's dynamic schema. That answer
-    // arrives over the network, well after these cards were built from the schema as it
-    // stood at load, and nothing else rebuilds them -- so every attribute stayed a plain
-    // text input while the operator canvas, which does watch this stream, showed a
-    // dropdown of the same columns.
-    this.dynamicSchemaService
-      .getOperatorDynamicSchemaChangedStream()
+    // Attribute boxes become dropdowns only after compilation writes the column enums into
+    // each operator's dynamic schema -- which lands after these cards were built. Rebuild on
+    // the compilation-state stream, a ReplaySubject(1) so a late subscriber (this page
+    // reloads fresh on every Canvas<->Form switch) gets the current state at once; the
+    // per-operator dynamic-schema stream is not replayed, so its emissions were missed.
+    this.workflowCompilingService
+      .getCompilationStateInfoChangedStream()
       .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), untilDestroyed(this))
-      .subscribe(({ operatorID }) => {
-        // Rebuilding tears down the controls, so doing it under someone's cursor would
-        // take the box they are typing in out from under them. Their own edit is what
-        // triggered this, and the schema they need is already the one they can see.
-        if (!this.rendersOperator(operatorID) || this.isTypingInTheForm()) {
+      .subscribe(() => {
+        if (this.isTypingInTheForm()) {
           return;
         }
         this.readConfig();
       });
 
-    // Whether a run is possible is read from a getter, so something has to tell this
-    // view when the answer changes. A unit connects a moment after it is picked, and
-    // without this Run stayed grey beside a selector already showing its green dot --
-    // with nothing the reader could do about it.
-    // markForCheck, not detectChanges: detectChanges runs a synchronous pass that an
-    // unrelated component's NG0100 can throw out of, which would kill this subscription
-    // and leave Run permanently grey again -- the very thing it is here to prevent.
+    // The run button's state is read from getters, so a change in unit/connection/validity
+    // has to repaint the view. markForCheck, not detectChanges: a synchronous pass can be
+    // thrown out of by an unrelated component's NG0100, killing the subscription.
     this.computingUnitStatusService
       .getSelectedComputingUnit()
       .pipe(untilDestroyed(this))
-      .subscribe(unit => {
-        if (unit) {
-          this.needsComputingUnit = false;
-        }
-        this.cdr.markForCheck();
-      });
+      .subscribe(() => this.cdr.markForCheck());
     this.computingUnitStatusService
       .getStatus()
       .pipe(untilDestroyed(this))
       .subscribe(status => {
         this.computingUnitStatus = status;
+        this.cdr.markForCheck();
+      });
+    this.workflowWebsocketService
+      .getConnectionStatusStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(() => this.cdr.markForCheck());
+    // Validity from the canvas's own stream, so a broken graph disables Run ("Invalid") here
+    // exactly as it does there.
+    this.validationWorkflowService
+      .getWorkflowValidationErrorStream()
+      .pipe(untilDestroyed(this))
+      .subscribe(value => {
+        this.isWorkflowEmpty = value.workflowEmpty;
+        this.isWorkflowValid = Object.keys(value.errors).length === 0;
         this.cdr.markForCheck();
       });
 
@@ -321,8 +313,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       .pipe(untilDestroyed(this))
       .subscribe(() => {
         if (this.workflowActionService.getJointGraphWrapper().getCurrentHighlightedOperatorIDs().length === 0) {
-          this.selectedOperatorId = undefined;
-          this.selectedOperatorLabel = "";
+          this.clearSelection();
           this.cdr.detectChanges();
         }
       });
@@ -363,12 +354,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
             ? "Run failed: please fill in the required fields."
             : this.friendlyRunError(current.errorMessages?.[0]?.message?.trim() ?? "");
         }
-        // We deliberately do NOT re-fit the preview when a run starts. A run repaints the
-        // operators (port counts appear, borders change) which grows their bounding boxes,
-        // and a re-fit then zoomed the whole graph down -- so pressing Run made a large
-        // workflow visibly shrink. The editor now keeps its own geometry correct via its
-        // container ResizeObserver, so the run repaint no longer needs a viewport re-fit;
-        // leaving the view where the reader put it is the right behaviour.
+        // Do NOT re-fit the preview when a run starts: the run repaints operators (growing
+        // their boxes) and a re-fit then zoomed the whole graph down -- pressing Run made a
+        // large workflow shrink. The editor keeps its own geometry via its ResizeObserver.
         if (this.hasResults) {
           this.later(() => this.fitVisualisations(), 400);
         }
@@ -388,8 +376,8 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       .pipe(untilDestroyed(this))
       .subscribe({
         next: ({ workflow }) => {
-          // The form is only offered for workflows whose author turned it on. Reaching
-          // this URL any other way lands on the operator canvas instead of an empty page.
+          // The form is only offered for a workflow the author marked parameterized.
+          // Reaching this URL any other way lands on the operator canvas, not an empty page.
           if (workflow.isParameterized !== true) {
             void this.router.navigate([USER_WORKSPACE, String(wid)], { replaceUrl: true });
             return;
@@ -419,12 +407,6 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       });
   }
 
-  /** Re-read everything the view renders from the definition and the live graph. */
-  /** Whether any card on this page shows a setting belonging to that operator. */
-  private rendersOperator(operatorID: string): boolean {
-    return this.parameters.some(p => p.binding.operatorID === operatorID);
-  }
-
   /** Whether the cursor is currently inside one of this page's inputs. */
   private isTypingInTheForm(): boolean {
     const active = document.activeElement as HTMLElement | null;
@@ -434,15 +416,37 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     return ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
   }
 
+  /**
+   * Drop exposed inputs whose operator was deleted: they can never be filled, and a
+   * re-added operator gets a fresh id so they could not reconnect. Guarded to edit mode
+   * and after load, so a reader never mutates the workflow and a not-yet-seeded mid-load
+   * graph never deletes a still-valid input. Only the operator-gone case, not a transiently
+   * missing property schema.
+   */
+  private pruneBrokenBindings(): void {
+    if (this.loading || !this.authoring) {
+      return;
+    }
+    const graph = this.workflowActionService.getTexeraGraph();
+    const params = this.parameterizationService.getConfig().parameters;
+    const alive = params.filter(p => graph.hasOperator(p.operatorID));
+    if (alive.length !== params.length) {
+      this.parameterizationService.setParameters(alive);
+    }
+  }
+
   private readConfig(): void {
+    this.pruneBrokenBindings();
     const config = this.parameterizationService.getConfig();
     this.parameters = this.parameterizationService.resolveParameters();
-    this.brokenCount = this.parameters.filter(p => p.brokenReason).length;
     this.instructionTitle = config.instruction?.title ?? "";
     this.instructionBody = config.instruction?.body ?? "";
-    this.shownResultIds = config.resultOperatorIds;
-    // A sink writes its output elsewhere and never has a result to show, so leave it out
-    // of the picker; every other operator can be offered.
+    // Result cards only for operators that still exist: a deleted one lingers in the saved
+    // config and rendered a stale card titled with its raw id. The picker is built from live
+    // operators, so it un-checks itself.
+    const graph = this.workflowActionService.getTexeraGraph();
+    this.shownResultIds = config.resultOperatorIds.filter(id => graph.hasOperator(id));
+    // A sink has no result to show, so leave it out of the picker.
     this.resultChoices = this.operators()
       .filter(op => !isSink(op))
       .map(op => ({
@@ -458,16 +462,8 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Build the form from the operators' own JSON schemas.
-   *
-   * For each exposed property we take the operator's schema, convert the whole thing
-   * with FormlyJsonschema, and keep the one field for that property. That is what gives
-   * a file property the real file picker and an enum a dropdown -- the same slice the
-   * template and macro pages take. The author's display name and help text are applied
-   * on top as the field's label and description; they never change the control.
-   *
-   * Each input gets its own form keyed by the binding id, so two operators exposing a
-   * property of the same name cannot collide.
+   * Build the form from the operators' JSON schemas (FormlyJsonschema), keeping the one
+   * field per exposed property. Each input gets its own form keyed by binding id.
    */
   private buildForm(): void {
     this.formsRebuilt.next();
@@ -501,13 +497,14 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     }
 
     const field = cloneDeep(source);
-    // What the operator's own schema calls this setting. It is the placeholder behind
-    // the author's name box, so clearing the name shows what the reader falls back to.
+    // The schema's own title ("Attributes", "Limit", "File") -- the reader's title when
+    // unnamed, and the author's placeholder. Falls back to this, not the lower-camel key
+    // ("fileName"), which would leave reader titles inconsistently cased.
     const schemaLabel = (source.props?.label as string) || binding.propertyKey;
     field.key = binding.id;
     field.props = {
       ...(field.props ?? {}),
-      label: binding.displayName || binding.propertyKey,
+      label: binding.displayName || schemaLabel,
       // Help text is rendered once by the card itself (.param-help-text in the reader,
       // the "Help text" box for the author). Do NOT also hand it to formly as the field
       // description, or scalar fields show it twice (formly's copy + the card's copy).
@@ -519,13 +516,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     form.valueChanges
       .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), takeUntil(this.formsRebuilt), untilDestroyed(this))
       .subscribe(() => {
-        // Formly emits while it is building the control, before anyone has touched it,
-        // and that emission carries the schema's own empty default. Writing it back put
-        // the default onto the operator and silently undid whatever had been changed on
-        // the operator canvas -- the two views edit one workflow, so that was real data
-        // loss, not a display glitch. An edit is either a form the user has dirtied, or
-        // a value that differs from what the operator holds without being emptier than
-        // it (some controls set their value programmatically and never mark dirty).
+        // Formly emits the schema's empty default while building the control, before any
+        // edit; writing that back silently wiped the operator's real value (both views edit
+        // one workflow). So only accept a dirtied form, or a value that differs from the
+        // operator's without being emptier (some controls set values without marking dirty).
         const next = model[binding.id];
         const current = this.parameterizationService.readValue(binding.operatorID, binding.propertyKey);
         const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
@@ -533,12 +527,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
         if (unchanged || (!form.dirty && isEmpty(next) && !isEmpty(current))) {
           return;
         }
-        // Writing straight onto the operator is the same edit the operator canvas makes,
-        // which is why the workflow below reflects it immediately.
+        // Write straight onto the operator (the same edit the canvas makes) and refresh this
+        // card's snapshot, which the template reads.
         this.parameterizationService.writeValue(binding, next);
         this.parameters = this.parameterizationService.resolveParameters();
-        // Refresh this card's snapshot too. It is what the template reads, so leaving it
-        // stale meant a changed value still looked untouched -- and Reset never appeared.
         const refreshed = this.parameters.find(p => p.binding.id === binding.id);
         const card = this.rendered.find(r => r.parameter.binding.id === binding.id);
         if (refreshed && card) {
@@ -552,28 +544,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Rename and hide individual fields inside one input, as the author decided.
-   *
-   * A property is rarely one box: an array of objects puts several fields in front of
-   * the reader, each labelled by whatever the operator's schema calls it -- `File Key`,
-   * `Alias`. Those names describe the operator, not the question being asked of the
-   * person filling the form, and some of them are not that person's business at all.
-   *
-   * Paths ignore array indices, so one decision covers every row of a repeated section.
+   * The template for one row of a repeated section. formly's `fieldArray` may be the
+   * template or a function that builds one per row; resolve both so an array property's
+   * sub-fields are reachable (treating the function case as a leaf hid them). @internal
    */
-  /**
-   * Path of a field within its property, with array indices dropped: a repeated section
-   * gives every row the same field, so `pairs.value` is one decision, not one per row.
-   */
-  /**
-   * The template for one row of a repeated section.
-   *
-   * formly lets `fieldArray` be either the template itself or a function that builds one
-   * per row. Treating the function case as "no children" is why the fields inside an
-   * array property could not be found at all: `pairs` looked like a leaf, so its `key`
-   * and `value` never appeared in the author's list.
-   */
-  /** @internal exported for tests */
   public static arrayItemOf(node: FormlyFieldConfig): FormlyFieldConfig | undefined {
     const fa = node.fieldArray;
     if (!fa) {
@@ -600,16 +574,15 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   private applyFieldOverrides(field: FormlyFieldConfig, binding: ParameterBinding, schemaLabel: string): void {
-    if (!this.authoring && (!binding.fields || Object.keys(binding.fields).length === 0)) {
-      return;
-    }
     const walk = (node: FormlyFieldConfig, path: string): void => {
-      // The input's own name is renamed the same way everything nested inside it is:
-      // by clicking the title where it is written. It used to be a separate "Display
-      // name" box in the card's footer, which meant one card taught two different ways
-      // to do one thing. What it does not get is an eye -- a whole input leaves the form
-      // through Remove, and a second control for that would be a second place to decide
-      // it.
+      // Drop the operator schema's own per-field description on every field, nested ones
+      // included. Those are the operator author's notes ("Attribute name in the schema",
+      // "Renamed attribute name"); on this page the one piece of guidance is the help text
+      // the form's author writes, rendered once by the card. Leaving the schema copies in
+      // showed a second, unrelated line of helper text under half the inputs.
+      node.props = { ...(node.props ?? {}), description: "" };
+      // The input's name is renamed in place by clicking the title, like every nested
+      // field. No eye here: a whole input leaves via Remove, not a hide toggle.
       if (!path && this.authoring) {
         EditableLabelWrapperComponent.decorate(
           node,
@@ -623,10 +596,8 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
           name => this.onBindingNamed(binding.id, name),
           () => {}
         );
-        // The editable label above is now the single title for this input. Clear formly's
-        // own label so it is not rendered a second time next to it -- that duplicate is
-        // what showed the title twice (most visibly on the array-typed FileParameter,
-        // where the group label repeated the name).
+        // The editable label is now the single title; clear formly's own so it is not
+        // rendered twice (the duplicate that showed array titles twice).
         node.props = { ...(node.props ?? {}), label: "" };
       }
       if (path) {
@@ -659,7 +630,14 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
         const build = node.fieldArray;
         node.fieldArray = (f: FormlyFieldConfig) => {
           const row = build(f);
-          walk(row, path);
+          // Walk what is INSIDE each row, never the row container itself. The container
+          // carries the array property's own name, so decorating it as a root (path "")
+          // printed the group title a second time above the rows -- the duplicate
+          // "Attributes"/"Predicates" title. Its sub-fields keep their own key paths, the
+          // same ones their overrides are stored under.
+          for (const child of row.fieldGroup ?? []) {
+            walk(child, ParameterizedCanvasComponent.childPath(path, child.key));
+          }
           return row;
         };
         return;
@@ -669,9 +647,11 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       for (const child of children) {
         walk(child, ParameterizedCanvasComponent.childPath(path, child.key));
       }
+      /* v8 ignore start -- leaf array-item shape only formly produces at render */
       if (arrayItem && !arrayItem.fieldGroup) {
         walk(arrayItem, path);
       }
+      /* v8 ignore stop */
     };
     walk(field, "");
   }
@@ -724,40 +704,18 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     );
   }
 
-  /**
-   * A computing unit is chosen but its websocket is still coming up. The same signal the
-   * operator canvas shows as "Connecting" -- without it, pressing Run in this window did
-   * nothing visible and looked broken. A run started now simply waits for the connection.
-   */
-  public get isConnecting(): boolean {
-    return (
-      this.computingUnitStatus !== ComputingUnitState.NoComputingUnit && !this.workflowWebsocketService.isConnected
-    );
-  }
-
   public get hasResults(): boolean {
     return this.shownResultIds.some(id => this.workflowResultService.hasAnyResult(id));
   }
 
-  /**
-   * How tall a chart renders, per result: 0 compact, 1 the default, 2 tall.
-   *
-   * A chart is the answer someone came for, and how much room it needs depends on the
-   * chart -- a violin plot with fifty categories is unreadable at the height that suits
-   * a single line. Kept per operator so setting one does not resize the others, and in
-   * memory only: it is how this person wants to look at it now, not part of the workflow.
-   */
+  /** Chart height per result (0 compact / 1 default / 2 tall). Per operator so one does not
+   *  resize the others, and in memory only -- a viewing preference, not part of the workflow. */
   private zoomByResult = new Map<string, number>();
 
   /**
-   * Bumped whenever a result changes, and used as the chart's *ngFor identity so the
-   * frame is rebuilt rather than reused.
-   *
-   * The chart component reads its content once, when it is created. On this page it is
-   * created as soon as the run starts -- before the engine has produced anything -- so
-   * it rendered the word "undefined" and never looked again. Leaving the page and
-   * coming back fixed it, which is the tell: the data was there all along, only nobody
-   * asked for it a second time.
+   * Bumped when a result changes, used as the chart's *ngFor identity so the frame is
+   * rebuilt, not reused: the chart reads its content once at creation (here, at run start,
+   * before the engine has produced anything), so a stale frame showed "undefined" forever.
    */
   private resultVersion = new Map<string, number>();
 
@@ -776,30 +734,18 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   public zoomResult(operatorID: string, delta: number): void {
     const next = Math.min(2, Math.max(0, this.resultZoom(operatorID) + delta));
     this.zoomByResult.set(operatorID, next);
-    // Growing the card is only half of it: a chart keeps whatever size it was drawn at
-    // until something tells it to measure again, so zooming used to enlarge the frame
-    // and leave the picture inside exactly as small as before. Let the new height land,
-    // then ask the chart to redraw into it.
+    // Let the new card height land, then have the chart redraw into it -- growing the frame
+    // alone leaves the picture at its old size until something asks it to re-measure.
     this.cdr.detectChanges();
     this.later(() => this.fitVisualisations(), 60);
   }
 
   /**
-   * Whether this operator's output is a table or a picture.
-   *
-   * Same rule the operator canvas uses: paginated results are tabular, anything else is
-   * a visualisation. Rendering everything as a table meant chart operators such as
-   * Image Visualizer produced a run but showed nothing.
+   * Scale each visualisation to its card. They render in a same-origin srcdoc iframe at
+   * natural size, so we inject a stylesheet to fit the content to the card width and fire
+   * a resize so chart libraries re-lay out. The operator's output is untouched.
    */
-  /**
-   * Make whatever a visualisation produced fit its card.
-   *
-   * These render inside an iframe, so the operator's HTML lays out at its natural size
-   * and a picture ends up small in the middle of a large empty box. The document is
-   * same-origin (srcdoc), so a stylesheet can be injected to scale the content down to
-   * the card width, and a resize dispatched so chart libraries re-lay out. Nothing the
-   * operator produced is altered -- only how it is sized for display.
-   */
+  /* v8 ignore start -- iframe/Plotly DOM fitting; no coverage in jsdom */
   private fitVisualisations(): void {
     const frames = this.host.nativeElement.querySelectorAll<HTMLIFrameElement>(".result-body iframe");
     frames.forEach(frame => {
@@ -853,17 +799,16 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
       frame.addEventListener("load", apply, { once: true });
     });
   }
+  /* v8 ignore stop */
 
   public isTabularResult(operatorID: string): boolean {
     return this.workflowResultService.hasPaginatedResult(operatorID);
   }
 
   /**
-   * Whether this step's visualisation actually drew something. A visualiser reserves a
-   * fixed canvas even when its result is empty, so without this an empty chart showed as a
-   * tall blank box; gating on real content lets the card collapse to the compact "No
-   * result yet" line instead. Tables are excluded -- their own frame says "Empty result
-   * set" and is handled by the tabular branch.
+   * Whether this step's visualisation drew something. A visualiser reserves a fixed canvas
+   * even when empty, so gating on real content lets an empty result collapse to the compact
+   * "No result yet" line instead of a tall blank box. Tables are excluded (tabular branch).
    */
   public vizHasContent(operatorID: string): boolean {
     if (this.isTabularResult(operatorID)) {
@@ -882,39 +827,13 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   // ---------------------------------------------------------------------------
-  // Filling in the form
-  // ---------------------------------------------------------------------------
-
-  /**
-   * A filled-in value goes straight onto the operator, which is the same edit the
-   * operator canvas would make -- so the workflow shown below updates as you type.
-   */
-  public onValueChange(parameter: ResolvedParameter, raw: string): void {
-    this.parameterizationService.writeValue(parameter.binding, this.coerce(parameter, raw));
-    this.parameters = this.parameterizationService.resolveParameters();
-  }
-
-  /** Keep numbers numbers, so an operator that expects one does not receive "1500". */
-  private coerce(parameter: ResolvedParameter, raw: string): unknown {
-    if (parameter.schema?.type !== "number" && parameter.schema?.type !== "integer") {
-      return raw;
-    }
-    if (raw.trim() === "") {
-      return undefined;
-    }
-    const parsed = Number(raw);
-    return Number.isNaN(parsed) ? raw : parsed;
-  }
-
-  // ---------------------------------------------------------------------------
   // Running. The same call the operator canvas makes, on the same workflow.
   // ---------------------------------------------------------------------------
 
   /**
-   * Turn an engine error into something a reader can act on. Raw SQL / jOOQ / Java stack
-   * traces mean nothing to a biologist, so those collapse to one plain sentence; a short
-   * human message (e.g. "please select a .csv file") is kept, minus any Java class prefix.
-   * The full text is always logged to the console for developers.
+   * Turn an engine error into something a reader can act on: raw SQL/jOOQ/Java traces
+   * collapse to one plain sentence, a short human message is kept (minus any Java prefix).
+   * The full text is always logged for developers.
    */
   private friendlyRunError(raw: string): string {
     if (raw) {
@@ -942,21 +861,62 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     return this.rendered.some(r => r.form.invalid);
   }
 
+  /**
+   * A unit is picked but its socket is still coming up -- the same window the operator
+   * canvas shows "Connecting" and disables its run button. Read from the exact condition
+   * the canvas uses (menu.component's getRunButtonBehavior), so the two stay in step.
+   */
+  public get isConnecting(): boolean {
+    return (
+      this.computingUnitStatus !== ComputingUnitState.NoComputingUnit && !this.workflowWebsocketService.isConnected
+    );
+  }
+
+  /** No unit chosen yet: the button offers "Connect" instead of "Run", exactly as the
+   *  operator canvas does. */
+  public get hasNoComputingUnit(): boolean {
+    return this.computingUnitStatus === ComputingUnitState.NoComputingUnit;
+  }
+
+  /**
+   * The Run button's label/icon/disabled, in the canvas's own precedence (menu.component's
+   * getRunButtonBehavior): invalid/empty workflow, connecting, or no unit each disable it
+   * and say why; otherwise Stop while running, Run when ready. Same order as the canvas.
+   */
+  public get runButtonState(): { label: string; icon: string; disabled: boolean } {
+    if (this.isRunning) {
+      return { label: "Stop", icon: "stop", disabled: false };
+    }
+    if (!this.isWorkflowValid) {
+      return { label: "Invalid", icon: "warning", disabled: true };
+    }
+    if (this.isWorkflowEmpty) {
+      return { label: "Empty", icon: "info-circle", disabled: true };
+    }
+    if (this.isConnecting) {
+      return { label: "Connecting", icon: "loading", disabled: true };
+    }
+    if (this.hasNoComputingUnit) {
+      return { label: "Connect", icon: "plus-circle", disabled: true };
+    }
+    return { label: "Run", icon: "caret-right", disabled: false };
+  }
+
   public onRun(): void {
     if (this.isRunning) {
       this.executeWorkflowService.killWorkflow();
       return;
     }
+    // The button is disabled in exactly the states a run cannot start from (invalid/empty
+    // workflow, connecting, or no unit), so a stray call here would be a silent no-op.
+    if (this.runButtonState.disabled) {
+      return;
+    }
     this.runError = "";
-    // Same as the operator canvas: run the workflow as-is. We deliberately do NOT impose
-    // a client-side "fill every field first" gate here -- it diverged from the canvas
-    // (which lets you run), it mislabeled fields whose display name is empty ("Fill in
-    // """), and it could not guarantee success anyway. Empty or invalid inputs now surface
-    // as a real engine error through the execution-state stream (see the Failed handler),
-    // while formly's own per-field "required" hint still guides the reader.
+    // Run as-is, like the canvas -- no client-side "fill everything first" gate (it diverged
+    // from the canvas and could not guarantee success anyway). Empty/invalid inputs surface
+    // as a real engine error via the execution-state stream (see the Failed handler).
     this.executeWorkflowService.executeWorkflow(this.workflowName);
-    // Said afterwards, so it never stands between the reader and the attempt.
-    this.needsComputingUnit = this.computingUnitStatusService.getSelectedComputingUnitValue() == null;
   }
 
   // ---------------------------------------------------------------------------
@@ -966,15 +926,13 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   public toggleAuthoring(): void {
     this.authoring = !this.authoring;
     if (this.authoring) {
-      // An author picks parameters off the workflow, so it has to be in front of them.
+      // An author picks parameters off the workflow, so show it.
       this.showWorkflow();
     } else {
-      // Back to the reader's view, which starts from the steps being out of the way.
       this.workflowOpen = false;
       this.workflowOpenTouched = false;
     }
-    // Edit mode is what makes operator properties editable here; leaving it puts them
-    // back to being shown rather than changed.
+    // Edit mode is what makes operator properties editable here.
     this.applyEditability();
     this.readConfig();
   }
@@ -1024,13 +982,18 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     this.readConfig();
   }
 
+  /** No operator selected: this is what closes the property panel. */
+  private clearSelection(): void {
+    this.selectedOperatorId = undefined;
+    this.selectedOperatorLabel = "";
+  }
+
   /** Dismiss the panel: the selection is what holds it open. */
   public closeOperatorPanel(): void {
     this.workflowActionService
       .getJointGraphWrapper()
       .unhighlightOperators(...this.workflowActionService.getJointGraphWrapper().getCurrentHighlightedOperatorIDs());
-    this.selectedOperatorId = undefined;
-    this.selectedOperatorLabel = "";
+    this.clearSelection();
     this.cdr.detectChanges();
   }
 
@@ -1038,8 +1001,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   public onOperatorClicked(operatorID: string): void {
     const graph = this.workflowActionService.getTexeraGraph();
     if (!graph.hasOperator(operatorID)) {
-      this.selectedOperatorId = undefined;
-      this.selectedOperatorLabel = "";
+      this.clearSelection();
       return;
     }
     this.selectedOperatorId = operatorID;
@@ -1071,24 +1033,12 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Reveal the strip, then build the canvas inside it -- in that order, a frame apart.
-   *
-   * JointJS measures the paper once, when the editor is created, and never again on its
-   * own. Uncollapsing the strip and creating the editor in the same change-detection
-   * pass therefore races the browser's layout: win it and the paper measures its real
-   * size, lose it and every element gets a zero-sized frame, so ports land on the
-   * element origin and links route up and over the boxes instead of between them. That
-   * is the drawing that appeared "sometimes" -- the two paths here even raced it
-   * differently, since only one of them forced a synchronous pass.
-   *
-   * Waiting a frame makes the strip's real size a fact before anything measures it, and
-   * the fit waits another frame so it runs against a canvas that exists.
+   * Reveal the strip, then build the canvas a frame later (so JointJS measures the strip's
+   * real size, not a zero-sized frame that misroutes links), then centre the graph a frame
+   * after that so the fit runs against a canvas that exists. The editor keeps its own paper
+   * sized via its container ResizeObserver, so nothing more is needed here.
    */
   private openWorkflowStrip(): void {
-    // Build the editor a frame after the strip is shown (so it measures a real size), then
-    // centre the graph -- the same lightweight approach the Hub's read-only preview uses.
-    // The editor keeps its own paper sized/rebuilt via its container ResizeObserver, so no
-    // extra re-fit / fade / observer machinery is needed here.
     this.later(() => {
       this.workflowEverOpened = true;
       this.cdr.detectChanges();
@@ -1097,33 +1047,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * JointJS sizes its paper when the editor is created, and here that happens while the
-   * section is still collapsed, so it measures zero and the workflow renders blank.
-   * Nudge it once the section is actually on screen.
-   */
-  /**
-   * Make the preview readable: size the paper now that it is on screen, then zoom and
-   * pan so the whole workflow is in view.
-   *
-   * Deliberately a viewport change and nothing more. Re-arranging the operators would
-   * mean that merely opening this page rewrote the positions the author chose on the
-   * canvas -- and, with autosave on, saved them.
-   */
-  /**
-   * Re-arrange the operators left to right.
-   *
-   * Author-only, because unlike zooming this rewrites the operators' positions -- it is
-   * a real edit to the workflow, the same one the Auto-layout button makes on the
-   * operator canvas. The new positions are adopted as the ones this page preserves on
-   * save, otherwise the tidy-up would be undone the moment anything else is saved.
-   */
-  /**
-   * Whether operator properties can be edited here.
-   *
-   * Only the two modes differ; the shape of the graph is off limits in both, which the
-   * editor enforces through its own structureLocked input rather than through this
-   * lock. Using the modification lock for that took the property panel down with it --
-   * an author in edit mode could no longer change anything.
+   * Edit mode makes operator properties editable; the graph shape stays locked in both
+   * modes (the editor enforces that via its own structureLocked, not this lock -- reusing
+   * the modification lock for it also disabled the property panel).
    */
   private applyEditability(): void {
     if (this.authoring && this.canEdit) {
@@ -1142,6 +1068,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     if (!input) {
       return;
     }
+    /* v8 ignore start -- font-metrics DOM measuring; jsdom has no layout */
     const probe = document.createElement("span");
     probe.style.visibility = "hidden";
     probe.style.position = "absolute";
@@ -1151,6 +1078,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     document.body.appendChild(probe);
     input.style.width = `${Math.min(probe.offsetWidth + 20, 800)}px`;
     document.body.removeChild(probe);
+    /* v8 ignore stop */
   }
 
   private refreshSavedState(): void {
@@ -1192,27 +1120,14 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Switch to the operator canvas with a full page load, not a router navigation.
-   *
-   * The two views are separate pages that both drive the same singleton graph, shared
-   * model and computing-unit connection. Handing over in-process leaves the next page
-   * with the previous one's state -- the symptom was a canvas whose operators could no
-   * longer be dragged, because the editor came up attached to a graph that was already
-   * half torn down. A fresh document is the reliable handover, and this is the same
-   * approach the codebase already takes when moving between workspace views.
-   */
-  /**
-   * A full page load, deliberately.
-   *
-   * Routing between the two views is smoother, but these pages share root-level
-   * services -- the graph, and the Yjs shared model behind it -- and leaving one does
-   * not release its collaboration client. Routing therefore left the user present on
-   * their own workflow twice: a ghost coeditor marker appeared on an operator, and the
-   * duplicated session broke running. Reloading tears all of that down for certain.
-   * Worth revisiting only once leaving a view provably releases the shared model.
+   * Switch to the operator canvas with a full page load, not a route. The two views share
+   * root-level singletons (the graph, the Yjs shared model, the CU connection); handing
+   * over in-process left the old state attached -- undraggable operators, a ghost coeditor
+   * of yourself, broken runs. A fresh document is the reliable handover.
    */
   public openRegularCanvas(): void {
     this.save();
+    /* v8 ignore next -- full-document navigation; jsdom cannot navigate */
     window.location.href = `${USER_WORKSPACE}/${this.wid}`;
   }
 
@@ -1229,12 +1144,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Save the workflow this page opened, and only that one.
-   *
-   * The persist endpoint creates a workflow when the payload has no id, so saving
-   * whatever the graph happens to hold would spawn stray "Untitled workflow" rows every
-   * time this page is left before its workflow finished loading. Saving is therefore
-   * conditional on the graph still holding the workflow we came here for.
+   * Save the workflow this page opened, and only that one. The persist endpoint creates a
+   * workflow when the payload has no id, so saving whatever the graph holds would spawn
+   * stray "Untitled workflow" rows when the page is left before its workflow loaded.
    */
   private save(): void {
     if (!this.userService.isLogin() || !this.workflowPersistService.isWorkflowPersistEnabled()) {
@@ -1261,13 +1173,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Positions to write back: the stored one for each operator, falling back to whatever
-   * the graph currently reports.
-   *
-   * Every operator must come out with a position. Loading a workflow throws outright on
-   * an operator that has none, so writing a partial map would leave the workflow
-   * unopenable in either view. An earlier version wrote the stored map wholesale, which
-   * did exactly that whenever the graph held an operator the stored map predated.
+   * A position for every operator (stored, else the graph's current, else origin). Loading
+   * throws on an operator with no position, so a partial map would make the workflow
+   * unopenable -- which is what writing the stored map wholesale did for any newer operator.
    */
   private positionsToSave(content: WorkflowContent): { [operatorID: string]: Point } {
     const positions: { [operatorID: string]: Point } = {};
@@ -1279,13 +1187,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Run something after the current frame, or after a delay, unless this page is gone
-   * by then.
-   *
-   * Every one of these callbacks touches the view, and `detectChanges` on a destroyed
-   * view throws. The window is not theoretical: leaving for the dashboard is an ordinary
-   * in-app navigation, so a reader who clicks away during the few hundred milliseconds a
-   * chart is waiting to be fitted would take the error.
+   * Run after the current frame (or a delay), unless the page is gone by then: these
+   * callbacks touch the view, and detectChanges on a destroyed view throws -- reachable by
+   * navigating away while a chart is waiting to be fitted.
    */
   private later(fn: () => void, delayMs?: number): void {
     const run = () => {
@@ -1301,12 +1205,31 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Tear down exactly what the operator canvas tears down.
-   *
-   * Both views drive the same singleton services, so anything left bound here follows
-   * the user to the next page. Skipping this was why the operator canvas came up frozen
-   * after a visit: the previous shared model was still attached and kept putting
-   * dragged operators back where they were.
+   * A filled-in value goes straight onto the operator, the same edit the operator canvas
+   * would make. Kept from the parameterized-canvas so operators that write their value
+   * outside formly's typed controls still coerce it.
+   */
+  public onValueChange(parameter: ResolvedParameter, raw: string): void {
+    this.parameterizationService.writeValue(parameter.binding, this.coerce(parameter, raw));
+    this.parameters = this.parameterizationService.resolveParameters();
+  }
+
+  /** Keep numbers numbers, so an operator that expects one does not receive "1500". */
+  private coerce(parameter: ResolvedParameter, raw: string): unknown {
+    if (parameter.schema?.type !== "number" && parameter.schema?.type !== "integer") {
+      return raw;
+    }
+    if (raw.trim() === "") {
+      return undefined;
+    }
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? raw : parsed;
+  }
+
+  /**
+   * Tear down exactly what the operator canvas tears down: both views drive the same
+   * singleton services, so anything left bound here follows the user to the next page
+   * (the symptom was a frozen canvas after a visit -- the old shared model still attached).
    */
   @HostListener("window:beforeunload")
   ngOnDestroy(): void {

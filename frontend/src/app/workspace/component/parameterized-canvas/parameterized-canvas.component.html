@@ -47,10 +47,10 @@
       type="button"
       class="on"
       aria-pressed="true">
-      P Canvas
+      Form View
     </button>
   </div>
-  <!-- Live collaborators, the same avatars the operator canvas shows -- P Canvas is just
+  <!-- Live collaborators, the same avatars the operator canvas shows -- Form view is just
        another view of the same shared workflow, so co-editors belong here too. -->
   <ng-container *ngFor="let user of coeditorPresenceService.coeditors">
     <texera-coeditor-user-icon [coeditor]="user"></texera-coeditor-user-icon>
@@ -179,18 +179,6 @@
     </div>
 
     <div
-      class="notice"
-      *ngIf="!authoring && brokenCount > 0">
-      <i
-        nz-icon
-        nzType="warning"></i>
-      <span
-        >{{ brokenCount }} input{{ brokenCount > 1 ? "s are" : " is" }} unavailable because the workflow changed. The
-        rest still work.</span
-      >
-    </div>
-
-    <div
       class="empty"
       *ngIf="visibleParameters.length === 0">
       {{ authoring ? "No inputs yet. Open the workflow below and click a step to expose its settings." : "This workflow
@@ -214,11 +202,13 @@
             class="grip"
             cdkDragHandle></i>
           <div class="param-titles">
-            <!-- The control below carries its own label from the schema; this line is
-                 here for the drag handle and the author's row actions to sit against. -->
+            <!-- The control below carries its own label from the schema; this line is here
+                 for the drag handle and the author's row actions to sit against. Hidden for a
+                 broken input, whose operatorLabel is the raw id ("Limit-operator-93bf…"); the
+                 broken card below says what happened without printing that id. -->
             <div
               class="param-help"
-              *ngIf="authoring">
+              *ngIf="authoring && !r.parameter.brokenReason">
               From {{ r.parameter.operatorLabel }}
             </div>
           </div>
@@ -230,7 +220,10 @@
           <i
             nz-icon
             nzType="warning"></i>
-          Not connected — {{ r.parameter.brokenReason }}.
+          <!-- Name the input by what the author called it (or the setting name), never the
+               raw operator id, so the author can tell which broken input to remove. -->
+          <b>{{ r.parameter.binding.displayName || r.parameter.binding.propertyKey }}</b> — not connected; {{
+          r.parameter.brokenReason }}.
         </div>
 
         <div
@@ -271,14 +264,23 @@
                not, for a reason no one reading the page could see. The default is still
                what the canvas held when the setting was exposed, and Reset still returns
                to it -- it is simply not edited from here. -->
-          <label class="field wide">
+          <!-- A broken input (its operator was removed) can never be filled, so it offers
+               no help-text box and no "Set on …" line -- only the way to take it off the
+               form. A live input gets the full editor. -->
+          <label
+            class="field wide"
+            *ngIf="!r.parameter.brokenReason">
             <span class="label">Help text</span>
             <input
               [value]="r.parameter.binding.helpText || ''"
               (input)="onEditBinding(r.parameter, 'helpText', $any($event.target).value)" />
           </label>
           <div class="edit-foot">
-            <span class="hint">Set on {{ r.parameter.operatorLabel }} · {{ r.parameter.binding.propertyKey }}</span>
+            <span
+              class="hint"
+              *ngIf="!r.parameter.brokenReason"
+              >Set on {{ r.parameter.operatorLabel }} · {{ r.parameter.binding.propertyKey }}</span
+            >
             <div class="spacer"></div>
             <button
               class="remove"
@@ -304,14 +306,22 @@
              in advance whether a run is possible turned out to be guesswork, and every
              wrong guess produced a dead button with no way forward. Pressing it and being
              told what is missing is always recoverable. -->
+        <!-- One button in this page's own style, but its label, icon and disabled-ness are
+             the operator canvas's own (menu.component's getRunButtonBehavior): "Invalid
+             Workflow" / "Empty Workflow" for a graph that cannot run, "Connecting" while a
+             unit's socket comes up, "Connect" before one is chosen, "Run" once ready, "Stop"
+             while running. Disabled in every state a run cannot start from, so the reader is
+             never sent to press a button that does nothing. -->
         <button
           class="run"
           [class.stop]="isRunning"
+          [class.connecting]="runButtonState.disabled && !isRunning"
+          [disabled]="runButtonState.disabled"
           (click)="onRun()">
           <i
             nz-icon
-            [nzType]="isRunning ? 'stop' : 'caret-right'"></i>
-          {{ isRunning ? "Stop" : "Run" }}
+            [nzType]="runButtonState.icon"></i>
+          {{ runButtonState.label }}
         </button>
         <!-- Safe to live here now: the page opens its own connection on load, so this
              control no longer decides whether running works by where it is mounted. -->
@@ -333,10 +343,8 @@
     <p
       class="run-note"
       [class.err]="runError"
-      *ngIf="runError || isRunning || isConnecting || needsComputingUnit">
-      {{ runError || (isRunning ? "Running — this keeps going if you look away." : isConnecting ? "Connecting to the
-      computing unit — this takes a moment; Run will start once it is ready." : "Choose a computing unit beside Run
-      first — this workflow needs one to run.") }}
+      *ngIf="runError || isRunning">
+      {{ runError || "Running — this keeps going if you look away." }}
     </p>
 
     <!-- The workflow. Out of the way unless you go looking, or you are the author. -->

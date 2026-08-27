@@ -880,12 +880,12 @@ $shell: #fafafa;
     }
 
     // The Hub preview's mini-map, parked in the corner for navigating a large graph.
+    // Reused as-is at its natural 300x200 (same as the workspace/Hub) — no size
+    // override, so the whole graph shows instead of being clipped behind the toolbar.
     .box {
       position: absolute;
       right: 10px;
       bottom: 10px;
-      width: 200px;
-      height: 130px;
       border: 1px solid $divider;
       border-radius: 6px;
       background: #fff;

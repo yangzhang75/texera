@@ -165,7 +165,7 @@ describe("ListItemComponent", () => {
 
       expect(workflowPersistService.setParameterized).toHaveBeenCalledWith(42, true);
       expect(component.parameterized).toBe(true);
-      expect(component.iconType).toBe("experiment");
+      expect(component.iconType).toBe("solution");
       expect(component.entryLink).toEqual([USER_WORKSPACE, "42", "parameters"]);
     });
 
@@ -224,7 +224,7 @@ describe("ListItemComponent", () => {
       component.initializeEntry();
 
       expect(component.entryLink).toEqual([USER_WORKSPACE, "100", "parameters"]);
-      expect(component.iconType).toBe("experiment");
+      expect(component.iconType).toBe("solution");
       expect(component.parameterized).toBe(true);
     });
 
@@ -241,7 +241,7 @@ describe("ListItemComponent", () => {
       component.initializeEntry();
 
       expect(component.entryLink).toEqual([HUB_WORKFLOW_RESULT_DETAIL, "101"]);
-      expect(component.iconType).toBe("experiment");
+      expect(component.iconType).toBe("solution");
     });
 
     it("routes non-owned workflows to the hub workflow detail page", () => {

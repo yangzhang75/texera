@@ -206,12 +206,12 @@ export class ListItemComponent implements OnChanges {
   }
 
   /**
-   * A parameterized workflow is marked with a flask and opens straight into its form.
-   * The operator canvas is still one click away from there, so nothing is taken away.
+   * A parameterized workflow is marked with the Form View icon and opens straight into its
+   * form. The operator canvas is still one click away from there, so nothing is taken away.
    */
   private applyParameterizedState(enabled: boolean): void {
     this.parameterized = enabled;
-    this.iconType = enabled ? "experiment" : "project";
+    this.iconType = enabled ? "solution" : "project";
     // Leave hub links alone; only the owner's own entry point moves.
     if (this.entryLink[0] === USER_WORKSPACE) {
       this.entryLink = enabled

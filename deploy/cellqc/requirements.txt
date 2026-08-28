@@ -1,0 +1,41 @@
+# The Python side of the cellqc workflow, installed into the interpreter the
+# PythonUDF workers run (udf.conf `python.path` / $UDF_PYTHON_PATH) -- not the
+# system python. Installing anywhere else changes nothing the workflow can see,
+# and the failure reads as a code bug: `ModuleNotFoundError: No module named
+# 'cellqc'` from inside an operator.
+#
+# Versions are the ones the reference run was validated against (13,559 ->
+# 11,234 -> 10,223 cells). Only the four at the bottom are pinned hard; the rest
+# is scanpy's own stack and floats with it.
+
+# --- what the stage scripts import directly ---
+pysam==0.24.0          # nuclear_fraction reads the Cell Ranger BAM with this
+jinja2==3.1.6          # qcreport.py renders report.html from bundled templates
+PyYAML==6.0.3
+click==8.4.2
+requests==2.34.2       # Publish Result talks to the file service over REST
+
+# --- the analysis stack cellqc's Python stages run on ---
+scanpy==1.12.1
+anndata==0.12.18
+numpy==2.1.0
+scipy==1.18.0
+pandas==2.2.3
+h5py==3.16.0
+numba==0.65.1
+matplotlib==3.11.0
+scikit-learn==1.9.0
+
+# --- cellqc itself, and the runner that drives it ---
+#
+# NOT from PyPI. PyPI's newest is 0.3.2; 0.3.3 is what introduced the
+# configurable `geneset` section, and without it a reference that names its
+# mitochondrial genes bare (Ensembl Mmul_10) silently reports pct_counts_mt == 0
+# for every cell -- a QC run that looks fine and filters nothing.
+#
+# --no-deps on purpose: cellqc declares snakemake, whose CLI the workflow does
+# not use (the operators are the scheduler), and pulling it in churns the UDF
+# interpreter's environment for nothing.
+#
+#   pip install --no-deps git+https://github.com/lijinbio/cellqc.git@v0.3.3
+#   pip install --no-deps deploy/cellqc          # the cellqc_texera runner in this directory

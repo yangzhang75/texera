@@ -51,6 +51,22 @@ object ParameterSourceOpDesc {
       var fileName: Option[String] = None
   )
 
+  // Dataset key/value pairs. The value is a dataset path, `/owner/name/version`,
+  // picked from the dataset browser rather than typed: the property panel turns any
+  // field literally named `datasetVersionPath` into that picker, the same way it turns
+  // `fileName` into the file picker above. A workflow that writes its results back into
+  // a dataset needs to name one, and a typed name is a typo away from a run that
+  // computes for an hour and then fails on the last operator.
+  class DatasetKeyValuePair @JsonCreator() (
+      @JsonProperty(value = "datasetKey", required = true)
+      @JsonSchemaTitle("Dataset Key")
+      var datasetKey: String,
+      @JsonProperty(value = "datasetVersionPath", required = false)
+      @JsonSchemaTitle("Dataset")
+      @JsonDeserialize(contentAs = classOf[java.lang.String])
+      var datasetVersionPath: Option[String] = None
+  )
+
   // Regular string key/value pairs
   class KeyValuePair @JsonCreator() (
       @JsonProperty(value = "key", required = true) var key: String,
@@ -66,6 +82,11 @@ class ParameterSourceOpDesc extends SourceOperatorDescriptor {
   @JsonProperty(value = "filePairs", required = false)
   @JsonPropertyDescription("Multiple file key/value pairs")
   var filePairs: java.util.List[FileKeyValuePair] = new java.util.ArrayList[FileKeyValuePair]()
+
+  @JsonProperty(value = "datasetPairs", required = false)
+  @JsonPropertyDescription("Multiple dataset key/value pairs")
+  var datasetPairs: java.util.List[DatasetKeyValuePair] =
+    new java.util.ArrayList[DatasetKeyValuePair]()
 
   @JsonProperty(value = "pairs", required = false)
   @JsonPropertyDescription("Multiple string key/value pairs")

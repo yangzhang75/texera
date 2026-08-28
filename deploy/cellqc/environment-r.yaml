@@ -1,0 +1,67 @@
+# The R half of cellqc. `requirements.txt` next to this file is the Python half;
+# they are two separate environments on purpose, because they are two languages
+# and only one of them is the UDF interpreter.
+#
+# Nothing here is importable from Python: the workflow shells out to this
+# environment's `Rscript`, and that absolute path is what goes in the workflow's
+# `rscript` parameter. Four of cellqc's ten stages are R (ambient.R -- SoupX and
+# DecontX; doubletfinder.R; scdblfinder.R -- and the report's Seurat bits), and
+# none of them has a Python equivalent that produces the same numbers.
+#
+#   micromamba create -y -p ~/cellqc-env -f deploy/cellqc/environment-r.yaml
+#
+# On macOS arm64 add `--platform osx-64`: bioconda's bioconductor-* packages have
+# full osx-64 coverage but only partial osx-arm64, and the x86_64 build runs
+# under Rosetta. On Linux -- the eye server -- the default linux-64 is correct
+# and no flag is needed.
+#
+# Versions below are what the reference run was validated against, under
+# R 4.5.3. They are not pinned in the spec: bioconda's bioconductor-* packages
+# are pinned to their Bioconductor release as a set, and pinning them one by one
+# produces an unsolvable environment.
+#
+#   SoupX 1.6.2          DropletUtils 1.30.0    SingleCellExperiment 1.32.0
+#   scDblFinder 1.24.0   zellkonverter 1.20.1   SummarizedExperiment 1.40.0
+#   Seurat 5.5.1         SeuratObject 5.4.0     celda 1.24.0
+#   DoubletFinder 2.0.6  jsonlite 2.0.0         Matrix 1.7-6
+#
+# Upstream's own envs/cellqc.yaml, minus what the Texera workflow does not use:
+# snakemake (the operators are the scheduler) and tectonic (no PDF slide deck).
+
+name: cellqc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base>=4.4
+  - r-seurat>=5
+  - r-seuratobject>=5
+  - r-matrix
+  - r-soupx>=1.6.2
+  - r-ggplot2
+  - r-remotes
+  - r-rocr
+  - r-fields
+  - r-kernsmooth
+  - r-jsonlite
+  - bioconductor-dropletutils
+  - bioconductor-singlecellexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-zellkonverter
+  - bioconductor-scdblfinder
+  # DecontX lives here. It is the alternative to SoupX for the ambient stage
+  # (`ambient_method=decontx`); leave it out and that setting fails at run time
+  # with `there is no package called 'celda'` -- an hour into the run, since
+  # ambient is the first heavy stage.
+  - bioconductor-celda
+
+# DoubletFinder is NOT here and cannot be: it is GitHub-only, and bioconda
+# forbids network access at install time. It is a separate step, exactly as
+# upstream's README documents:
+#
+#   ~/cellqc-env/bin/Rscript -e 'options(repos=c(CRAN="https://cloud.r-project.org")); \
+#     remotes::install_github("chris-mcginnis-ucsf/DoubletFinder", upgrade=FALSE)'
+#
+# It is not optional: `doublet_run` defaults to `doubletfinder,scdblfinder` and
+# `doublet_decider` defaults to doubletfinder, so the delivered cell count comes
+# from this package.

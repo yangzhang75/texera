@@ -16,6 +16,7 @@ was missing.
 | `common/workflow-operator/.../source/parameter/` | the `FileParameter` operator |
 | `sql/updates/30.sql` | schema change |
 | `deploy/scgpt/` | the scGPT pipeline's Python sources |
+| `deploy/cellqc/` | what the cellqc workflow needs installed |
 
 ## What is deliberately NOT in the branch
 
@@ -27,7 +28,11 @@ in a repo that does not need them:
 - `scGPT_postproc/{addmetadata,leiden}/EVAL_snRNA_no_enriched.h5ad`
 
 Copy these onto the target machine separately and keep the same directory layout under
-whatever you point `SCGPT_HOME` at. The Python virtualenv (2.2 GB) is likewise rebuilt
+whatever you point `SCGPT_HOME` at.
+
+The CellQC **workflow** is likewise not here: it is a workflow, not code, and it travels
+as an exported JSON that anyone imports through the UI. `deploy/cellqc/` is only what has
+to be installed for that JSON to run. The Python virtualenv (2.2 GB) is likewise rebuilt
 from `deploy/scgpt/requirements-frozen.txt`, never committed.
 
 ## Bringing the stack up
@@ -65,7 +70,7 @@ services running the previous jar, and the operator silently produced zero rows.
 project names are capitalised: `sbt "WorkflowOperator/compile"` — a lowercase name fails
 with `Not a valid key` and still exits 0.
 
-## The Python environment
+## The scGPT Python environment
 
 Python 3.12. The pinned set that works is in `requirements-frozen.txt`; the versions that
 matter are `torch==2.3.0`, `torchtext==0.18.0`, `scgpt==0.2.4`. A newer torch cannot load
@@ -87,6 +92,96 @@ Two directories have to be importable by the UDF workers. Put a `.pth` file in t
 The second is what makes `from utils import *` resolve inside the pipeline scripts. With
 `UDF_PYTHON_PATH` unset, `udf.conf` falls back to an empty path and workers die on
 `No module named 'loguru'`.
+
+## The cellqc workflow's environment
+
+The cellqc workflow (`CellQC` — Cell Ranger output in, a QC'd `.h5ad` out) is ten
+Python UDFs, but four of cellqc's stages are R and there is no Python equivalent
+that produces the same numbers. So it needs **two** environments. Neither is
+committed — an R conda prefix and a 2 GB venv do not belong in a git repo. What is
+here is the declaration of what to install, plus the workflow's own source:
+
+| | |
+|---|---|
+| `deploy/cellqc/environment-r.yaml` | the R stack (conda). Its `Rscript` is what `CELLQC_RSCRIPT` points at. |
+| `deploy/cellqc/requirements.txt` | the Python side, installed into the **UDF interpreter** |
+| `deploy/cellqc/cellqc_texera/` | the runner: it builds the `snakemake` object each upstream stage script expects and runs that script verbatim, so the numbers cannot drift and an upgrade is a `pip install` |
+| `deploy/cellqc/bootstrap_cellqc_env.sh` | all of the below in one command |
+
+```bash
+# 1. R  (add --platform osx-64 on macOS arm64; not needed on Linux)
+micromamba create -y -p ~/cellqc-env -f deploy/cellqc/environment-r.yaml
+~/cellqc-env/bin/Rscript -e 'options(repos=c(CRAN="https://cloud.r-project.org")); \
+  remotes::install_github("chris-mcginnis-ucsf/DoubletFinder", upgrade=FALSE)'
+
+# 2. Python — into $UDF_PYTHON_PATH, not the system python
+"$UDF_PYTHON_PATH" -m pip install -r deploy/cellqc/requirements.txt
+"$UDF_PYTHON_PATH" -m pip install --no-deps git+https://github.com/lijinbio/cellqc.git@v0.3.3
+"$UDF_PYTHON_PATH" -m pip install --no-deps deploy/cellqc   # the cellqc_texera runner
+
+# 3. Point the workflow at the R environment, once, for everyone
+export CELLQC_RSCRIPT=/home/<you>/cellqc-env/bin/Rscript
+```
+
+**Set `CELLQC_RSCRIPT` on the computing unit.** It is what makes an imported CellQC
+workflow runnable as it arrives. The Parameters operator resolves the R environment in
+this order: its own `rscript` field, then this variable, then a bare `Rscript` on PATH.
+The distributed workflow ships `rscript` empty on purpose -- a path baked into the JSON
+pins it to one machine and has to be re-edited after every import, and the bare `Rscript`
+on PATH is usually a plain R with none of the Bioconductor stack. With this set, the only
+thing a user touches after importing is the file picker for their own Cell Ranger
+archive.
+
+A wrong or missing R environment does not cost an hour: `Load Input`, the first operator,
+probes it with a real `library()` call and fails in seconds naming the missing package.
+
+Four things that each cost an afternoon:
+
+**Install the Python side into `$UDF_PYTHON_PATH`.** Anywhere else and nothing
+changes that the workflow can see; the operator fails with
+`ModuleNotFoundError: No module named 'cellqc'`, which reads as a code bug.
+
+**`bioconductor-celda` and DoubletFinder are both easy to lose.** celda is
+DecontX, the alternative ambient method; DoubletFinder is the default doublet
+caller, so it decides the delivered cell count. Neither is exercised until an
+hour into a run, and the failure is `there is no package called '...'` at that
+point rather than at install time. `environment-r.yaml` lists celda; DoubletFinder
+cannot be listed at all — it is GitHub-only, and bioconda forbids network access
+at install time — so it stays a separate command.
+
+**cellqc comes from git, not PyPI.** PyPI's newest is 0.3.2; 0.3.3 is what
+introduced the configurable `geneset` section, and without it a reference that
+names its mitochondrial genes bare (Ensembl Mmul_10) silently reports
+`pct_counts_mt == 0` for every cell — a QC run that looks fine and filters
+nothing.
+
+**Give the computing unit ~8 GB of headroom.** The ambient stage loads the
+all-droplets raw matrix to build the soup profile; on the 13,559-cell reference
+sample (2.1M raw barcodes) SoupX peaks around 7 GB.
+
+Validated against upstream's own reference numbers: 13,559 → 11,234 → 10,223
+cells, SoupX rho 1.00%, DoubletFinder 1,011 doublets (9.00%), final matrix
+10,223 × 38,606.
+
+### Getting the results out
+
+`Download Results` hands each file back as a `binary` cell with a download
+button. That path goes through result export, which
+`export-execution-result-enabled` can switch off — and when it is off the button
+is silently inert, with no error and no server log. It also only works within the
+~30 seconds a result stays live after a run.
+
+`Publish Result` is the one that does not depend on either. Set the Parameters
+operator's `publish_to_dataset` (a dataset picker, so no typing) and the run
+writes its files into that dataset — created if absent, `isDownloadable` set —
+and commits a version. Users then download from the Datasets page, whose own
+buttons are not gated by the export flag, and the output can be the *input* of
+the next workflow without a round trip through anyone's disk.
+
+It needs `USER_JWT_TOKEN` and `FILE_SERVICE_UPLOAD_ONE_FILE_TO_DATASET_ENDPOINT`
+on the computing unit. Both are already there: the second is injected by
+`ComputingUnitManagingResource` on k8s and by `bin/local-dev/main.sh` locally, and
+the first is the variable this file already insists on.
 
 ## Verifying
 

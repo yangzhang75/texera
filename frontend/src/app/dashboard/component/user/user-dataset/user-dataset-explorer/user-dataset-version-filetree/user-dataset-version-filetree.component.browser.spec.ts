@@ -96,6 +96,25 @@ describe("UserDatasetVersionFiletreeComponent (browser)", () => {
     expect(renderedRows).toBeGreaterThan(0);
   });
 
+  // The dataset page builds this tree inside the "Versions & Files" tab while
+  // "Data Card" is the open one, so it is laid out at zero size and the virtual
+  // scroll concludes no rows are visible. Nothing re-measures on reveal unless
+  // the component watches for it: the files are loaded, the container is the
+  // right height, and not one node is drawn -- and scrolling cannot rescue it,
+  // because with no rows there is nothing to scroll.
+  it("renders rows when a tree built while hidden is later revealed", async () => {
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = "none";
+    await renderTree(makeFlatFileNodes(FILE_COUNT));
+    expect(host.querySelectorAll("tree-node").length).toBe(0);
+
+    host.style.display = "";
+    await new Promise(resolve => setTimeout(resolve, 100));
+    fixture.detectChanges();
+
+    expect(host.querySelectorAll("tree-node").length).toBeGreaterThan(0);
+  });
+
   it("lays out the container at content height for small trees", async () => {
     await renderTree(makeFlatFileNodes(3));
 

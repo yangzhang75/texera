@@ -18,7 +18,7 @@
  */
 
 import { UntilDestroy } from "@ngneat/until-destroy";
-import { AfterViewInit, Component, EventEmitter, Input, Output, ViewChild } from "@angular/core";
+import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild } from "@angular/core";
 import {
   DatasetFileNode,
   getRelativePathFromDatasetFileNode,
@@ -65,7 +65,7 @@ function countNodes(nodes: DatasetFileNode[]): number {
     NzTooltipDirective,
   ],
 })
-export class UserDatasetVersionFiletreeComponent implements AfterViewInit {
+export class UserDatasetVersionFiletreeComponent implements AfterViewInit, OnDestroy {
   @Input()
   public isTreeNodeDeletable: boolean = false;
 
@@ -92,6 +92,7 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit {
   public isExpandAllAfterViewInit = false;
 
   @ViewChild("tree") tree: any;
+  @ViewChild("container") private container?: ElementRef<HTMLElement>;
 
   @Output()
   setCoverImage = new EventEmitter<string>();
@@ -130,6 +131,9 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit {
   @Output()
   public deletedTreeNode = new EventEmitter<DatasetFileNode>();
 
+  private revealObserver?: ResizeObserver;
+  private lastObservedWidthPx = 0;
+
   constructor() {}
 
   onNodeDeleted(node: DatasetFileNode): void {
@@ -140,6 +144,43 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit {
     if (this.isExpandAllAfterViewInit) {
       this.tree.treeModel.expandAll();
     }
+    this.remeasureOnReveal();
+  }
+
+  ngOnDestroy(): void {
+    this.revealObserver?.disconnect();
+  }
+
+  /**
+   * Re-measure the virtual-scroll viewport the first time this component is
+   * actually on screen.
+   *
+   * The library measures the viewport once after init and again only on scroll.
+   * A host that creates the component hidden -- the dataset page builds it inside
+   * the "Versions & Files" tab while "Data Card" is the open one -- therefore
+   * measures a zero-height viewport, decides no rows are visible, and renders an
+   * empty tree forever: the files are loaded, the container is the right height,
+   * and not one node is drawn. Scrolling does not rescue it either, because with
+   * no rows there is nothing to scroll.
+   *
+   * Watching the box means every host gets this for free rather than each one
+   * having to remember to call `sizeChanged()` on reveal.
+   */
+  private remeasureOnReveal(): void {
+    const element = this.container?.nativeElement;
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    this.revealObserver = new ResizeObserver(entries => {
+      const width = entries[entries.length - 1]?.contentRect.width ?? 0;
+      const wasHidden = this.lastObservedWidthPx === 0;
+      this.lastObservedWidthPx = width;
+      if (wasHidden && width > 0) {
+        // Past the library's 17ms leading-edge throttle, as above.
+        setTimeout(() => this.tree?.sizeChanged(), TREE_VIEWPORT_REMEASURE_DELAY_MS);
+      }
+    });
+    this.revealObserver.observe(element);
   }
 
   isImageFile(fileName: string): boolean {

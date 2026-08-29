@@ -516,6 +516,8 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
     this.registerDisableEditorInteractivityHandler();
 
+    this.registerExposeChoiceRefreshHandler();
+
     this.registerOperatorDisplayNameChangeHandler();
 
     this.workflowStatusSerivce
@@ -688,6 +690,21 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       .pipe(filter(({ operatorID }) => operatorID === this.currentOperatorId))
       .pipe(untilDestroyed(this))
       .subscribe(_ => this.rerenderEditorForm());
+  }
+
+  /**
+   * While the author is choosing what to expose, which properties are exposed can change
+   * from outside this panel -- most visibly when they remove an input on the parameterized
+   * form. Re-render so each tick box reflects the current exposed state; otherwise a removed
+   * property's box stays ticked and has to be unticked and re-ticked to bring it back.
+   */
+  registerExposeChoiceRefreshHandler(): void {
+    this.workflowActionService.parameterizationChanged$
+      .pipe(
+        filter(() => this.exposeChoosing && this.currentOperatorId !== undefined),
+        untilDestroyed(this)
+      )
+      .subscribe(() => this.rerenderEditorForm());
   }
 
   /**

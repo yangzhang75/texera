@@ -2209,5 +2209,27 @@ describe("OperatorPropertyEditFrameComponent", () => {
 
       expect(component.formTitle).toBe("untouched");
     });
+
+    it("re-renders so the tick boxes track the exposed set changing elsewhere", () => {
+      fixture.detectChanges();
+      (component as any).currentOperatorId = "op-1";
+      component.exposeChoosing = true;
+      const rerender = vi.spyOn(component, "rerenderEditorForm").mockImplementation(() => {});
+
+      workflowActionService.setParameterization({ parameters: [], resultOperatorIds: [] });
+
+      expect(rerender).toHaveBeenCalled();
+    });
+
+    it("ignores exposed-set changes when not choosing what to expose", () => {
+      fixture.detectChanges();
+      (component as any).currentOperatorId = "op-1";
+      component.exposeChoosing = false;
+      const rerender = vi.spyOn(component, "rerenderEditorForm").mockImplementation(() => {});
+
+      workflowActionService.setParameterization({ parameters: [], resultOperatorIds: [] });
+
+      expect(rerender).not.toHaveBeenCalled();
+    });
   });
 });

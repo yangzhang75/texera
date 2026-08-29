@@ -38,7 +38,7 @@ import {
   hideTypes,
 } from "../../../types/custom-json-schema.interface";
 import { isDefined } from "../../../../common/util/predicate";
-import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES } from "../../../util/custom-formly-type";
+import { customFormlyFieldType, NON_FORM_FIELD_TYPES } from "../../../util/custom-formly-type";
 import { ExecutionState, OperatorState, OperatorStatistics } from "src/app/workspace/types/execute-workflow.interface";
 import { DynamicSchemaService } from "../../../service/dynamic-schema/dynamic-schema.service";
 import { WorkflowCompilingService } from "../../../service/compile-workflow/workflow-compiling.service";
@@ -1299,10 +1299,11 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       // tick one setting. The form offers whole properties; identity against the
       // operator schema's own `properties` is what tells a top-level field from a
       // same-named field nested inside one.
-      // A property whose control only works on the canvas (code editor, drag-reorder list)
-      // is not offered for exposure: it cannot function as a standalone form field.
+      // A code-editor property cannot be a form field (a reader does not write code), so it is
+      // not offered for exposure. A drag-reorder property IS exposable -- it just renders without
+      // the drag in the form (handled by the parameterized canvas's own map).
       const isTopLevel = typeof mappedField.key === "string" && rootPropertyNames.has(mappedField.key);
-      const exposable = !CANVAS_ONLY_FORMLY_TYPES.has(mappedField.type as string);
+      const exposable = !NON_FORM_FIELD_TYPES.has(mappedField.type as string);
       if (
         this.exposeChoosing &&
         isTopLevel &&

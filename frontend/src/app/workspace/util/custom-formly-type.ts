@@ -28,14 +28,21 @@
  * task-driven hide/validators, the canvas's per-field wiring).
  */
 /**
- * Custom widgets that only work inside the operator canvas: the collaborative code editor
- * (Quill/Yjs, needs the canvas context) and the drag-reorder list (its reorder calls back
- * into the canvas). A property that renders as one of these cannot be offered as a form
- * field -- in the parameterized canvas it would lose its label and its control would not
- * function. Such properties are not offered for exposure, and are left to formly's default
- * control if one was exposed before.
+ * Widgets whose custom control only works with the operator canvas's own wiring: the code
+ * editor (Quill/Yjs, needs the canvas context) and the drag-reorder list (its reorder calls
+ * back into the canvas). The parameterized canvas does NOT apply these types -- it falls back
+ * to formly's default control, which still renders with a label and stays editable (a plain
+ * array list keeps add/remove/edit, only the drag-reorder is dropped).
  */
 export const CANVAS_ONLY_FORMLY_TYPES: ReadonlySet<string> = new Set(["codearea", "repeat-section-dnd"]);
+
+/**
+ * Widgets that cannot be a form field at all, so the property is not even offered for exposure.
+ * Only the code editor: editing code is not "filling in a value", and a form reader should not
+ * be writing code. A drag-reorder property (e.g. Projection's columns) IS exposable -- it just
+ * renders without the drag in the form (see CANVAS_ONLY_FORMLY_TYPES).
+ */
+export const NON_FORM_FIELD_TYPES: ReadonlySet<string> = new Set(["codearea"]);
 
 export function customFormlyFieldType(input: {
   key: unknown;

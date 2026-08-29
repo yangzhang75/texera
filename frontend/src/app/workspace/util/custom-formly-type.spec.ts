@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES } from "./custom-formly-type";
+import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES, NON_FORM_FIELD_TYPES } from "./custom-formly-type";
 
 describe("customFormlyFieldType", () => {
   it("maps a file property to the autocomplete picker", () => {
@@ -74,11 +74,19 @@ describe("customFormlyFieldType", () => {
     expect(customFormlyFieldType({ key: "limit", operatorType: "Limit" })).toBeUndefined();
   });
 
-  it("marks the canvas-only widgets that cannot be a form field", () => {
+  it("treats canvas-wired widgets as needing formly's default control in the form", () => {
     expect(CANVAS_ONLY_FORMLY_TYPES.has("codearea")).toBe(true);
     expect(CANVAS_ONLY_FORMLY_TYPES.has("repeat-section-dnd")).toBe(true);
-    // A value picker/uploader is fine as a form field.
+    // A value picker/uploader works as-is in the form.
     expect(CANVAS_ONLY_FORMLY_TYPES.has("datasetversionselector")).toBe(false);
     expect(CANVAS_ONLY_FORMLY_TYPES.has("huggingface")).toBe(false);
+  });
+
+  it("blocks only the code editor from being exposed; a drag-reorder property is still exposable", () => {
+    expect(NON_FORM_FIELD_TYPES.has("codearea")).toBe(true);
+    // Projection's columns can be exposed -- they just render without the drag.
+    expect(NON_FORM_FIELD_TYPES.has("repeat-section-dnd")).toBe(false);
+    expect(NON_FORM_FIELD_TYPES.has("huggingface")).toBe(false);
+    expect(NON_FORM_FIELD_TYPES.has("datasetversionselector")).toBe(false);
   });
 });

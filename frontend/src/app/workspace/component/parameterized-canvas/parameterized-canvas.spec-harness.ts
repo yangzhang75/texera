@@ -135,6 +135,8 @@ export function setupHarness() {
   const operatorMetadataService = { getOperatorMetadata: () => of({}) };
   const workflowResultService = {
     hasAnyResult: (id: string) => anyResultIds.has(id),
+    // A step in this set produced a non-empty result (the signal the form actually uses).
+    hasNonEmptyResult: (id: string) => anyResultIds.has(id),
     clearResults: vi.fn(),
     hasPaginatedResult: (id: string) => id === "tabular",
     getResultUpdateStream: () => resultUpdateStream.asObservable(),

@@ -719,7 +719,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
   }
 
   public get hasResults(): boolean {
-    return this.shownResultIds.some(id => this.workflowResultService.hasAnyResult(id));
+    return this.shownResultIds.some(id => this.workflowResultService.hasNonEmptyResult(id));
   }
 
   /**
@@ -729,7 +729,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    * permanent "No result yet.".
    */
   public get resultIdsToShow(): string[] {
-    return this.shownResultIds.filter(id => this.workflowResultService.hasAnyResult(id));
+    return this.shownResultIds.filter(id => this.workflowResultService.hasNonEmptyResult(id));
   }
 
   /**
@@ -742,12 +742,12 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    */
   private rebuildResultChoices(): void {
     const ops = this.operators().filter(op => !isSink(op));
-    const anyProduced = ops.some(op => this.workflowResultService.hasAnyResult(op.operatorID));
+    const anyProduced = ops.some(op => this.workflowResultService.hasNonEmptyResult(op.operatorID));
     this.resultChoices = ops
       .filter(
         op =>
           !anyProduced ||
-          this.workflowResultService.hasAnyResult(op.operatorID) ||
+          this.workflowResultService.hasNonEmptyResult(op.operatorID) ||
           this.shownResultIds.includes(op.operatorID)
       )
       .map(op => ({

@@ -334,6 +334,9 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
         for (const operatorID of Object.keys(update ?? {})) {
           this.resultVersion.set(operatorID, (this.resultVersion.get(operatorID) ?? 0) + 1);
         }
+        // A run just proved which steps produce a result, so refresh the picker to drop the
+        // ones that produced none (e.g. a download/publish UDF, the parameter source).
+        this.rebuildResultChoices();
         this.cdr.detectChanges();
         this.later(() => this.fitVisualisations(), 300);
       });
@@ -447,14 +450,7 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     // operators, so it un-checks itself.
     const graph = this.workflowActionService.getTexeraGraph();
     this.shownResultIds = config.resultOperatorIds.filter(id => graph.hasOperator(id));
-    // A sink has no result to show, so leave it out of the picker.
-    this.resultChoices = this.operators()
-      .filter(op => !isSink(op))
-      .map(op => ({
-        operatorID: op.operatorID,
-        label: this.parameterizationService.operatorLabel(op),
-        shown: config.resultOperatorIds.includes(op.operatorID),
-      }));
+    this.rebuildResultChoices();
     // Readers always see rendered markdown; authors only while previewing.
     if (!this.authoring || this.instructionMode === "preview") {
       void this.renderInstruction();
@@ -734,6 +730,31 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    */
   public get resultIdsToShow(): string[] {
     return this.shownResultIds.filter(id => this.workflowResultService.hasAnyResult(id));
+  }
+
+  /**
+   * Fill the "which steps' results to show" picker. A step earns a place once a run shows it
+   * produces a result -- some (a download/publish UDF, the parameter source) never do and
+   * should not be offer-able. Whether a Python UDF yields a result cannot be told from the
+   * graph, so before any run (nothing produced yet) offer them all; a run then narrows the
+   * picker to the steps that produced something. A step already chosen is always kept, so a
+   * selection can still be undone. Rebuilt on config changes and on every result update.
+   */
+  private rebuildResultChoices(): void {
+    const ops = this.operators().filter(op => !isSink(op));
+    const anyProduced = ops.some(op => this.workflowResultService.hasAnyResult(op.operatorID));
+    this.resultChoices = ops
+      .filter(
+        op =>
+          !anyProduced ||
+          this.workflowResultService.hasAnyResult(op.operatorID) ||
+          this.shownResultIds.includes(op.operatorID)
+      )
+      .map(op => ({
+        operatorID: op.operatorID,
+        label: this.parameterizationService.operatorLabel(op),
+        shown: this.shownResultIds.includes(op.operatorID),
+      }));
   }
 
   /** Chart height per result (0 compact / 1 default / 2 tall). Per operator so one does not

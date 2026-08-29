@@ -1027,6 +1027,35 @@ describe("ParameterizedCanvasComponent", () => {
       expect(component.resultChoices.map(c => c.operatorID)).toContain("op-1");
     });
 
+    it("offers only the steps that produced a result once a run has produced any", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "produces", operatorType: "ScanSource" });
+      graphOperators.push({ operatorID: "produces-nothing", operatorType: "ScanSource" });
+      hasOperatorIds.add("produces");
+      hasOperatorIds.add("produces-nothing");
+      parameterizationService.getConfig.mockReturnValue({ parameters: [], resultOperatorIds: [] });
+      anyResultIds.add("produces");
+
+      (component as any).readConfig();
+
+      const ids = component.resultChoices.map(c => c.operatorID);
+      expect(ids).toContain("produces");
+      expect(ids).not.toContain("produces-nothing");
+    });
+
+    it("still offers every step before a run has produced anything", () => {
+      build(parameterized).ngOnInit();
+      graphOperators.push({ operatorID: "a", operatorType: "ScanSource" });
+      graphOperators.push({ operatorID: "b", operatorType: "ScanSource" });
+      hasOperatorIds.add("a");
+      hasOperatorIds.add("b");
+      parameterizationService.getConfig.mockReturnValue({ parameters: [], resultOperatorIds: [] });
+
+      (component as any).readConfig();
+
+      expect(component.resultChoices.map(c => c.operatorID).sort()).toEqual(["a", "b"]);
+    });
+
     it("bumps result versions and refreshes on a result update", () => {
       build(parameterized).ngOnInit();
       resultUpdateStream.next({ "op-1": {} });

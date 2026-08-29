@@ -44,6 +44,7 @@ import { WorkflowPersistService } from "../../../common/service/workflow-persist
 import { NotificationService } from "../../../common/service/notification/notification.service";
 import { UserService } from "../../../common/service/user/user.service";
 import { DynamicSchemaService } from "../../service/dynamic-schema/dynamic-schema.service";
+import { customFormlyFieldType } from "../../util/custom-formly-type";
 import { WorkflowCompilingService } from "../../service/compile-workflow/workflow-compiling.service";
 import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-workflow.service";
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
@@ -481,12 +482,20 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     if (!schema) {
       return undefined;
     }
+    const operatorType = this.workflowActionService.getTexeraGraph().getOperator(binding.operatorID)?.operatorType;
     const full = this.formlyJsonschema.toFieldConfig(cloneDeep(schema) as never, {
-      map: mapped => {
-        // The dataset file picker is registered under this formly type; the raw schema
-        // only says "string", so without this a file input renders as a text box.
-        if (mapped.key === "fileName") {
-          mapped.type = "inputautocomplete";
+      map: (mapped, source) => {
+        // Render the exact custom widget the operator property panel would (file/model/
+        // dataset pickers, image/audio uploaders, ...), shared via customFormlyFieldType so
+        // an exposed property shows its real control instead of degrading to a text box.
+        const customType = customFormlyFieldType({
+          key: mapped.key,
+          operatorType,
+          description: (source as { description?: string })?.description,
+          currentType: mapped.type,
+        });
+        if (customType) {
+          mapped.type = customType;
         }
         return mapped;
       },
@@ -513,31 +522,37 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
 
     const form = new FormGroup({});
     const model: Record<string, unknown> = { [binding.id]: cloneDeep(parameter.value) };
-    form.valueChanges
-      .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), takeUntil(this.formsRebuilt), untilDestroyed(this))
-      .subscribe(() => {
-        // Formly emits the schema's empty default while building the control, before any
-        // edit; writing that back silently wiped the operator's real value (both views edit
-        // one workflow). So only accept a dirtied form, or a value that differs from the
-        // operator's without being emptier (some controls set values without marking dirty).
-        const next = model[binding.id];
-        const current = this.parameterizationService.readValue(binding.operatorID, binding.propertyKey);
-        const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
-        const unchanged = JSON.stringify(next ?? null) === JSON.stringify(current ?? null);
-        if (unchanged || (!form.dirty && isEmpty(next) && !isEmpty(current))) {
-          return;
-        }
-        // Write straight onto the operator (the same edit the canvas makes) and refresh this
-        // card's snapshot, which the template reads.
-        this.parameterizationService.writeValue(binding, next);
-        this.parameters = this.parameterizationService.resolveParameters();
-        const refreshed = this.parameters.find(p => p.binding.id === binding.id);
-        const card = this.rendered.find(r => r.parameter.binding.id === binding.id);
-        if (refreshed && card) {
-          card.parameter = refreshed;
-        }
-        this.cdr.detectChanges();
-      });
+    if (this.canEdit) {
+      form.valueChanges
+        .pipe(debounceTime(FORM_DEBOUNCE_TIME_MS), takeUntil(this.formsRebuilt), untilDestroyed(this))
+        .subscribe(() => {
+          // Formly emits the schema's empty default while building the control, before any
+          // edit; writing that back silently wiped the operator's real value (both views edit
+          // one workflow). So only accept a dirtied form, or a value that differs from the
+          // operator's without being emptier (some controls set values without marking dirty).
+          const next = model[binding.id];
+          const current = this.parameterizationService.readValue(binding.operatorID, binding.propertyKey);
+          const isEmpty = (v: unknown) => v === undefined || v === null || v === "";
+          const unchanged = JSON.stringify(next ?? null) === JSON.stringify(current ?? null);
+          if (unchanged || (!form.dirty && isEmpty(next) && !isEmpty(current))) {
+            return;
+          }
+          // Write straight onto the operator (the same edit the canvas makes) and refresh this
+          // card's snapshot, which the template reads.
+          this.parameterizationService.writeValue(binding, next);
+          this.parameters = this.parameterizationService.resolveParameters();
+          const refreshed = this.parameters.find(p => p.binding.id === binding.id);
+          const card = this.rendered.find(r => r.parameter.binding.id === binding.id);
+          if (refreshed && card) {
+            card.parameter = refreshed;
+          }
+          this.cdr.detectChanges();
+        });
+    } else {
+      // A read-only viewer sees the author's values and can run with them, but cannot change
+      // them: disable the control so it renders non-editable, and wire no write-back at all.
+      form.disable();
+    }
 
     this.applyFieldOverrides(field, binding, schemaLabel);
     return { parameter, fields: [field], form, model };
@@ -1149,6 +1164,13 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
    * stray "Untitled workflow" rows when the page is left before its workflow loaded.
    */
   private save(): void {
+    // A read-only viewer can open and run the form (execution is gated on computing-unit
+    // access, not workflow access) but must never persist: every such save is a guaranteed
+    // 403 that would spam "Could not save" on each debounce. The inputs are non-editable
+    // for them, so there is nothing to store anyway.
+    if (!this.canEdit) {
+      return;
+    }
     if (!this.userService.isLogin() || !this.workflowPersistService.isWorkflowPersistEnabled()) {
       return;
     }

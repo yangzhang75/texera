@@ -374,6 +374,15 @@ describe("ParameterizedCanvasComponent", () => {
 
       expect(workflowPersistService.persistWorkflow).not.toHaveBeenCalled();
     });
+
+    it("does not save when the viewer only has read access", () => {
+      workflowActionService.getWorkflow = () => withOperators(["a"], { a: { x: 0, y: 0 } });
+      (component as any).canEdit = false;
+
+      (component as any).save();
+
+      expect(workflowPersistService.persistWorkflow).not.toHaveBeenCalled();
+    });
   });
 
   describe("looking at a step", () => {
@@ -1053,6 +1062,38 @@ describe("ParameterizedCanvasComponent", () => {
 
       expect(component.rendered).toHaveLength(1);
       expect(component.rendered[0].fields[0].key).toBe(component.rendered[0].parameter.binding.id);
+    });
+
+    it("gives an exposed property its custom widget instead of a text box", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("datasetVersionPath", "Dataset")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered[0].fields[0].type).toBe("datasetversionselector");
+    });
+
+    it("uses the operator type to pick a widget (HuggingFace model picker)", () => {
+      build(parameterized).ngOnInit();
+      hasOperatorIds.add("op-1");
+      graphOperators.push({ operatorID: "op-1", operatorType: "HuggingFace" });
+      parameterizationService.resolveParameters.mockReturnValue([resolved("modelId", "Model")]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered[0].fields[0].type).toBe("huggingface");
+    });
+
+    it("locks the inputs for a read-only viewer", () => {
+      build({ ...parameterized, readonly: true }).ngOnInit();
+      hasOperatorIds.add("op-1");
+      parameterizationService.resolveParameters.mockReturnValue([resolved("n_hvg", "Genes")]);
+
+      (component as any).readConfig();
+
+      expect(component.canEdit).toBe(false);
+      expect(component.rendered[0].form.disabled).toBe(true);
     });
 
     it("writes a dirtied value back to the operator", () => {

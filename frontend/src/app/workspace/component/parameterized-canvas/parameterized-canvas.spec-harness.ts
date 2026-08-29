@@ -31,7 +31,11 @@ export const binding = (id: string, displayName: string) => ({
 });
 
 /** A resolved (non-broken) parameter, ready to render. Override `binding`/`brokenReason` per test. */
-export const resolved = (id: string, displayName: string, extra: Partial<ResolvedParameter> = {}): ResolvedParameter => ({
+export const resolved = (
+  id: string,
+  displayName: string,
+  extra: Partial<ResolvedParameter> = {}
+): ResolvedParameter => ({
   binding: binding(id, displayName),
   value: "seed",
   operatorLabel: "Source: Scan",
@@ -147,6 +151,8 @@ export function setupHarness() {
         { key: "n_hvg", props: { label: "N" } },
         { key: "tableName", props: { label: "table name" } },
         { key: "fileName", props: { label: "File" } },
+        { key: "modelId", props: { label: "Model" } },
+        { key: "datasetVersionPath", props: { label: "Dataset" } },
         {
           key: "predicates",
           props: { label: "Predicates" },

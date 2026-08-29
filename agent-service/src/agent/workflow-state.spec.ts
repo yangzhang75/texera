@@ -19,7 +19,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { WorkflowState } from "./workflow-state";
-import type { OperatorPredicate, OperatorLink } from "../types/workflow";
+import type { OperatorPredicate, OperatorLink, WorkflowContent } from "../types/workflow";
 
 function makeOperator(id: string, overrides: Partial<OperatorPredicate> = {}): OperatorPredicate {
   return {
@@ -172,5 +172,33 @@ describe("WorkflowState - getSubDAG", () => {
 
     const subDag = state.getSubDAG("op2");
     expect(subDag.operators.map(o => o.operatorID)).toEqual(["op2"]);
+  });
+});
+
+describe("WorkflowState - parameterized-canvas definition", () => {
+  const base = (extra: Partial<WorkflowContent> = {}): WorkflowContent => ({
+    operators: [makeOperator("op1"), makeOperator("op2")],
+    operatorPositions: {},
+    links: [],
+    commentBoxes: [],
+    settings: { dataTransferBatchSize: 400 },
+    ...extra,
+  });
+
+  test("carries the parameterization definition through an agent save untouched", () => {
+    const state = new WorkflowState();
+    const parameterization = { parameters: [{ operatorID: "op1", propertyKey: "limit" }], resultOperatorIds: ["op2"] };
+    state.setWorkflowContent(base({ parameterization }));
+
+    // The agent edits the graph but never the form definition; it must come back intact.
+    state.addOperator(makeOperator("op3"));
+    expect(state.getWorkflowContent().parameterization).toEqual(parameterization);
+  });
+
+  test("adds no parameterization key when the workflow never had one", () => {
+    const state = new WorkflowState();
+    state.setWorkflowContent(base());
+
+    expect("parameterization" in state.getWorkflowContent()).toBe(false);
   });
 });

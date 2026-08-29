@@ -430,12 +430,13 @@
       <div class="pc-section-head"><span class="label">Results</span></div>
       <p
         class="results-empty"
-        *ngIf="shownResultIds.length === 0">
+        *ngIf="resultIdsToShow.length === 0">
         {{ isRunning ? "Working…" : "Press Run and the results appear here." }}
       </p>
-      <!-- A card for every step the author chose. It stays even before there is anything to
-           show, with a line saying why, so a chosen step never silently disappears. -->
-      <ng-container *ngFor="let id of shownResultIds">
+      <!-- A card only for a chosen step that actually produced a result. Whether a Python UDF
+           yields one cannot be told from the graph, so a step earns its card at runtime rather
+           than sitting on a permanent "No result yet." (a download/publish step never would). -->
+      <ng-container *ngFor="let id of resultIdsToShow">
         <div class="card result">
           <div class="result-head">
             <span>{{ resultLabel(id) }}</span>

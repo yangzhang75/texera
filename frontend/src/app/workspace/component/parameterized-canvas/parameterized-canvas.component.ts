@@ -726,6 +726,16 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
     return this.shownResultIds.some(id => this.workflowResultService.hasAnyResult(id));
   }
 
+  /**
+   * The chosen steps that actually produced a result, so only those get a card. Whether a
+   * Python UDF yields a result cannot be known from the graph -- some (e.g. a download/publish
+   * step) never do -- so a chosen step earns its card at runtime rather than sitting on a
+   * permanent "No result yet.".
+   */
+  public get resultIdsToShow(): string[] {
+    return this.shownResultIds.filter(id => this.workflowResultService.hasAnyResult(id));
+  }
+
   /** Chart height per result (0 compact / 1 default / 2 tall). Per operator so one does not
    *  resize the others, and in memory only -- a viewing preference, not part of the workflow. */
   private zoomByResult = new Map<string, number>();

@@ -959,6 +959,15 @@ describe("ParameterizedCanvasComponent", () => {
       expect(component.hasResults).toBe(true);
     });
 
+    it("cards only the chosen steps that actually produced a result", () => {
+      build(parameterized);
+      component.shownResultIds = ["produces", "produces-nothing"];
+      anyResultIds.add("produces");
+
+      // The step that never yielded a result (e.g. a download/publish UDF) gets no card.
+      expect(component.resultIdsToShow).toEqual(["produces"]);
+    });
+
     it("treats a paginated result as tabular, with no visualisation content", () => {
       build(parameterized);
       expect(component.isTabularResult("tabular")).toBe(true);

@@ -4,27 +4,27 @@
 # and the failure reads as a code bug: `ModuleNotFoundError: No module named
 # 'cellqc'` from inside an operator.
 #
-# Versions are the ones the reference run was validated against (13,559 ->
-# 11,234 -> 10,223 cells). Only the four at the bottom are pinned hard; the rest
-# is scanpy's own stack and floats with it.
+# Four lines, because four is what the workflow actually imports that nothing
+# else brings in. scanpy declares h5py, numba, scikit-learn, matplotlib, numpy,
+# pandas, scipy and anndata itself, so pinning those again here would be a
+# second opinion that can only ever conflict with scanpy's own.
 
-# --- what the stage scripts import directly ---
+scanpy==1.12.1         # and with it anndata, numpy, pandas, scipy, h5py, numba,
+                       #   scikit-learn, matplotlib -- the stack cellqc's Python
+                       #   stages run on
 pysam==0.24.0          # nuclear_fraction reads the Cell Ranger BAM with this
 jinja2==3.1.6          # qcreport.py renders report.html from bundled templates
-PyYAML==6.0.3
-click==8.4.2
 requests==2.34.2       # Publish Result talks to the file service over REST
 
-# --- the analysis stack cellqc's Python stages run on ---
-scanpy==1.12.1
-anndata==0.12.18
-numpy==2.1.0
-scipy==1.18.0
-pandas==2.2.3
-h5py==3.16.0
-numba==0.65.1
-matplotlib==3.11.0
-scikit-learn==1.9.0
+# cellqc declares click and PyYAML too; neither is needed here. click is only
+# imported by its CLI, which the workflow does not use -- the operators are the
+# scheduler -- and PyYAML only by slidereport.py, which builds the PDF slide deck
+# the workflow does not build. Installing cellqc --no-deps is what keeps them out.
+#
+# The versions the reference run was validated against, for a build that has to
+# be reproduced exactly: anndata 0.12.18, numpy 2.1.0, scipy 1.18.0, pandas
+# 2.2.3, h5py 3.16.0, numba 0.65.1, matplotlib 3.11.0, scikit-learn 1.9.0,
+# under Python 3.12.13.
 
 # --- cellqc itself, and the runner that drives it ---
 #
@@ -34,8 +34,7 @@ scikit-learn==1.9.0
 # for every cell -- a QC run that looks fine and filters nothing.
 #
 # --no-deps on purpose: cellqc declares snakemake, whose CLI the workflow does
-# not use (the operators are the scheduler), and pulling it in churns the UDF
-# interpreter's environment for nothing.
+# not use, and pulling it in churns the UDF interpreter's environment for nothing.
 #
 #   pip install --no-deps git+https://github.com/lijinbio/cellqc.git@v0.3.3
-#   pip install --no-deps deploy/cellqc          # the cellqc_texera runner in this directory
+#   pip install --no-deps deploy/cellqc          # the cellqc_texera runner

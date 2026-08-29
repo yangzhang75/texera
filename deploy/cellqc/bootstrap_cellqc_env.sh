@@ -73,16 +73,11 @@ fi
 echo "=== 1/4  R environment: $PREFIX (via $MAMBA) ==="
 PLATFORM_ARGS=()
 [[ -n "$PLATFORM" ]] && PLATFORM_ARGS=(--platform "$PLATFORM")
-# Upstream's envs/cellqc.yaml, minus the parts the Texera workflow does not use:
-# snakemake (the operators are the scheduler), tectonic (no PDF slide deck), and
-# the Python analysis stack (that lives in the UDF interpreter below).
-"$MAMBA" create -y -p "$PREFIX" "${PLATFORM_ARGS[@]}" \
-	-c conda-forge -c bioconda \
-	'r-base>=4.4' 'r-seurat>=5' 'r-seuratobject>=5' r-matrix 'r-soupx>=1.6.2' \
-	r-ggplot2 r-remotes r-rocr r-fields r-kernsmooth r-jsonlite \
-	bioconductor-dropletutils bioconductor-singlecellexperiment \
-	bioconductor-summarizedexperiment bioconductor-zellkonverter \
-	bioconductor-scdblfinder bioconductor-celda
+# The package list lives in environment-r.yaml and only there. It used to be
+# repeated here as well, which is one list too many: a package added to one copy
+# and not the other produces an environment that installs cleanly and then fails
+# an hour into a run with `there is no package called '...'`.
+"$MAMBA" create -y -p "$PREFIX" "${PLATFORM_ARGS[@]}" -f "$HERE/environment-r.yaml"
 
 echo "=== 2/4  DoubletFinder (GitHub; not packaged for conda) ==="
 "$PREFIX/bin/Rscript" -e \

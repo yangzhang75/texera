@@ -38,7 +38,7 @@ import {
   hideTypes,
 } from "../../../types/custom-json-schema.interface";
 import { isDefined } from "../../../../common/util/predicate";
-import { customFormlyFieldType } from "../../../util/custom-formly-type";
+import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES } from "../../../util/custom-formly-type";
 import { ExecutionState, OperatorState, OperatorStatistics } from "src/app/workspace/types/execute-workflow.interface";
 import { DynamicSchemaService } from "../../../service/dynamic-schema/dynamic-schema.service";
 import { WorkflowCompilingService } from "../../../service/compile-workflow/workflow-compiling.service";
@@ -1282,8 +1282,17 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       // tick one setting. The form offers whole properties; identity against the
       // operator schema's own `properties` is what tells a top-level field from a
       // same-named field nested inside one.
+      // A property whose control only works on the canvas (code editor, drag-reorder list)
+      // is not offered for exposure: it cannot function as a standalone form field.
       const isTopLevel = typeof mappedField.key === "string" && rootPropertyNames.has(mappedField.key);
-      if (this.exposeChoosing && isTopLevel && typeof mappedField.key === "string" && this.currentOperatorId) {
+      const exposable = !CANVAS_ONLY_FORMLY_TYPES.has(mappedField.type as string);
+      if (
+        this.exposeChoosing &&
+        isTopLevel &&
+        exposable &&
+        typeof mappedField.key === "string" &&
+        this.currentOperatorId
+      ) {
         const operatorId = this.currentOperatorId;
         const propertyKey = mappedField.key;
         ExposePropertyWrapperComponent.decorate(

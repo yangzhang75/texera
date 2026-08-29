@@ -27,6 +27,16 @@
  * the widget TYPE lives here; each caller keeps its own field behaviour (the panel's
  * task-driven hide/validators, the canvas's per-field wiring).
  */
+/**
+ * Custom widgets that only work inside the operator canvas: the collaborative code editor
+ * (Quill/Yjs, needs the canvas context) and the drag-reorder list (its reorder calls back
+ * into the canvas). A property that renders as one of these cannot be offered as a form
+ * field -- in the parameterized canvas it would lose its label and its control would not
+ * function. Such properties are not offered for exposure, and are left to formly's default
+ * control if one was exposed before.
+ */
+export const CANVAS_ONLY_FORMLY_TYPES: ReadonlySet<string> = new Set(["codearea", "repeat-section-dnd"]);
+
 export function customFormlyFieldType(input: {
   key: unknown;
   operatorType: string | undefined;

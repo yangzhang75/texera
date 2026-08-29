@@ -44,7 +44,7 @@ import { WorkflowPersistService } from "../../../common/service/workflow-persist
 import { NotificationService } from "../../../common/service/notification/notification.service";
 import { UserService } from "../../../common/service/user/user.service";
 import { DynamicSchemaService } from "../../service/dynamic-schema/dynamic-schema.service";
-import { customFormlyFieldType } from "../../util/custom-formly-type";
+import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES } from "../../util/custom-formly-type";
 import { WorkflowCompilingService } from "../../service/compile-workflow/workflow-compiling.service";
 import { ExecuteWorkflowService } from "../../service/execute-workflow/execute-workflow.service";
 import { OperatorMetadataService } from "../../service/operator-metadata/operator-metadata.service";
@@ -494,7 +494,10 @@ export class ParameterizedCanvasComponent implements OnInit, OnDestroy {
           description: (source as { description?: string })?.description,
           currentType: mapped.type,
         });
-        if (customType) {
+        // Canvas-only widgets (code editor, drag-reorder) are not offered for exposure, but
+        // an older workflow may already carry one -- leave it to formly's default control
+        // (an editable field with its label) rather than a widget that cannot work here.
+        if (customType && !CANVAS_ONLY_FORMLY_TYPES.has(customType)) {
           mapped.type = customType;
         }
         return mapped;

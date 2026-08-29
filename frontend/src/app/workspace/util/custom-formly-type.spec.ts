@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { customFormlyFieldType } from "./custom-formly-type";
+import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES } from "./custom-formly-type";
 
 describe("customFormlyFieldType", () => {
   it("maps a file property to the autocomplete picker", () => {
@@ -72,5 +72,13 @@ describe("customFormlyFieldType", () => {
 
   it("leaves an ordinary property to formly's default control", () => {
     expect(customFormlyFieldType({ key: "limit", operatorType: "Limit" })).toBeUndefined();
+  });
+
+  it("marks the canvas-only widgets that cannot be a form field", () => {
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("codearea")).toBe(true);
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("repeat-section-dnd")).toBe(true);
+    // A value picker/uploader is fine as a form field.
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("datasetversionselector")).toBe(false);
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("huggingface")).toBe(false);
   });
 });

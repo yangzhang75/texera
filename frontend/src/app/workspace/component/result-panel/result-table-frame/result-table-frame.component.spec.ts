@@ -43,6 +43,7 @@ import { PaginatedResultEvent } from "../../../types/workflow-websocket.interfac
 import { IndexableObject } from "../../../types/result-table.interface";
 import { RowModalComponent } from "../result-panel-modal.component";
 import { ResultExportationComponent } from "../../result-exportation/result-exportation.component";
+import { WorkflowActionService } from "../../../service/workflow-graph/model/workflow-action.service";
 
 type OperatorStatsMap = Record<string, Record<string, Record<string, number>>>;
 
@@ -535,6 +536,36 @@ describe("ResultTableFrameComponent", () => {
       expect(config.nzData).toEqual(
         expect.objectContaining({ exportType: "data", defaultFileName: "name_6", rowIndex: 6, columnIndex: 3 })
       );
+    });
+
+    // Export scopes itself to the canvas's highlighted operators. The Form View has no
+    // canvas, so nothing is ever highlighted there and the export returned without sending
+    // a request -- a download button that did nothing and said nothing.
+    it("highlights the operator whose results are on screen, so the export has a scope", () => {
+      vi.spyOn(modalService, "create").mockReturnValue({} as any);
+      const actionService = TestBed.inject(WorkflowActionService);
+      vi.spyOn(actionService.getTexeraGraph(), "hasOperator").mockReturnValue(true);
+      const highlight = vi
+        .spyOn(actionService.getJointGraphWrapper(), "highlightOperators")
+        .mockImplementation(() => {});
+      component.operatorId = "op1";
+
+      component.downloadData("alice", 0, 0, "name");
+
+      expect(highlight).toHaveBeenCalledWith("op1");
+    });
+
+    it("still opens the modal when the frame has no operator id", () => {
+      const createSpy = vi.spyOn(modalService, "create").mockReturnValue({} as any);
+      const highlight = vi
+        .spyOn(TestBed.inject(WorkflowActionService).getJointGraphWrapper(), "highlightOperators")
+        .mockImplementation(() => {});
+      component.operatorId = undefined;
+
+      component.downloadData("alice", 0, 0, "name");
+
+      expect(highlight).not.toHaveBeenCalled();
+      expect(createSpy).toHaveBeenCalled();
     });
   });
 

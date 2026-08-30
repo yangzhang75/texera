@@ -464,6 +464,16 @@ export class ResultTableFrameComponent implements OnInit, OnChanges {
   }
 
   downloadData(data: any, rowIndex: number, columnIndex: number, columnName: string): void {
+    // Export scopes itself to the canvas's highlighted operators. The Form View has no
+    // canvas for the reader to have highlighted anything on, so that list is empty there
+    // and the export returned without sending a request -- a download button that did
+    // nothing at all. The operator being exported is the one whose results this frame is
+    // showing, so say so.
+    // Guarded: highlightOperators throws on an operator the paper does not hold, and a
+    // download button that throws is worse than one that exports nothing.
+    if (this.operatorId && this.workflowActionService.getTexeraGraph().hasOperator(this.operatorId)) {
+      this.workflowActionService.getJointGraphWrapper().highlightOperators(this.operatorId);
+    }
     const realRowNumber = (this.currentPageIndex - 1) * this.pageSize + rowIndex;
     const defaultFileName = `${columnName}_${realRowNumber}`;
     const modal = this.modalService.create({

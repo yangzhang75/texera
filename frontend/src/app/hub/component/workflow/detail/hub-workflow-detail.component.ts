@@ -75,6 +75,9 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
   displayPreciseViewCount = false;
   viewCount: number = 0;
   wid: number | undefined;
+  // Whether the workflow on show has a Parameterized Canvas. A clone keeps this, so we use it to
+  // decide whether the copy opens straight into its form instead of the plain canvas.
+  private isParameterizedWorkflow = false;
   protected readonly currentUser?: User;
 
   constructor(
@@ -178,6 +181,8 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
         .subscribe({
           next: (workflow: Workflow) => {
             // load the fetched workflow
+            this.isParameterizedWorkflow =
+              workflow.isParameterized === true || isDefined(workflow.content?.parameterization);
             this.workflowActionService.reloadWorkflow(workflow);
             this.workflowActionService.getTexeraGraph().triggerCenterEvent();
           },
@@ -192,6 +197,8 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
         .subscribe({
           next: (workflow: Workflow) => {
             // load the fetched workflow
+            this.isParameterizedWorkflow =
+              workflow.isParameterized === true || isDefined(workflow.content?.parameterization);
             this.workflowActionService.reloadWorkflow(workflow);
             this.workflowActionService.getTexeraGraph().triggerCenterEvent();
           },
@@ -216,7 +223,13 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
       .cloneWorkflow(this.wid)
       .pipe(untilDestroyed(this))
       .subscribe(newWid => {
-        this.router.navigate([`${USER_WORKSPACE}/${newWid}`]).then(() => {
+        // A cloned Parameterized Canvas keeps its form, so open the copy straight into it; a plain
+        // workflow's copy opens the canvas as before. If the copy turns out not to be
+        // parameterized the form page itself falls back to the canvas.
+        const target = this.isParameterizedWorkflow
+          ? [USER_WORKSPACE, String(newWid), "parameters"]
+          : [USER_WORKSPACE, String(newWid)];
+        this.router.navigate(target).then(() => {
           this.notificationService.success("Clone Successful");
         });
       });

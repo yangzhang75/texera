@@ -108,6 +108,12 @@ here is the declaration of what to install, plus the workflow's own source:
 | `deploy/cellqc/cellqc_texera/` | the runner: it builds the `snakemake` object each upstream stage script expects and runs that script verbatim, so the numbers cannot drift and an upgrade is a `pip install` |
 | `deploy/cellqc/bootstrap_cellqc_env.sh` | all of the below in one command |
 
+The recipe below installs onto a machine. That is what `bin/local-dev.sh` gives you --
+the computing unit is a process on your host and inherits your shell. **On Kubernetes
+there is no such machine**: a computing unit is a pod from a fixed image, so the two
+environments have to be inside that image instead. See "On Kubernetes" below, and read
+this section first -- the k8s recipe installs the same things, one layer up.
+
 ```bash
 # 1. R  (add --platform osx-64 on macOS arm64; not needed on Linux)
 micromamba create -y -p ~/cellqc-env -f deploy/cellqc/environment-r.yaml
@@ -123,14 +129,17 @@ micromamba create -y -p ~/cellqc-env -f deploy/cellqc/environment-r.yaml
 export CELLQC_RSCRIPT=/home/<you>/cellqc-env/bin/Rscript
 ```
 
-**Set `CELLQC_RSCRIPT` on the computing unit.** It is what makes an imported CellQC
-workflow runnable as it arrives. The Parameters operator resolves the R environment in
-this order: its own `rscript` field, then this variable, then a bare `Rscript` on PATH.
-The distributed workflow ships `rscript` empty on purpose -- a path baked into the JSON
-pins it to one machine and has to be re-edited after every import, and the bare `Rscript`
-on PATH is usually a plain R with none of the Bioconductor stack. With this set, the only
-thing a user touches after importing is the file picker for their own Cell Ranger
-archive.
+**Set `CELLQC_RSCRIPT` where the computing unit will read it.** It is what makes an
+imported CellQC workflow runnable as it arrives. The Parameters operator resolves the R
+environment in this order: its own `rscript` field, then this variable, then a bare
+`Rscript` on PATH. The distributed workflow ships `rscript` empty on purpose -- a path
+baked into the JSON pins it to one machine and has to be re-edited after every import,
+and the bare `Rscript` on PATH is usually a plain R with none of the Bioconductor stack.
+With this set, the only thing a user touches after importing is the file picker for their
+own Cell Ranger archive.
+
+Exporting it in the shell works for local-dev only, where the computing unit is a child
+process. It does **not** reach a pod: see the next section.
 
 A wrong or missing R environment does not cost an hour: `Load Input`, the first operator,
 probes it with a real `library()` call and fails in seconds naming the missing package.
@@ -162,6 +171,45 @@ sample (2.1M raw barcodes) SoupX peaks around 7 GB.
 Validated against upstream's own reference numbers: 13,559 → 11,234 → 10,223
 cells, SoupX rho 1.00%, DoubletFinder 1,011 doublets (9.00%), final matrix
 10,223 × 38,606.
+
+### On Kubernetes: it has to be in the computing unit image
+
+A computing unit is a pod started from one globally configured image
+(`kubernetes.conf` `image-name`, overridable with `KUBERNETES_IMAGE_NAME`). Four things
+about that pod decide the whole approach, and each one closes a door that looks open:
+
+**There is no machine to install onto.** The pod is new every time. Nothing you install
+by hand survives it.
+
+**Nothing can be mounted in.** `KubernetesClient` gives the pod exactly one volume, an
+`emptyDir` tmpfs at `/dev/shm`, and only when `shmSize` was requested. There is no
+PersistentVolume path, so "install the environment on a shared disk and mount it" is not
+available.
+
+**The pod's environment is a fixed allowlist.** `computingUnitEnvironmentVariables` is a
+hardcoded Map, and `EnvironmentalVariable` has no entry for `UDF_PYTHON_PATH` and none for
+`CELLQC_RSCRIPT`. Exporting either where the managing service runs sets nothing in the
+pod. The image's own `ENV` *is* read, though -- `udf.conf` resolves
+`python.path = ${?UDF_PYTHON_PATH}` from the container's environment -- so the image can
+set both.
+
+**The image's Python is too old for these pins.** The computing unit builds on
+`eclipse-temurin:17-jdk-jammy` (Ubuntu 22.04), whose `python3` is 3.10.6, and
+`scanpy==1.12.1` requires >= 3.12. Installing `requirements.txt` into the image's system
+interpreter cannot work; the layer has to bring its own 3.12.
+
+`deploy/cellqc/Dockerfile` is that layer. Build it, push it, point
+`KUBERNETES_IMAGE_NAME` at the result.
+
+The image grows by roughly 4 GB (1.9 GB of R, ~2 GB of the Python stack). That is disk on
+each node, not memory, and not per pod -- pods on a node share the image's read-only
+layers, and the repo already runs a prepull DaemonSet, so creating a computing unit stays
+as fast as it is today. Only the first pull on a node is slower.
+
+Every computing unit then carries cellqc's environment, whether or not it runs cellqc:
+`WorkflowComputingUnitCreationParams` has no image field, so the image is one global
+choice. Making it per-unit -- a real "environment" to pick when creating a computing unit
+-- is a feature, not a configuration.
 
 ### Getting the results out
 

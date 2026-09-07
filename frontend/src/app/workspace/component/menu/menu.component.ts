@@ -45,7 +45,7 @@ import { ResultExportationComponent } from "../result-exportation/result-exporta
 import { ReportGenerationService } from "../../service/report-generation/report-generation.service";
 import { ShareAccessComponent } from "src/app/dashboard/component/user/share-access/share-access.component";
 import { PanelService } from "../../service/panel/panel.service";
-import { USER_WORKFLOW } from "../../../app-routing.constant";
+import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
 import { ComputingUnitSelectionComponent } from "../power-button/computing-unit-selection.component";
@@ -625,6 +625,51 @@ export class MenuComponent implements OnInit, OnDestroy {
     // builder cannot hoist reliably.
     this.fileSaverService.saveAs(new Blob([workflowContentJson], { type: "text/plain;charset=utf-8" }), fileName);
   }
+
+  /**
+   * Open the Form View -- a full page load, not a route: the two views share root-level
+   * singletons (graph, Yjs shared model), and routing left the old collaboration client
+   * alive (you appeared as your own coeditor). A fresh document is the clean handover.
+   */
+  public onClickOpenFormView(): void {
+    const wid = this.workflowActionService.getWorkflowMetadata().wid;
+    if (wid === undefined) {
+      return;
+    }
+    // Save first, and hand over only once the save has completed. The full-page load that
+    // follows unloads this document, and a request still in flight at that moment is aborted, so
+    // navigating right after firing the save could lose the very edit the switch is meant to carry
+    // across; the workspace's beforeunload save runs into the same unload and is no safety net. A
+    // save that fails keeps the user here with the error shown, rather than leaving with changes
+    // that were never stored. The form's own switch (openRegularCanvas) does the same.
+    this.isSaving = true;
+    this.workflowPersistService
+      .persistWorkflow(this.workflowActionService.getWorkflow())
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: (updatedWorkflow: Workflow) => this.workflowActionService.setWorkflowMetadata(updatedWorkflow),
+        error: () => {
+          this.isSaving = false;
+          // The same wording as the form's own save, so the two switches read alike.
+          this.notificationService.error("Could not save. Your latest changes are not stored yet.");
+        },
+        complete: () => {
+          this.isSaving = false;
+          this.openFormViewPage(wid);
+        },
+      });
+  }
+
+  /**
+   * The full-page handover to the Form View, apart from the save so the order is testable.
+   * Excluded from coverage as a whole: jsdom cannot navigate, so the specs stub this method and
+   * assert when it is called rather than what it does.
+   */
+  /* v8 ignore start */
+  private openFormViewPage(wid: number): void {
+    window.location.href = `${USER_WORKSPACE}/${wid}/form`;
+  }
+  /* v8 ignore stop */
 
   /**
    * Calls Markdown Description Component

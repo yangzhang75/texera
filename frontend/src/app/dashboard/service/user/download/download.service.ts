@@ -315,8 +315,13 @@ export class DownloadService {
    */
   private retrieveWorkflowItem(id: number, name: string): Observable<DownloadableItem> {
     return this.workflowPersistService.retrieveWorkflow(id).pipe(
-      map(({ content }) => {
-        const workflowJson = JSON.stringify(content, null, 2);
+      map(({ content, defaultView }) => {
+        // Carry the landing view so a download-then-upload keeps a form-default workflow opening
+        // as a form. It goes in as one extra top-level key next to the workflow's own
+        // (operators/links/...); the importer destructures it back out (see uploadWorkflow), and an
+        // older importer that reads the whole object as content simply ignores the unknown key.
+        const exported = defaultView === undefined ? content : { ...content, defaultView };
+        const workflowJson = JSON.stringify(exported, null, 2);
         const fileName = `${name}.json`;
         const blob = new Blob([workflowJson], { type: "text/plain;charset=utf-8" });
         return { blob, fileName };

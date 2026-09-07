@@ -18,7 +18,7 @@
  */
 
 import { ChangeDetectorRef, Component, OnInit, NgZone, ViewChild } from "@angular/core";
-import { take } from "rxjs/operators";
+import { filter, take } from "rxjs/operators";
 import { WorkflowComputingUnitManagingService } from "../../../common/service/computing-unit/workflow-computing-unit/workflow-computing-unit-managing.service";
 import { DashboardWorkflowComputingUnit } from "../../../common/type/workflow-computing-unit";
 import { NotificationService } from "../../../common/service/notification/notification.service";
@@ -269,22 +269,63 @@ export class ComputingUnitSelectionComponent implements OnInit {
         if (wid !== this.workflowId) {
           this.workflowId = wid;
           if (isDefined(this.workflowId) && this.workflowId !== DEFAULT_WORKFLOW.wid) {
-            this.workflowExecutionsService
-              .retrieveLatestWorkflowExecution(this.workflowId)
-              .pipe(untilDestroyed(this))
-              .subscribe({
-                next: (latestWorkflowExecution: WorkflowExecutionsEntry) => {
-                  this.selectComputingUnit(this.workflowId, latestWorkflowExecution.cuId);
-                },
-                error: (err: unknown) => {
-                  const runningUnit = this.allComputingUnits.find(unit => unit.status === "Running");
-                  if (runningUnit) {
-                    this.selectComputingUnit(this.workflowId, runningUnit.computingUnit.cuid);
-                  }
-                },
-              });
+            this.selectInitialUnit(this.workflowId);
           }
         }
+      });
+  }
+
+  /**
+   * Pick the unit for a workflow that has just come into view. An explicit choice remembered for
+   * it is newer than its last run, so it wins -- but only once the unit list has arrived and still
+   * holds that unit. Deciding on an empty list would either chase a unit that has since been
+   * terminated (the status service waits for it to appear, forever, and the fallbacks below never
+   * run) or throw the choice away before the list has loaded. A remembered unit that is gone is
+   * forgotten, and the fallbacks take over: the last execution's unit, else any running unit.
+   */
+  private selectInitialUnit(wid: number): void {
+    const remembered = this.recallComputingUnit(wid);
+    if (!isDefined(remembered)) {
+      this.selectFromLastExecution(wid);
+      return;
+    }
+    this.computingUnitStatusService
+      .getAllComputingUnits()
+      .pipe(
+        filter(units => units.length > 0),
+        take(1),
+        untilDestroyed(this)
+      )
+      .subscribe(units => {
+        // The workflow can change while the list is still loading; that later change made its own
+        // decision, so this one is stale.
+        if (wid !== this.workflowId) {
+          return;
+        }
+        if (units.some(unit => unit.computingUnit.cuid === remembered)) {
+          this.selectComputingUnit(wid, remembered);
+        } else {
+          this.forgetComputingUnit(wid);
+          this.selectFromLastExecution(wid);
+        }
+      });
+  }
+
+  /** The unit the workflow last ran on, else any unit that is running. */
+  private selectFromLastExecution(wid: number): void {
+    this.workflowExecutionsService
+      .retrieveLatestWorkflowExecution(wid)
+      .pipe(untilDestroyed(this))
+      .subscribe({
+        next: (latestWorkflowExecution: WorkflowExecutionsEntry) => {
+          this.selectComputingUnit(wid, latestWorkflowExecution.cuId);
+        },
+        error: () => {
+          const runningUnit = this.allComputingUnits.find(unit => unit.status === "Running");
+          if (runningUnit) {
+            this.selectComputingUnit(wid, runningUnit.computingUnit.cuid);
+          }
+        },
       });
   }
 
@@ -294,6 +335,55 @@ export class ComputingUnitSelectionComponent implements OnInit {
   selectComputingUnit(wid: number | undefined, cuid: number | undefined): void {
     if (isDefined(cuid) && wid !== DEFAULT_WORKFLOW.wid) {
       this.computingUnitStatusService.selectComputingUnit(wid, cuid);
+      this.rememberComputingUnit(wid, cuid);
+    }
+  }
+
+  /**
+   * The live selection lives only in ComputingUnitStatusService, re-derived on load from the
+   * last execution -- but that only exists once the workflow has run (pick a unit, reload
+   * before running, and it is gone). Canvas<->Form View switches reload, so we remember the
+   * last explicit choice per workflow to keep the two views agreeing. One unit per workflow.
+   */
+  private static computingUnitStorageKey(wid: number): string {
+    return `computing-unit-of-workflow-${wid}`;
+  }
+
+  private rememberComputingUnit(wid: number | undefined, cuid: number): void {
+    if (!isDefined(wid)) {
+      return;
+    }
+    try {
+      localStorage.setItem(ComputingUnitSelectionComponent.computingUnitStorageKey(wid), String(cuid));
+    } catch {
+      // Private browsing or a full quota; remembering is an optimisation, not a
+      // requirement -- the last-execution lookup still applies on the next load.
+    }
+  }
+
+  private recallComputingUnit(wid: number): number | undefined {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(ComputingUnitSelectionComponent.computingUnitStorageKey(wid));
+    } catch {
+      return undefined;
+    }
+    // A cuid is a positive integer. Number() would also accept "0" and "1.5", and handing
+    // either on would mean chasing a unit that cannot exist. Whether the unit still exists is
+    // not decided here but against the loaded unit list (selectInitialUnit).
+    const cuid = Number(stored);
+    if (!stored || !Number.isInteger(cuid) || cuid <= 0) {
+      return undefined;
+    }
+    return cuid;
+  }
+
+  /** Drop a remembered unit that no longer exists, so the next load goes straight to the fallbacks. */
+  private forgetComputingUnit(wid: number): void {
+    try {
+      localStorage.removeItem(ComputingUnitSelectionComponent.computingUnitStorageKey(wid));
+    } catch {
+      // Best effort, like remembering: a stale entry only costs the list check on the next load.
     }
   }
 

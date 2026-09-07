@@ -274,6 +274,24 @@ describe("WorkflowPersistService", () => {
       expect(result).toEqual(created);
     });
 
+    it("createWorkflow sends the default view when given one, and omits it otherwise", () => {
+      const content = jsonCast<WorkflowContent>(testContent);
+
+      service.createWorkflow(content, "form default", DefaultView.FORM).subscribe();
+      const withView = httpTestingController.expectOne(`${API}/${WORKFLOW_CREATE_URL}`);
+      expect(withView.request.body).toEqual({
+        name: "form default",
+        content: JSON.stringify(content),
+        defaultView: DefaultView.FORM,
+      });
+      withView.flush({ workflow: { wid: 1 } } as unknown as DashboardWorkflow);
+
+      service.createWorkflow(content, "no view").subscribe();
+      const withoutView = httpTestingController.expectOne(`${API}/${WORKFLOW_CREATE_URL}`);
+      expect(withoutView.request.body).toEqual({ name: "no view", content: JSON.stringify(content) });
+      withoutView.flush({ workflow: { wid: 2 } } as unknown as DashboardWorkflow);
+    });
+
     it("createWorkflow filters out a null response so no value is emitted", () => {
       let emitted = false;
       service.createWorkflow(jsonCast<WorkflowContent>(testContent)).subscribe(() => (emitted = true));

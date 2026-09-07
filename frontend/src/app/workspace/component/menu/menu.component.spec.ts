@@ -116,6 +116,48 @@ describe("MenuComponent", () => {
     expect(component).toBeTruthy();
   });
 
+  it("does not open the Form View for a workflow that has not been saved yet", () => {
+    vi.spyOn(component["workflowActionService"], "getWorkflowMetadata").mockReturnValue({ wid: undefined } as any);
+    const href = window.location.href;
+
+    component.onClickOpenFormView();
+
+    expect(window.location.href).toBe(href);
+  });
+
+  it("saves, then hands over to the Form View only once the save has completed", () => {
+    vi.spyOn(component["workflowActionService"], "getWorkflowMetadata").mockReturnValue({ wid: 7 } as any);
+    const saved = { wid: 7, name: "saved" } as any;
+    const persistSpy = vi.spyOn(workflowPersistService, "persistWorkflow").mockReturnValue(of(saved));
+    const metadataSpy = vi
+      .spyOn(component["workflowActionService"], "setWorkflowMetadata")
+      .mockImplementation(() => {});
+    const navigate = vi.spyOn(component as any, "openFormViewPage").mockImplementation(() => {});
+
+    component.onClickOpenFormView();
+
+    // The navigation unloads the document and aborts anything still in flight, so it must wait for
+    // the save's completion rather than be fired right after the request.
+    expect(persistSpy).toHaveBeenCalled();
+    expect(metadataSpy).toHaveBeenCalledWith(saved);
+    expect(navigate).toHaveBeenCalledWith(7);
+    expect(component.isSaving).toBe(false);
+  });
+
+  it("stays on the canvas and reports the error when the save before the switch fails", () => {
+    vi.spyOn(component["workflowActionService"], "getWorkflowMetadata").mockReturnValue({ wid: 7 } as any);
+    vi.spyOn(workflowPersistService, "persistWorkflow").mockReturnValue(throwError(() => new Error("nope")));
+    const errorSpy = vi.spyOn(notificationService, "error").mockImplementation(() => {});
+    const navigate = vi.spyOn(component as any, "openFormViewPage").mockImplementation(() => {});
+
+    component.onClickOpenFormView();
+
+    // Leaving would take the user away from changes that were never stored.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith("Could not save. Your latest changes are not stored yet.");
+    expect(component.isSaving).toBe(false);
+  });
+
   describe("getRunButtonBehavior", () => {
     it("returns 'Invalid Workflow' when the workflow is invalid", () => {
       component.isWorkflowValid = false;
@@ -1166,6 +1208,38 @@ describe("MenuComponent", () => {
     afterEach(() => {
       fixture.destroy();
       vi.restoreAllMocks();
+    });
+
+    describe("view switch", () => {
+      const flag = (formViewEnabled: boolean) =>
+        (TestBed.inject(GuiConfigService) as unknown as MockGuiConfigService).setConfig({ formViewEnabled });
+
+      it("shows Canvas pressed and hands Form View to onClickOpenFormView, only with the flag on", () => {
+        flag(false);
+        fixture.detectChanges();
+        expect(q(".view-switch")).toBeNull();
+
+        flag(true);
+        fixture.detectChanges();
+        const open = vi.spyOn(component, "onClickOpenFormView").mockImplementation(() => {});
+        const buttons = fixture.debugElement.queryAll(By.css(".view-switch button"));
+        expect(buttons.map(b => (b.nativeElement.textContent ?? "").trim())).toEqual(["Canvas", "Form View"]);
+        // The current view is the pressed segment: announced as such, and a live button on purpose.
+        expect(buttons[0].nativeElement.getAttribute("aria-pressed")).toBe("true");
+        expect(buttons[0].nativeElement.classList.contains("on")).toBe(true);
+        expect(buttons[1].nativeElement.getAttribute("aria-pressed")).toBe("false");
+        buttons[1].triggerEventHandler("click", null);
+        expect(open).toHaveBeenCalledTimes(1);
+      });
+
+      it("hides the switch while an older version is displayed", () => {
+        flag(true);
+        component.displayParticularWorkflowVersion = true;
+        fixture.detectChanges();
+
+        // A past version has no form to switch to.
+        expect(q(".view-switch")).toBeNull();
+      });
     });
 
     describe("version display bar", () => {

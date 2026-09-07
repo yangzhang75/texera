@@ -99,12 +99,16 @@ export class WorkflowPersistService {
    */
   public createWorkflow(
     newWorkflowContent: WorkflowContent,
-    newWorkflowName: string = DEFAULT_WORKFLOW_NAME
+    newWorkflowName: string = DEFAULT_WORKFLOW_NAME,
+    defaultView?: DefaultView
   ): Observable<DashboardWorkflow> {
     return this.http
       .post<DashboardWorkflow>(`${AppSettings.getApiEndpoint()}/${WORKFLOW_CREATE_URL}`, {
         name: newWorkflowName,
         content: JSON.stringify(newWorkflowContent),
+        // Bound onto the workflow row on the server, so an uploaded form-default workflow
+        // still opens as a form. Omitted (server default CANVAS) when the file carries none.
+        ...(defaultView === undefined ? {} : { defaultView }),
       })
       .pipe(filter((createdWorkflow: DashboardWorkflow) => createdWorkflow != null));
   }

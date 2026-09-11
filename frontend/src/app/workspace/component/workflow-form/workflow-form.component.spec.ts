@@ -757,6 +757,41 @@ describe("WorkflowFormComponent", () => {
       return component.rendered[0].fields[0] as any;
     };
 
+    // The shared array widget prints its label at the bottom beside its add button, so a repeated
+    // input's title would sit above the rows in edit mode and jump below them on Done. A reader gets
+    // the same static title above instead, and the widget's own label is blanked.
+    it("gives a repeated input its title above in reader mode, not the array widget's bottom label", () => {
+      build(formViewWorkflow).ngOnInit();
+      h.formlyJsonschema.toFieldConfig = () => ({
+        fieldGroup: [
+          {
+            key: "predicates",
+            type: "array",
+            props: { label: "Predicates" },
+            fieldArray: () => ({ fieldGroup: [{ key: "alias", props: { label: "Alias" } }] }),
+          },
+        ],
+      });
+
+      const field = expose({ id: "p", operatorID: "op-1", propertyKey: "predicates", displayName: "Predicate" });
+
+      expect(field.wrappers).toContain("editable-label-wrapper");
+      expect(field.props.authoring).toBe(false);
+      expect(field.props.authorName).toBe("Predicate");
+      expect(field.props.schemaLabel).toBe("Predicates");
+      expect(field.props.label).toBe("");
+    });
+
+    it("leaves a scalar input's label to formly in reader mode", () => {
+      build(formViewWorkflow).ngOnInit();
+
+      const field = expose({ id: "n", operatorID: "op-1", propertyKey: "n_hvg", displayName: "How many" });
+
+      // Above the control already, with formly's required marker; nothing to wrap.
+      expect(field.wrappers ?? []).not.toContain("editable-label-wrapper");
+      expect(field.props.label).toBe("How many");
+    });
+
     it("renames and hides an overridden sub-field of an object property", () => {
       build(formViewWorkflow).ngOnInit();
 
@@ -1763,6 +1798,49 @@ describe("WorkflowFormComponent", () => {
       expect(h.workflowActionService.disableWorkflowModification).toHaveBeenCalled();
     });
 
+    it("shows broken inputs to an author but never to a reader", () => {
+      build(formViewWorkflow).ngOnInit();
+      (component as any).parameters = [resolved("b", "B", { brokenReason: "gone" })];
+
+      expect(component.visibleFields).toEqual([]);
+      component.authoring = true;
+      expect(component.visibleFields.length).toBe(1);
+    });
+
+    it("renders a broken input as an empty card carrying its reason", () => {
+      build(formViewWorkflow).ngOnInit();
+      component.authoring = true;
+      h.formBindingService.resolveFields.mockReturnValue([resolved("b", "B", { brokenReason: "gone" })]);
+
+      (component as any).readConfig();
+
+      expect(component.rendered[0].fields).toEqual([]);
+      expect(component.rendered[0].resolved.brokenReason).toBe("gone");
+    });
+
+    it("keeps an input whose operator is gone, in either mode, for the author to remove explicitly", () => {
+      // Re-reading the config must not rewrite it. A broken input reaches the author as a card with
+      // its reason (the two tests above) and leaves only through onRemoveBinding; dropping it on the
+      // way in would be a silent config write and would hide where the input went.
+      build(formViewWorkflow).ngOnInit();
+      (component as any).loading = false;
+      h.hasOperatorIds.add("op-1");
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [
+          { id: "gone", operatorID: "removed" },
+          { id: "b", operatorID: "op-1" },
+        ],
+      });
+
+      (component as any).readConfig();
+      component.authoring = true;
+      (component as any).readConfig();
+
+      expect(h.formBindingService.setFields).not.toHaveBeenCalled();
+      expect(h.formBindingService.removeBinding).not.toHaveBeenCalled();
+    });
+
     it("lists the final steps and the viewed and chosen intermediate steps, with their shown state", () => {
       build(formViewWorkflow).ngOnInit();
       component.authoring = true;
@@ -1879,6 +1957,99 @@ describe("WorkflowFormComponent", () => {
       expect(read).not.toHaveBeenCalled();
     });
 
+    it("routes a removal through the binding service and re-reads", () => {
+      build(formViewWorkflow).ngOnInit();
+      const read = vi.spyOn(component as any, "readConfig");
+
+      component.onRemoveBinding(resolved("n", "N", {}));
+
+      expect(h.formBindingService.removeBinding).toHaveBeenCalledWith("n");
+      expect(read).toHaveBeenCalledTimes(1);
+    });
+
+    it("saves help text without rebuilding the form (no readConfig on every keystroke)", () => {
+      build(formViewWorkflow).ngOnInit();
+      const read = vi.spyOn(component as any, "readConfig");
+
+      component.onEditHelpText(resolved("n", "N", {}), "help");
+
+      expect(h.formBindingService.updateBinding).toHaveBeenCalledWith("n", { helpText: "help" });
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("reorders the saved field the dragged card names, not the raw rendered index", () => {
+      build(formViewWorkflow).ngOnInit();
+      // rendered is shorter than the saved fields: 'b' rendered no card (its schema was unavailable).
+      component.rendered = [{ resolved: { binding: { id: "a" } } }, { resolved: { binding: { id: "c" } } }] as any;
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [{ id: "a" }, { id: "b" }, { id: "c" }],
+      });
+
+      // Drag rendered[1] ("c", saved index 2) to the top (onto rendered[0] "a", saved index 0).
+      component.onDrop({ previousIndex: 1, currentIndex: 0 } as any);
+
+      expect(h.formBindingService.reorder).toHaveBeenCalledWith(2, 0);
+    });
+
+    it("moves a card one place from the keyboard through the same reorder as the drag", () => {
+      build(formViewWorkflow).ngOnInit();
+      // Three cards, but 'b' is not among the saved fields' neighbours in the same order (a saved
+      // field that rendered no card sits between), so the move has to resolve by id, as the drag does.
+      const cards = [
+        { resolved: { binding: { id: "a" } } },
+        { resolved: { binding: { id: "b" } } },
+        { resolved: { binding: { id: "c" } } },
+      ] as any;
+      component.rendered = cards;
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [{ id: "a" }, { id: "hidden" }, { id: "b" }, { id: "c" }],
+      });
+
+      component.onMoveBinding(cards[1], -1); // 'b' (saved 2) up onto 'a' (saved 0)
+      expect(h.formBindingService.reorder).toHaveBeenCalledWith(2, 0);
+
+      // The move re-reads the config, which rebuilds `rendered` from the (mocked, empty) resolved
+      // fields; put the cards back to move again.
+      component.rendered = cards;
+      component.onMoveBinding(cards[1], 1); // 'b' (saved 2) down onto 'c' (saved 3)
+      expect(h.formBindingService.reorder).toHaveBeenCalledWith(2, 3);
+    });
+
+    it("moves nothing off either end", () => {
+      build(formViewWorkflow).ngOnInit();
+      const cards = [{ resolved: { binding: { id: "a" } } }, { resolved: { binding: { id: "b" } } }] as any;
+      component.rendered = cards;
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [{ id: "a" }, { id: "b" }],
+      });
+
+      component.onMoveBinding(cards[0], -1);
+      component.onMoveBinding(cards[1], 1);
+
+      expect(h.formBindingService.reorder).not.toHaveBeenCalled();
+    });
+
+    it("drops a reorder whose card names a field the config no longer holds", () => {
+      build(formViewWorkflow).ngOnInit();
+      // A card left over from a config that has since changed: its binding is gone from the saved
+      // fields, so neither end of the drag resolves. Reordering on those -1s would move the wrong
+      // field, so the drag is dropped instead.
+      component.rendered = [{ resolved: { binding: { id: "gone" } } }, { resolved: { binding: { id: "a" } } }] as any;
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [{ id: "a" }],
+      });
+      const read = vi.spyOn(component as any, "readConfig");
+
+      component.onDrop({ previousIndex: 0, currentIndex: 1 } as any);
+
+      expect(h.formBindingService.reorder).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it("saves the instruction as the author types, and previews on demand", () => {
       build(formViewWorkflow).ngOnInit();
       component.instructionTitle = "T";
@@ -1893,6 +2064,78 @@ describe("WorkflowFormComponent", () => {
       component.setInstructionMode("preview");
       expect(component.instructionMode).toBe("preview");
       expect(render).toHaveBeenCalled();
+    });
+
+    it("wires the editable title to rename the input and a sub-field to rename or hide it", () => {
+      build(formViewWorkflow).ngOnInit();
+      component.authoring = true;
+      h.hasOperatorIds.add("op-1");
+      h.formBindingService.resolveFields.mockReturnValue([
+        resolved("n", "N", {
+          binding: { id: "n", operatorID: "op-1", propertyKey: "nested", displayName: "N", overrides: {} },
+        }),
+      ]);
+
+      (component as any).readConfig();
+      const root = component.rendered[0].fields[0] as any;
+      const read = vi.spyOn(component as any, "readConfig");
+
+      // The input's own title renames the whole binding.
+      root.props.renameField("New name");
+      expect(h.formBindingService.updateBinding).toHaveBeenCalledWith("n", { displayName: "New name" });
+
+      // A sub-field's editable label renames it and its eye hides it, both keyed by path.
+      const sub = root.fieldGroup[0];
+      sub.props.renameField("Sub name");
+      expect(h.formBindingService.setFieldOverride).toHaveBeenCalledWith("n", "sub", { displayName: "Sub name" });
+      sub.props.setFieldHidden(true);
+      expect(h.formBindingService.setFieldOverride).toHaveBeenCalledWith("n", "sub", { hidden: true });
+
+      // Presentation only, shown by the wrapper itself: no rebuild, so the name box or the eye the
+      // author is on is not replaced under their focus.
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("hands the focus to the next card's Remove after a removal, else the previous one's", async () => {
+      build(formViewWorkflow).ngOnInit();
+      const focused: string[] = [];
+      // Only the focus targets are answered; the name-width measuring the page also runs off the host
+      // gets null, as the harness gives it.
+      (component as any).host = {
+        nativeElement: {
+          contains: () => true,
+          querySelector: (selector: string) =>
+            selector.startsWith(".remove[") ? { focus: () => focused.push(selector) } : null,
+        },
+      };
+      const cards = [
+        { resolved: { binding: { id: "a" } } },
+        { resolved: { binding: { id: "b" } } },
+        { resolved: { binding: { id: "c" } } },
+      ] as any;
+
+      component.rendered = cards;
+      component.onRemoveBinding(cards[1].resolved);
+      await new Promise(r => setTimeout(r, 10));
+      expect(h.formBindingService.removeBinding).toHaveBeenCalledWith("b");
+      expect(focused).toEqual(['.remove[data-binding="c"]']);
+
+      // The last card has no next: its predecessor takes the focus.
+      component.rendered = cards;
+      component.onRemoveBinding(cards[2].resolved);
+      await new Promise(r => setTimeout(r, 10));
+      expect(focused[1]).toBe('.remove[data-binding="b"]');
+    });
+
+    it("names a card's controls with the author's name, else the property key", () => {
+      build(formViewWorkflow).ngOnInit();
+
+      expect(
+        component.cardName({ resolved: { binding: { displayName: "File", propertyKey: "fileName" } } } as any)
+      ).toBe("File");
+      expect(component.cardName({ resolved: { binding: { displayName: "", propertyKey: "fileName" } } } as any)).toBe(
+        "fileName"
+      );
     });
   });
 });

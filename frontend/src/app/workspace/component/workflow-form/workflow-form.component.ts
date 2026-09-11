@@ -34,7 +34,9 @@ import { MarkdownService } from "ngx-markdown";
 import { EMPTY, forkJoin, Subject, timer } from "rxjs";
 import { debounceTime, switchMap, takeUntil, tap } from "rxjs/operators";
 
+import { CdkDragDrop, DragDropModule } from "@angular/cdk/drag-drop";
 import { USER_WORKFLOW, USER_WORKSPACE } from "../../../app-routing.constant";
+import { EditableLabelWrapperComponent } from "../../../common/formly/editable-label-wrapper/editable-label-wrapper.component";
 import { FormFieldBinding, Workflow, WorkflowContent } from "../../../common/type/workflow";
 import { ComputingUnitStatusService } from "../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { ComputingUnitState } from "../../../common/type/computing-unit-connection.interface";
@@ -115,12 +117,11 @@ interface ResultChoice {
  * visualisation, or a compact "no result yet" -- reading the canvas's view-result set and never
  * writing it. A reader can also click a step on the embedded preview to open its property panel
  * read-only: the panel writes nothing to the shared workflow and its content is inert. With write
- * access, an Edit toggle turns the page into in-place authoring: write the instruction, pick which
- * extra results to feature, and click a step to open its panel live -- its writes turn on and its
- * tick boxes choose what the form exposes. Editing the exposed inputs themselves in place (rename,
- * hide a sub-field, reorder, remove) is the next PR. A view, not a new object: every graph edit goes
- * through the same shared graph the operator canvas edits, and the form-binding config is local
- * until #8351 shares it.
+ * access, an Edit toggle turns the page into in-place authoring: rename an input or its sub-fields,
+ * hide a sub-field, reorder inputs by drag, expose a new one by clicking a step (the panel goes
+ * live and its writes turn on), remove one, write the instruction, and pick which extra results to
+ * feature. A view, not a new object: every graph edit goes through the same shared graph the
+ * operator canvas edits, and the form-binding config is local until #8351 shares it.
  */
 @UntilDestroy()
 @Component({
@@ -132,6 +133,7 @@ interface ResultChoice {
     FormsModule,
     ReactiveFormsModule,
     FormlyModule,
+    DragDropModule,
     NzAvatarModule,
     NzIconModule,
     NzButtonModule,
@@ -154,8 +156,8 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public autoSaveState = "";
   /** Write access: only then does a filled-in value write back, and only then does the page save. */
   public canEdit = false;
-  /** Edit mode: a writer authoring the form in place (write the instruction, pick results, open a
-   *  step's panel live to expose settings). Off, the page is the read-only form a reader sees. */
+  /** Edit mode: a writer authoring the form in place (rename/hide/reorder/expose/remove inputs,
+   *  edit the instruction, pick results). Off, the page is the read-only form a reader sees. */
   public authoring = false;
   /** While authoring, the instruction is edited as raw markdown ("write") or shown rendered
    *  ("preview"); a reader always sees it rendered. */
@@ -620,7 +622,13 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       }));
   }
 
-  /** Re-read the saved form config and rebuild everything derived from it. */
+  /**
+   * Re-read the saved form config and rebuild everything derived from it. An input whose operator
+   * has since been deleted is NOT dropped here: resolveFields marks it broken, a reader never sees
+   * it (visibleFields), and an author sees it as an empty card with the reason and removes it
+   * explicitly. Deleting it silently on entering edit mode would be a config write nobody asked for,
+   * and would leave the author guessing where an input went.
+   */
   private readConfig(): void {
     const config = this.formBindingService.getConfig();
     this.parameters = this.formBindingService.resolveFields();
@@ -694,6 +702,12 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
 
   private renderField(resolved: ResolvedField): RenderedField | undefined {
     const { binding } = resolved;
+    // A broken input (its operator gone) has no schema to build a field from. Only an author ever
+    // sees it (visibleFields drops it for readers), rendered as an empty card so the author can
+    // remove it; a reader never reaches here for one.
+    if (resolved.brokenReason) {
+      return { resolved, fields: [], form: new FormGroup({}), model: {} };
+    }
     const schema = this.operatorSchemaFor(binding.operatorID);
     if (!schema) {
       return undefined;
@@ -780,7 +794,7 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       field.props = { ...(field.props ?? {}), disabled: true };
     }
 
-    this.applyFieldOverrides(field, binding);
+    this.applyFieldOverrides(field, binding, schemaLabel);
     return { resolved, fields: [field], form, model };
   }
 
@@ -824,11 +838,36 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
    * stored per-sub-field overrides (rename, hide), keyed by field path. A repeated section builds
    * its row template on demand, so its builder is wrapped to decorate every row formly ever makes.
    */
-  private applyFieldOverrides(field: FormlyFieldConfig, binding: FormFieldBinding): void {
+  private applyFieldOverrides(field: FormlyFieldConfig, binding: FormFieldBinding, schemaLabel: string): void {
     const walk = (node: FormlyFieldConfig, path: string): void => {
       // Drop the schema's own description on every field, nested ones included: on this page the
       // one piece of guidance is the help text the form's author writes, rendered once by the card.
       node.props = { ...(node.props ?? {}), description: "" };
+      // Author mode, the input itself (root path): its name is renamed in place by clicking the
+      // title, like every nested field. No eye here -- a whole input leaves via Remove, not a hide
+      // toggle. The editable label becomes the single title, so formly's own label is cleared to
+      // avoid printing it twice.
+      if (!path && this.authoring) {
+        EditableLabelWrapperComponent.decorate(
+          node,
+          { authoring: true, name: binding.displayName ?? "", hidden: false, fallback: schemaLabel, canHide: false },
+          name => this.onBindingNamed(binding.id, name)
+        );
+        node.props = { ...(node.props ?? {}), label: "" };
+      } else if (!path && node.type === "array") {
+        // Reader mode, a repeated input: the shared array widget prints its label at the BOTTOM,
+        // beside its add button (the canvas panel's convention), while every other widget and the
+        // author's editable title sit above. Left alone, the title would jump from above the rows
+        // in edit mode to below them on Done. Give it the same static title above instead; the
+        // wrapper blanks the widget's own label.
+        EditableLabelWrapperComponent.decorate(node, {
+          authoring: false,
+          name: binding.displayName ?? "",
+          hidden: false,
+          fallback: schemaLabel,
+          canHide: false,
+        });
+      }
       // Apply the author's stored overrides so a reader sees each sub-field renamed and hidden as
       // set up. The root (path "") carries the binding's own displayName, set in renderField.
       if (path) {
@@ -836,7 +875,22 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
         if (override.displayName) {
           node.props = { ...(node.props ?? {}), label: override.displayName };
         }
-        if (override.hidden) {
+        if (this.authoring) {
+          // An author edits the sub-field's label where it appears and keeps hidden fields on
+          // screen (faded, via the wrapper) so they can be brought back, rather than removed from
+          // the DOM as they are for a reader.
+          EditableLabelWrapperComponent.decorate(
+            node,
+            {
+              authoring: true,
+              name: override.displayName ?? "",
+              hidden: override.hidden === true,
+              fallback: (node.props?.label as string) || path,
+            },
+            name => this.onSubFieldNamed(binding.id, path, name),
+            hidden => this.onSubFieldHiddenAt(binding.id, path, hidden)
+          );
+        } else if (override.hidden) {
           node.hide = true;
           // Hidden means "not shown", not "cleared". Formly 7's resetFieldOnHide extra defaults to
           // true, so a field that renders hidden has its value stripped from the model -- and this
@@ -916,11 +970,13 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
 
   /**
    * The inputs a reader is offered. Broken bindings (the operator was deleted, or the property key
-   * no longer exists) are left out, since filling one in could not affect a run; the author's view
-   * of them, to remove them, comes with the input-authoring PR.
+   * no longer exists) are left out, since filling one in could not affect a run; an author sees them
+   * (below), to repair or remove them.
    */
   public get visibleFields(): ResolvedField[] {
-    return this.parameters.filter(field => !field.brokenReason);
+    // A reader never sees a broken input (its operator is gone, so filling it could not affect the
+    // run); an author sees it, to repair or remove it.
+    return this.authoring ? this.parameters : this.parameters.filter(field => !field.brokenReason);
   }
 
   public trackByRendered(_: number, rendered: RenderedField): string {
@@ -1112,6 +1168,80 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     this.readConfig();
   }
 
+  /**
+   * Only presentation is editable here (the input's shown name and its help text). Which operator
+   * property an input drives is decided by ticking it in the property panel, so there is nothing to
+   * type and no way to point an input at a property that does not exist.
+   */
+  public onEditHelpText(resolved: ResolvedField, value: string): void {
+    // Help text is presentation only and does not change which inputs the form has, so it is NOT
+    // followed by readConfig: rebuilding the whole form on every keystroke would churn every card
+    // (heavy file/model widgets included) and jump the cursor. Like the instruction, it is saved to
+    // the config and reflected on the next full re-read. (A binding's shown name is edited through
+    // the editable title, not here -- see onBindingNamed.)
+    this.formBindingService.updateBinding(resolved.binding.id, { helpText: value });
+  }
+
+  /**
+   * Take an input off the form. The card goes with it, so the keyboard focus that was on its Remove
+   * button is handed to the next card's Remove (else the previous card's, else the Inputs heading)
+   * once the list has rebuilt; dropped focus would send a keyboard author back to the top of the page.
+   */
+  public onRemoveBinding(resolved: ResolvedField): void {
+    const at = this.rendered.findIndex(card => card.resolved.binding.id === resolved.binding.id);
+    const neighbour = this.rendered[at + 1] ?? this.rendered[at - 1];
+    this.formBindingService.removeBinding(resolved.binding.id);
+    this.readConfig();
+    this.later(() => this.focusAfterRemoval(neighbour?.resolved.binding.id), 0);
+  }
+
+  private focusAfterRemoval(neighbourId: string | undefined): void {
+    const host: HTMLElement = this.host.nativeElement;
+    const target =
+      (neighbourId ? host.querySelector<HTMLElement>(`.remove[data-binding="${neighbourId}"]`) : null) ??
+      host.querySelector<HTMLElement>(".pc-section-head .label");
+    target?.focus();
+  }
+
+  /** The name a card's controls are announced with: the author's name for the input, else its key. */
+  public cardName(card: RenderedField): string {
+    return card.resolved.binding.displayName || card.resolved.binding.propertyKey;
+  }
+
+  public onDrop(event: CdkDragDrop<unknown>): void {
+    this.moveRenderedCard(event.previousIndex, event.currentIndex);
+  }
+
+  /**
+   * Keyboard counterpart of the drag: the Move up / Move down buttons on an author's card step it
+   * one place. CDK drag-drop offers no keyboard path of its own and the drag handle is decorative,
+   * so without these a keyboard-only author could not reorder at all.
+   */
+  public onMoveBinding(card: RenderedField, delta: -1 | 1): void {
+    const at = this.rendered.indexOf(card);
+    this.moveRenderedCard(at, at + delta);
+  }
+
+  /**
+   * Move the card at one rendered position onto another. The positions are indices into `rendered`,
+   * which can be shorter than the saved fields (a binding whose operator is live but whose schema is
+   * momentarily unavailable renders no card), so reordering the saved fields by those raw indices
+   * could move the wrong one. Translate both ends to the saved field they name, by binding id, and
+   * reorder those. A position off either end, or a card the config no longer holds, moves nothing.
+   */
+  private moveRenderedCard(fromIndex: number, toIndex: number): void {
+    const fields = this.formBindingService.getConfig().fields;
+    const movedId = this.rendered[fromIndex]?.resolved.binding.id;
+    const targetId = this.rendered[toIndex]?.resolved.binding.id;
+    const from = fields.findIndex(f => f.id === movedId);
+    const to = fields.findIndex(f => f.id === targetId);
+    if (from === -1 || to === -1) {
+      return;
+    }
+    this.formBindingService.reorder(from, to);
+    this.readConfig();
+  }
+
   public onInstructionChange(): void {
     this.formBindingService.updateConfig({
       instruction: { title: this.instructionTitle, body: this.instructionBody },
@@ -1154,6 +1284,24 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       this.workflowOpen = true;
       this.openWorkflowStrip();
     }
+  }
+
+  /**
+   * Renaming the input itself, from its own title. Like the help text, a name or a hide flag is
+   * presentation only: the wrapper that took the edit already shows it, so the form is NOT rebuilt
+   * here. A rebuild would replace the very control the author is on (the name box, the eye) and drop
+   * the keyboard focus with it; the stored override is applied on the next full re-read (Done).
+   */
+  private onBindingNamed(bindingId: string, value: string): void {
+    this.formBindingService.updateBinding(bindingId, { displayName: value });
+  }
+
+  private onSubFieldNamed(bindingId: string, path: string, value: string): void {
+    this.formBindingService.setFieldOverride(bindingId, path, { displayName: value });
+  }
+
+  private onSubFieldHiddenAt(bindingId: string, path: string, hidden: boolean): void {
+    this.formBindingService.setFieldOverride(bindingId, path, { hidden });
   }
 
   // ---------------------------------------------------------------------------

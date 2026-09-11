@@ -185,14 +185,13 @@ describe("WorkflowFormComponent (rendered template)", () => {
             getConfig: () => ({
               instruction: { title: "How to use this", body: "Fill in the inputs." },
               fields: [],
-              resultOperatorIds: [],
             }),
             resolveFields: () => [],
             readValue: () => undefined,
             writeValue: vi.fn(),
             // Author-mode writes the rendered controls reach.
             updateConfig: vi.fn(),
-            toggleResultOperator: vi.fn(),
+            toggleShownResult: vi.fn(),
           },
         },
         { provide: FormlyJsonschema, useValue: { toFieldConfig: () => ({ fieldGroup: [] }) } },
@@ -501,17 +500,27 @@ describe("WorkflowFormComponent (rendered template)", () => {
     expect(el("textarea.md-input")).not.toBeNull();
   });
 
-  it("shows the result picker only while authoring: a pill per candidate, an empty hint otherwise", () => {
+  it("shows the result picker to everyone with something to choose, and to an author always", () => {
     fixture.detectChanges();
     finishLoad();
     const c = fixture.componentInstance;
+    // A reader with nothing to choose from gets no section.
     expect(el(".respick")).toBeNull();
 
+    // A reader with candidates gets the picker, worded as their own view.
+    c.resultChoices = [{ operatorID: "last", label: "Limit", shown: true }];
+    fixture.detectChanges();
+    expect(el(".respick")).not.toBeNull();
+    expect(el(".respick p")?.textContent).toContain("only your view");
+    expect(el(".respick .pill")?.textContent?.trim()).toBe("Limit");
+
+    // An author always gets it, with the hint on how to add steps, worded as the default for all.
     c.authoring = true;
     c.resultChoices = [];
     fixture.detectChanges();
     expect(el(".respick")).not.toBeNull();
-    expect(el(".respick .hint")?.textContent).toContain("No earlier steps to add yet");
+    expect(el(".respick p")?.textContent).toContain("What everyone sees");
+    expect(el(".respick .hint")?.textContent).toContain("No steps to choose from yet");
 
     c.resultChoices = [
       { operatorID: "mid", label: "Filter", shown: false },

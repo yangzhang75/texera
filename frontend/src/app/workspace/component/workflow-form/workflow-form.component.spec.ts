@@ -136,6 +136,31 @@ describe("WorkflowFormComponent", () => {
       expect(workflowActionService.reloadWorkflow).toHaveBeenCalled();
     });
 
+    it("puts the lock back when a run ends, for anyone not in edit mode", () => {
+      // The execute service unlocks the graph once a run completes, fails, is killed or is reset, for
+      // the canvas's sake. A writer merely viewing must stay locked, or the preview's view-result
+      // command would write the shared graph after a run without them ever entering edit mode.
+      build(formViewWorkflow).ngOnInit();
+      const before = workflowActionService.disableWorkflowModification.mock.calls.length;
+
+      h.executionStateStream.next({ current: { state: ExecutionState.Completed } });
+
+      expect(workflowActionService.disableWorkflowModification.mock.calls.length).toBe(before + 1);
+      expect(workflowActionService.enableWorkflowModification).not.toHaveBeenCalled();
+    });
+
+    it("leaves the run-time lock to the execute service while a writer is in edit mode", () => {
+      // In edit mode the canvas rule applies unchanged (locked while running, unlocked once the run
+      // ends); re-locking here would make an author's page read-only after every run.
+      build(formViewWorkflow).ngOnInit();
+      component.authoring = true;
+      const before = workflowActionService.disableWorkflowModification.mock.calls.length;
+
+      h.executionStateStream.next({ current: { state: ExecutionState.Completed } });
+
+      expect(workflowActionService.disableWorkflowModification.mock.calls.length).toBe(before);
+    });
+
     it("goes back to the list when the workflow cannot be opened", () => {
       build(formViewWorkflow);
       workflowPersistService.retrieveWorkflow.mockReturnValue(throwError(() => new Error("denied")));
@@ -992,7 +1017,6 @@ describe("WorkflowFormComponent", () => {
       formBindingService.getConfig.mockReturnValue({
         instruction: { title: "Read me", body: "**bold**" },
         fields: [],
-        resultOperatorIds: [],
       });
       build(formViewWorkflow).ngOnInit();
       // renderInstruction resolves the parsed markdown on a microtask; let it settle.
@@ -1008,7 +1032,6 @@ describe("WorkflowFormComponent", () => {
       formBindingService.getConfig.mockReturnValue({
         instruction: { title: "T", body: "   " },
         fields: [],
-        resultOperatorIds: [],
       });
       build(formViewWorkflow).ngOnInit();
       await Promise.resolve();
@@ -1215,15 +1238,69 @@ describe("WorkflowFormComponent", () => {
   });
 
   describe("showing the chosen results", () => {
-    // The terminal always shows (the engine always materializes it); a chosen intermediate shows only
-    // while it still has view-result on the canvas. The form never writes the view-result set
-    // (display filter, per the settled design).
-    const chosen = (resultOperatorIds: string[]) =>
-      formBindingService.getConfig.mockReturnValue({ instruction: undefined, fields: [], resultOperatorIds });
+    // Until the author has chosen, the final steps show (the engine always materializes them); once
+    // there is a saved list, exactly its steps show, kept to those that still have a result on the
+    // canvas. The form never writes the view-result set (display filter, per the settled design).
+    const saved = (shownResultIds?: string[]) =>
+      formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [],
+        shownResultIds,
+      });
+
+    it("shows every final step until the author has chosen, then exactly the saved list", () => {
+      // No list (an untouched form, or one from before the field existed): every final step is on. A
+      // list: exactly those, so a step that becomes final after the author chose does not appear by
+      // itself, and an empty list means no results at all -- a choice the form can store.
+      build(formViewWorkflow).ngOnInit();
+      h.graphOperators.push({ operatorID: "last-a", operatorType: "Limit" });
+      h.graphOperators.push({ operatorID: "last-b", operatorType: "Limit" });
+      h.terminalIds.add("last-a");
+      h.terminalIds.add("last-b");
+
+      saved();
+      (component as any).readConfig();
+      expect(component.shownResultIds).toEqual(["last-a", "last-b"]);
+
+      saved(["last-a"]);
+      (component as any).readConfig();
+      expect(component.shownResultIds).toEqual(["last-a"]);
+
+      saved([]);
+      (component as any).readConfig();
+      expect(component.shownResultIds).toEqual([]);
+    });
+
+    it("lets a viewer pick their own results for this page, without writing anything", () => {
+      build(formViewWorkflow).ngOnInit();
+      saved();
+      h.graphOperators.push({ operatorID: "mid", operatorType: "Filter" });
+      h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
+      h.viewResultIds.add("mid");
+      h.terminalIds.add("last");
+      (component as any).readConfig();
+      expect(component.shownResultIds).toEqual(["last"]);
+      const mid = component.resultChoices.find(c => c.operatorID === "mid")!;
+      const last = component.resultChoices.find(c => c.operatorID === "last")!;
+
+      // Not in edit mode: the toggle is the viewer's own, so nothing goes to the shared config.
+      component.onToggleResult(mid);
+      expect(component.shownResultIds).toEqual(["last", "mid"]);
+      component.onToggleResult(last);
+      expect(component.shownResultIds).toEqual(["mid"]);
+      expect(h.formBindingService.toggleShownResult).not.toHaveBeenCalled();
+      // The picker's pills follow the viewer's choice.
+      expect(component.resultChoices.find(c => c.operatorID === "last")?.shown).toBe(false);
+      expect(component.resultChoices.find(c => c.operatorID === "mid")?.shown).toBe(true);
+
+      // Entering edit mode edits the default for everyone, so the viewer's own pick gives way to it.
+      component.toggleAuthoring();
+      expect(component.shownResultIds).toEqual(["last"]);
+    });
 
     it("shows a chosen result only while its operator still has view-result on the canvas", () => {
       build(formViewWorkflow).ngOnInit();
-      chosen(["a", "b"]);
+      saved(["a", "b"]);
       h.viewResultIds.add("a"); // b's eye is off on the canvas
 
       (component as any).readConfig();
@@ -1236,7 +1313,7 @@ describe("WorkflowFormComponent", () => {
       // The form must show it, or an author who picks the workflow's final operator -- the most natural
       // choice -- would get a card that never appears.
       build(formViewWorkflow).ngOnInit();
-      chosen(["last"]);
+      saved(["last"]);
       h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
       h.terminalIds.add("last"); // no downstream link, and its eye is off
 
@@ -1249,10 +1326,10 @@ describe("WorkflowFormComponent", () => {
       // A reader who never curates still sees the workflow's final result: the engine always
       // materializes the terminal operator, so its result is always available to show.
       build(formViewWorkflow).ngOnInit();
-      chosen([]);
+      saved();
       h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
       h.hasOperatorIds.add("last");
-      h.terminalIds.add("last"); // terminal, no eye, not chosen
+      h.terminalIds.add("last"); // terminal, no eye, nothing chosen
 
       (component as any).readConfig();
 
@@ -1263,7 +1340,7 @@ describe("WorkflowFormComponent", () => {
       // A mid-graph step with an enabled downstream link is materialized only when its eye is on;
       // without the eye it produces no result, so the form must not show a card that sits forever empty.
       build(formViewWorkflow).ngOnInit();
-      chosen(["mid"]);
+      saved(["mid"]);
       h.graphOperators.push({ operatorID: "mid", operatorType: "Filter" }); // enabled downstream, no eye
 
       (component as any).readConfig();
@@ -1275,7 +1352,7 @@ describe("WorkflowFormComponent", () => {
       // The backend's storage rule is out-degree 0 on the ENABLED plan, so an operator whose downstream
       // link is disabled is terminal and gets materialized. The form must match, reading enabled links.
       build(formViewWorkflow).ngOnInit();
-      chosen([]);
+      saved();
       h.graphOperators.push({ operatorID: "a", operatorType: "Filter" });
       h.graphOperators.push({ operatorID: "b", operatorType: "Limit" });
       h.disabledDownstream.add("a"); // a -> b link disabled, so a has no enabled downstream
@@ -1291,7 +1368,7 @@ describe("WorkflowFormComponent", () => {
       // A disabled operator is not in the compiled plan, so the engine never materializes it; even with
       // no downstream it must not be shown as a terminal result.
       build(formViewWorkflow).ngOnInit();
-      chosen([]);
+      saved();
       h.graphOperators.push({ operatorID: "off", operatorType: "Limit", isDisabled: true });
       h.terminalIds.add("off"); // no downstream, but disabled
 
@@ -1304,7 +1381,7 @@ describe("WorkflowFormComponent", () => {
       // The eye and the pick survive disabling the step, but the compiled plan leaves the step out, so
       // there is never a result behind such a card.
       build(formViewWorkflow).ngOnInit();
-      chosen(["off"]);
+      saved(["off", "last"]);
       h.graphOperators.push({ operatorID: "off", operatorType: "Filter", isDisabled: true });
       h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
       h.viewResultIds.add("off");
@@ -1317,7 +1394,7 @@ describe("WorkflowFormComponent", () => {
 
     it("drops a card when the canvas view-result set changes, without a result update", () => {
       build(formViewWorkflow).ngOnInit();
-      chosen(["a", "b"]);
+      saved(["a", "b"]);
       h.viewResultIds.add("a");
       h.viewResultIds.add("b");
       (component as any).readConfig();
@@ -1333,7 +1410,7 @@ describe("WorkflowFormComponent", () => {
 
     it("cards only the chosen, viewed steps that actually produced a result", () => {
       build(formViewWorkflow).ngOnInit();
-      chosen(["produces", "produces-nothing"]);
+      saved(["produces", "produces-nothing"]);
       h.viewResultIds.add("produces");
       h.viewResultIds.add("produces-nothing");
       h.anyResultIds.add("produces"); // the other ran but yielded nothing (e.g. a download UDF)
@@ -1346,7 +1423,7 @@ describe("WorkflowFormComponent", () => {
 
     it("has no results when nothing chosen has produced anything", () => {
       build(formViewWorkflow).ngOnInit();
-      chosen(["a"]);
+      saved(["a"]);
       h.viewResultIds.add("a");
       (component as any).readConfig();
 
@@ -1686,47 +1763,53 @@ describe("WorkflowFormComponent", () => {
       expect(h.workflowActionService.disableWorkflowModification).toHaveBeenCalled();
     });
 
-    it("lists viewed and chosen intermediate steps, never the always-shown terminal", () => {
+    it("lists the final steps and the viewed and chosen intermediate steps, with their shown state", () => {
       build(formViewWorkflow).ngOnInit();
       component.authoring = true;
       h.graphOperators.push({ operatorID: "viewed-mid", operatorType: "Filter" });
       h.graphOperators.push({ operatorID: "chosen-mid", operatorType: "Filter" });
+      h.graphOperators.push({ operatorID: "stale-pick", operatorType: "Filter" });
       h.graphOperators.push({ operatorID: "plain-mid", operatorType: "Filter" });
       h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
+      h.graphOperators.push({ operatorID: "last-off", operatorType: "Limit" });
       // Disabled steps keep their eye and can even be in the saved picks, but are left out of the run,
-      // so neither is offered: featuring one could never show a reader anything.
+      // so neither is offered: featuring one could never show anyone anything.
       h.graphOperators.push({ operatorID: "off-viewed", operatorType: "Filter", isDisabled: true });
       h.graphOperators.push({ operatorID: "off-chosen", operatorType: "Filter", isDisabled: true });
       h.viewResultIds.add("viewed-mid");
+      h.viewResultIds.add("chosen-mid");
       h.viewResultIds.add("off-viewed");
-      // The terminal has the eye too, as it usually does, and is still not offered: its result
-      // always shows, so it is not the author's to toggle here.
-      h.viewResultIds.add("last");
       h.terminalIds.add("last");
+      h.terminalIds.add("last-off");
+      // The author's saved list: last on, last-off left out, two intermediates and a disabled step.
       h.formBindingService.getConfig.mockReturnValue({
         instruction: undefined,
         fields: [],
-        resultOperatorIds: ["chosen-mid", "off-chosen"],
+        shownResultIds: ["chosen-mid", "stale-pick", "off-chosen", "last"],
       });
 
       (component as any).readConfig();
 
-      const ids = component.resultChoices.map(c => c.operatorID);
-      expect(ids).toContain("viewed-mid"); // has the eye on the canvas
-      expect(ids).toContain("chosen-mid"); // already chosen
-      expect(ids).not.toContain("plain-mid"); // no eye, not chosen -> nothing to show, not offered
-      expect(ids).not.toContain("last"); // terminal always shows; never offered in the picker
-      expect(ids).not.toContain("off-viewed"); // disabled: not in the run, eye or no eye
-      expect(ids).not.toContain("off-chosen"); // disabled: not in the run, chosen or not
-      expect(component.resultChoices.find(c => c.operatorID === "chosen-mid")?.shown).toBe(true);
-      expect(component.resultChoices.find(c => c.operatorID === "viewed-mid")?.shown).toBe(false);
+      const byId = new Map(component.resultChoices.map(c => [c.operatorID, c]));
+      expect(byId.get("viewed-mid")).toMatchObject({ shown: false }); // has the eye, not on the list
+      expect(byId.get("chosen-mid")).toMatchObject({ shown: true }); // eye and on the list
+      // A listed step whose eye was turned off on the canvas stays offered (so it can be taken off the
+      // list) but reads as off: the pill shows what is actually displayed, and nothing is produced for
+      // it any more.
+      expect(byId.get("stale-pick")).toMatchObject({ shown: false });
+      expect(byId.has("plain-mid")).toBe(false); // no eye, not listed -> nothing to show, not offered
+      // The final steps are always offered, under their plain name like any other step.
+      expect(byId.get("last")).toMatchObject({ shown: true, label: "Limit" });
+      expect(byId.get("last-off")).toMatchObject({ shown: false }); // left off the list by the author
+      expect(byId.has("off-viewed")).toBe(false); // disabled: not in the run, eye or no eye
+      expect(byId.has("off-chosen")).toBe(false); // disabled: not in the run, listed or not
     });
 
     it("adds a step to the picker the moment its eye is turned on, without a re-read", () => {
       build(formViewWorkflow).ngOnInit();
       component.authoring = true;
       h.graphOperators.push({ operatorID: "mid", operatorType: "Filter" });
-      h.formBindingService.getConfig.mockReturnValue({ instruction: undefined, fields: [], resultOperatorIds: [] });
+      h.formBindingService.getConfig.mockReturnValue({ instruction: undefined, fields: [] });
       (component as any).readConfig();
       expect(component.resultChoices.map(c => c.operatorID)).not.toContain("mid");
 
@@ -1738,23 +1821,62 @@ describe("WorkflowFormComponent", () => {
       expect(component.resultChoices.map(c => c.operatorID)).toContain("mid");
     });
 
-    it("does not build the result picker for a reader", () => {
-      build(formViewWorkflow).ngOnInit();
-      h.graphOperators.push({ operatorID: "op-1", operatorType: "Filter" });
+    it("builds the picker for a reader too, so they can choose what to see", () => {
+      build({ ...formViewWorkflow, readonly: true }).ngOnInit();
+      h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
+      h.terminalIds.add("last");
 
       (component as any).readConfig();
 
-      expect(component.resultChoices).toEqual([]);
+      expect(component.resultChoices.map(c => c.operatorID)).toEqual(["last"]);
+      expect(component.resultChoices[0].shown).toBe(true);
     });
 
-    it("routes a result toggle through the binding service and re-reads", () => {
+    it("does not offer a reader a saved pick whose eye is off, since it could never turn on", () => {
+      // The author's stale pick stays listed in edit mode so it can be un-picked (see above); for a
+      // reader nothing is materialised for it, so a pill they can click but never turn on is left out.
+      build({ ...formViewWorkflow, readonly: true }).ngOnInit();
+      h.graphOperators.push({ operatorID: "stale-pick", operatorType: "Filter" });
+      h.graphOperators.push({ operatorID: "chosen-mid", operatorType: "Filter" });
+      h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
+      h.viewResultIds.add("chosen-mid");
+      h.terminalIds.add("last");
+      h.formBindingService.getConfig.mockReturnValue({
+        instruction: undefined,
+        fields: [],
+        shownResultIds: ["chosen-mid", "stale-pick"],
+      });
+
+      (component as any).readConfig();
+
+      expect(component.resultChoices.map(c => c.operatorID).sort()).toEqual(["chosen-mid", "last"]);
+    });
+
+    it("in edit mode, a toggle sets the default for everyone, starting the saved list from the final steps", () => {
+      // The service materialises the list on the first choice from the default handed in, which must
+      // be the final steps as they are now (the one terminal rule), so what the author saw is kept.
       build(formViewWorkflow).ngOnInit();
+      component.authoring = true;
+      h.graphOperators.push({ operatorID: "last", operatorType: "Limit" });
+      h.terminalIds.add("last");
       const read = vi.spyOn(component as any, "readConfig");
 
       component.onToggleResult({ operatorID: "op-1", label: "Filter", shown: false });
 
-      expect(h.formBindingService.toggleResultOperator).toHaveBeenCalledWith("op-1");
+      expect(h.formBindingService.toggleShownResult).toHaveBeenCalledWith("op-1", ["last"]);
       expect(read).toHaveBeenCalledTimes(1);
+    });
+
+    it("a writer merely viewing changes only their own view, like any reader", () => {
+      build(formViewWorkflow).ngOnInit();
+      expect(component.canEdit).toBe(true);
+      expect(component.authoring).toBe(false);
+      const read = vi.spyOn(component as any, "readConfig");
+
+      component.onToggleResult({ operatorID: "op-1", label: "Filter", shown: false });
+
+      expect(h.formBindingService.toggleShownResult).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
     });
 
     it("saves the instruction as the author types, and previews on demand", () => {

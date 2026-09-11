@@ -158,7 +158,7 @@ export function setupHarness() {
   const formBindingService = {
     // The presentation config: the instruction plus the fields. Tests override getConfig to give an
     // instruction; resolveFields drives which inputs render.
-    getConfig: vi.fn().mockReturnValue({ instruction: undefined, fields: [], resultOperatorIds: [] }),
+    getConfig: vi.fn().mockReturnValue({ instruction: undefined, fields: [] }),
     resolveFields: vi.fn().mockReturnValue([]),
     readValue: vi.fn().mockReturnValue(undefined),
     writeValue: vi.fn(),
@@ -166,7 +166,7 @@ export function setupHarness() {
     operatorLabel: (op: any) => op?.customDisplayName ?? op?.operatorType ?? op?.operatorID,
     // Author-mode writes: the component calls these then re-reads config. Spied so a test can
     // assert the edit was made without needing a real binding store.
-    toggleResultOperator: vi.fn(),
+    toggleShownResult: vi.fn(),
     updateConfig: vi.fn(),
   };
   // A field per property the tests expose. Real formly json-schema conversion is exercised by the

@@ -95,8 +95,7 @@ interface RenderedField {
   model: Record<string, unknown>;
 }
 
-/** One row of the author's "which results to show" picker: a candidate step and whether it is
- *  currently chosen. */
+/** One row of the "which results to show" picker: a candidate step and whether it is currently shown. */
 interface ResultChoice {
   operatorID: string;
   label: string;
@@ -161,8 +160,14 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   /** While authoring, the instruction is edited as raw markdown ("write") or shown rendered
    *  ("preview"); a reader always sees it rendered. */
   public instructionMode: "write" | "preview" = "write";
-  /** The author's "which results to show" picker: every candidate step with its chosen flag. */
+  /** The "which results to show" picker: every candidate step with its shown flag. Everyone sees it:
+   *  in edit mode a toggle sets the default for all readers (saved in the config); otherwise it is
+   *  the viewer's own choice for this page (viewerResultIds), never written anywhere. */
   public resultChoices: ResultChoice[] = [];
+  /** A viewer's own pick of results for this page, once they have toggled anything; undefined means
+   *  "the author's default". Kept for the page's lifetime only, and cleared on entering edit mode so
+   *  the author edits the real default rather than their own view of it. */
+  private viewerResultIds?: Set<string>;
 
   /** The exposed inputs, resolved against the live graph, and the formly field built for each. */
   private parameters: ResolvedField[] = [];
@@ -200,10 +205,11 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   public selectedOperatorId?: string;
 
   /**
-   * Which steps' results to show: the terminal (final) steps, whose results the engine always
-   * materializes, plus the author's chosen `resultOperatorIds` kept to those that still have
-   * view-result ("the eye") on the canvas. The form NEVER writes the canvas's view-result flags --
-   * it only decides what it itself shows, so a canvas user's result-viewing is unaffected.
+   * Which steps' results to show: the author's saved list (`shownResultIds` in the config) or, until
+   * the author has chosen, the terminal (final) steps, whose results the engine always materializes;
+   * either way kept to steps that still have a result on the canvas. The form NEVER writes the
+   * canvas's view-result flags -- it only decides what it itself shows, so a canvas user's
+   * result-viewing is unaffected.
    */
   public shownResultIds: string[] = [];
   /** Chart height per result (0 compact / 1 default / 2 tall). Per operator so one does not resize
@@ -397,6 +403,14 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
       .subscribe(({ current }) => {
         const wasRunning = this.isRunning;
         this.executionState = current.state;
+        // The execute service unlocks the graph whenever a run ends (completed, failed, killed, or
+        // reset to uninitialized), which is what the canvas wants. Here only a writer in edit mode may
+        // hold the graph unlocked, so for anyone else the lock is put back at once: without this a
+        // writer merely viewing would, after a run, get the preview's view-result command (which
+        // writes and autosaves the shared graph) even though they never entered edit mode.
+        if (!(this.authoring && this.canEdit)) {
+          this.workflowActionService.disableWorkflowModification();
+        }
         // Clear a stale failure banner the moment any new run starts -- this session's or a
         // co-editor's. onRun() clears it for a run started here, but a co-editor's run moves the
         // shared execution stream to an in-flight state without going through onRun(), so without
@@ -582,31 +596,27 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * The author's picker for the extra results: every non-terminal step with view-result ("the eye")
-   * on the canvas is offered, plus any already-chosen step (so a pick never vanishes from its own
-   * picker). The terminal step is not offered -- its result always shows and is not the author's to
-   * toggle. The shown flag mirrors the saved resultOperatorIds.
+   * The picker's candidates: every final step (the engine always materialises it) and every
+   * intermediate step with view-result ("the eye") on the canvas. In edit mode a step already on the
+   * author's saved list is kept as well, eye or no eye, so the author can take a stale choice off the
+   * list; a reader is not offered it, since with no result materialised its pill could never turn on.
+   * Reuse the one terminal rule (terminalOperatorIds) rather than a second copy. Disabled steps are
+   * not offered at all, listed or not: they are left out of the run, so choosing one could never show
+   * anyone anything. The shown flag mirrors shownResultIds, so it reflects the viewer's own choice when
+   * they have made one and the author's default otherwise.
    */
   private rebuildResultChoices(): void {
-    // The picker is only shown while authoring, so a reader does no per-operator work.
-    if (!this.authoring) {
-      this.resultChoices = [];
-      return;
-    }
+    const config = this.formBindingService.getConfig();
     const viewed = this.workflowActionService.getTexeraGraph().getOperatorsToViewResult();
-    const chosen = new Set(this.formBindingService.getConfig().resultOperatorIds);
-    // The terminal result always shows and is not the author's to toggle, so it is not offered here.
-    // The picker curates only the extra intermediate steps -- those given view-result (the eye) on the
-    // canvas. Reuse the one terminal rule (terminalOperatorIds) rather than a second copy. Already-chosen
-    // ids stay listed so the author can un-pick them. Disabled steps are not offered at all, chosen
-    // or not: they are left out of the run, so featuring one could never show a reader anything.
+    const listed = new Set(this.authoring && this.canEdit ? config.shownResultIds ?? [] : []);
     const terminals = new Set(this.terminalOperatorIds());
+    const shown = new Set(this.shownResultIds);
     this.resultChoices = this.enabledOperators()
-      .filter(op => !terminals.has(op.operatorID) && (viewed.has(op.operatorID) || chosen.has(op.operatorID)))
+      .filter(op => terminals.has(op.operatorID) || viewed.has(op.operatorID) || listed.has(op.operatorID))
       .map(op => ({
         operatorID: op.operatorID,
         label: this.formBindingService.operatorLabel(op),
-        shown: chosen.has(op.operatorID),
+        shown: shown.has(op.operatorID),
       }));
   }
 
@@ -629,10 +639,12 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
   /**
    * Decide which operators' result cards to show. The engine materializes a result for every terminal
    * operator (no enabled downstream) as well as every view-result operator, so a terminal's result is
-   * always available; the form shows terminals by default and layers the author's chosen view-result
-   * steps on top. This is a pure display filter that reads the graph and never writes it, so a normal
-   * canvas user's result-viewing is unaffected. A step that is neither viewed nor terminal (or was
-   * deleted) drops out rather than rendering a stale card.
+   * always available. The author's default is the saved list (shownResultIds: exactly those steps, an
+   * empty list meaning none) or, until the author has chosen, every terminal step. A viewer who has
+   * toggled the picker on this page sees their own set instead (viewerResultIds), which is never
+   * written anywhere. Either way this is a pure display filter that reads the graph and never writes
+   * it, so a normal canvas user's result-viewing is unaffected. A step that is neither viewed nor
+   * terminal (or was deleted) drops out rather than rendering a stale card.
    */
   private refreshShownResults(): void {
     const graph = this.workflowActionService.getTexeraGraph();
@@ -650,11 +662,11 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
         .map(op => op.operatorID)
     );
     const availableOnCanvas = (id: string): boolean => (viewed.has(id) && !disabled.has(id)) || terminals.has(id);
-    const chosen = this.formBindingService.getConfig().resultOperatorIds;
-    // The terminal (final) operator's result always shows -- the engine always materializes it, so it
-    // cannot be turned off. resultOperatorIds adds extra intermediate (view-result) steps on top. The
+    // The author's default: the saved list when there is one, otherwise the final steps. The
     // downstream hasNonEmptyResult filter drops steps that produced no data.
-    this.shownResultIds = [...new Set([...terminals, ...chosen])].filter(availableOnCanvas);
+    const authorsDefault = this.formBindingService.getConfig().shownResultIds ?? [...terminals];
+    const wanted = this.viewerResultIds ? [...this.viewerResultIds] : authorsDefault;
+    this.shownResultIds = [...new Set(wanted)].filter(availableOnCanvas);
   }
 
   /** The workflow's terminal operators: enabled operators with no enabled downstream link. Matches the
@@ -1089,6 +1101,9 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     if (this.authoring) {
       // An author picks fields off the workflow, so show it.
       this.showWorkflow();
+      // In edit mode the picker sets the default for everyone, so the author's own view of the
+      // results (if they toggled any as a viewer) gives way to that default.
+      this.viewerResultIds = undefined;
     } else {
       this.workflowOpen = false;
     }
@@ -1110,9 +1125,28 @@ export class WorkflowFormComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * A pill in the picker. In edit mode this sets the default everyone sees: the step joins or leaves
+   * the saved list (which the first choice starts from the final steps, the default until then), and
+   * the config is re-read. Anyone else, a writer merely viewing included, only changes their own view
+   * of this page: nothing is written, so a reader without write access can choose too.
+   */
   public onToggleResult(choice: ResultChoice): void {
-    this.formBindingService.toggleResultOperator(choice.operatorID);
-    this.readConfig();
+    if (this.authoring && this.canEdit) {
+      this.formBindingService.toggleShownResult(choice.operatorID, this.terminalOperatorIds());
+      this.readConfig();
+      return;
+    }
+    const next = new Set(this.shownResultIds);
+    if (next.has(choice.operatorID)) {
+      next.delete(choice.operatorID);
+    } else {
+      next.add(choice.operatorID);
+    }
+    this.viewerResultIds = next;
+    this.refreshShownResults();
+    this.rebuildResultChoices();
+    this.cdr.markForCheck();
   }
 
   private showWorkflow(): void {

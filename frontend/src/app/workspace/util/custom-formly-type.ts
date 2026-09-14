@@ -71,6 +71,9 @@ export function customFormlyFieldType(input: {
   if (key === "datasetVersionPath") {
     return "datasetversionselector";
   }
+  if (key === "folderPath") {
+    return "datasetfolderselector";
+  }
   // Python UDF script box: only when the schema already resolved to an editable control.
   if (description?.toLowerCase() === "input your code here" && currentType) {
     return "codearea";

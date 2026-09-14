@@ -43,6 +43,12 @@ class ParameterSourceOpExec private[parameter] (descString: String) extends Sour
           TupleLike(ArraySeq(k, v): _*)
         }
 
+      val folderRows =
+        desc.folderPairs.asScala.iterator.map { p =>
+          val k = Option(p.folderKey).getOrElse("")
+          val v = p.folderPath.map(_.toString).getOrElse("")
+          TupleLike(ArraySeq(k, v): _*)
+        }
       val datasetRows =
         desc.datasetPairs.asScala.iterator.map { p =>
           val k = Option(p.datasetKey).getOrElse("")
@@ -56,7 +62,7 @@ class ParameterSourceOpExec private[parameter] (descString: String) extends Sour
           TupleLike(ArraySeq(k, v): _*)
         }
 
-      fileRows ++ datasetRows ++ kvRows
+      fileRows ++ folderRows ++ datasetRows ++ kvRows
     }
   }
 }

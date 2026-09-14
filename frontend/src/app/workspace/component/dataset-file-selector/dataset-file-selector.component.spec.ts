@@ -71,6 +71,31 @@ describe("DatasetFileSelectorComponent", () => {
     expect(modalServiceSpy.create).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the dialog in file mode under its file-picker type name", () => {
+    modalServiceSpy.create.mockReturnValue({ afterClose: of(undefined) });
+    setFormControl("");
+
+    component.onClickOpenFileSelectionModal();
+
+    expect(component.folderMode).toBe(false);
+    expect(modalServiceSpy.create.mock.calls[0][0].nzData).toEqual(
+      expect.objectContaining({ fileMode: true, folderMode: false })
+    );
+  });
+
+  it("opens the dialog in folder mode when registered as the folder selector", () => {
+    modalServiceSpy.create.mockReturnValue({ afterClose: of(undefined) });
+    const formControl = new FormControl("/owner/ds/v1/sample_a");
+    component.field = { formControl, type: "datasetfolderselector" } as FieldTypeConfig;
+
+    component.onClickOpenFileSelectionModal();
+
+    expect(component.folderMode).toBe(true);
+    expect(modalServiceSpy.create.mock.calls[0][0].nzData).toEqual(
+      expect.objectContaining({ fileMode: false, folderMode: true, selectedPath: "/owner/ds/v1/sample_a" })
+    );
+  });
+
   it("writes the chosen path back into the form control when a path is selected", () => {
     const formControl = setFormControl("");
     modalServiceSpy.create.mockReturnValue({ afterClose: of("/dataset/data.csv") });

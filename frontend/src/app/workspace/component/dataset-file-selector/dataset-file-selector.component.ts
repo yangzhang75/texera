@@ -55,12 +55,22 @@ export class DatasetFileSelectorComponent extends FieldType<FieldTypeConfig> {
     super();
   }
 
+  /**
+   * Registered under two formly type names: `inputautocomplete` picks a file, `datasetfolderselector`
+   * a folder inside a dataset version (or the version itself). Same dialog and the same write-back;
+   * only what the tree lets the reader pick differs, so one component serves both.
+   */
+  get folderMode(): boolean {
+    return this.field.type === "datasetfolderselector";
+  }
+
   onClickOpenFileSelectionModal(): void {
     const modal = this.modalService.create({
       nzContent: DatasetSelectionModalComponent,
       nzFooter: null,
       nzData: {
-        fileMode: true,
+        fileMode: !this.folderMode,
+        folderMode: this.folderMode,
         selectedPath: this.formControl.getRawValue(),
       },
       nzBodyStyle: {

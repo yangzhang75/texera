@@ -29,6 +29,10 @@ describe("customFormlyFieldType", () => {
     expect(customFormlyFieldType({ key: "datasetVersionPath", operatorType: "Any" })).toBe("datasetversionselector");
   });
 
+  it("maps a folder property to the folder selector", () => {
+    expect(customFormlyFieldType({ key: "folderPath", operatorType: "Any" })).toBe("datasetfolderselector");
+  });
+
   it("maps the model-name property to the HuggingFace picker regardless of operator", () => {
     expect(customFormlyFieldType({ key: "huggingFaceModel", operatorType: "SomethingElse" })).toBe("huggingface");
   });

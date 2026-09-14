@@ -67,6 +67,23 @@ object ParameterSourceOpDesc {
       var datasetVersionPath: Option[String] = None
   )
 
+  // Folder key/value pairs. The value is a directory inside a dataset version,
+  // `/owner/name/version/some/dir`, or the version itself when nothing below it is
+  // picked. The property panel turns any field literally named `folderPath` into the
+  // folder picker (custom-formly-type.ts), the same way `fileName` and
+  // `datasetVersionPath` above get theirs. A Cell Ranger run is a directory of files,
+  // and one dataset often holds several such directories, one per sample; naming the
+  // whole version would hand the consumer every sample at once.
+  class FolderKeyValuePair @JsonCreator() (
+      @JsonProperty(value = "folderKey", required = true)
+      @JsonSchemaTitle("Folder Key")
+      var folderKey: String,
+      @JsonProperty(value = "folderPath", required = false)
+      @JsonSchemaTitle("Folder")
+      @JsonDeserialize(contentAs = classOf[java.lang.String])
+      var folderPath: Option[String] = None
+  )
+
   // Regular string key/value pairs
   class KeyValuePair @JsonCreator() (
       @JsonProperty(value = "key", required = true) var key: String,
@@ -82,6 +99,11 @@ class ParameterSourceOpDesc extends SourceOperatorDescriptor {
   @JsonProperty(value = "filePairs", required = false)
   @JsonPropertyDescription("Multiple file key/value pairs")
   var filePairs: java.util.List[FileKeyValuePair] = new java.util.ArrayList[FileKeyValuePair]()
+
+  @JsonProperty(value = "folderPairs", required = false)
+  @JsonPropertyDescription("Multiple folder key/value pairs")
+  var folderPairs: java.util.List[FolderKeyValuePair] =
+    new java.util.ArrayList[FolderKeyValuePair]()
 
   @JsonProperty(value = "datasetPairs", required = false)
   @JsonPropertyDescription("Multiple dataset key/value pairs")

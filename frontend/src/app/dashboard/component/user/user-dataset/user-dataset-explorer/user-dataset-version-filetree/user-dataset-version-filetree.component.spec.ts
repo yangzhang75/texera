@@ -22,6 +22,8 @@ import { UserDatasetVersionFiletreeComponent } from "./user-dataset-version-file
 import { DatasetFileNode } from "../../../../../../common/type/datasetVersionFileTree";
 import { FILE_COUNT, makeFlatFileNodes } from "./user-dataset-version-filetree.test-utils";
 
+const onClickOf = (c: UserDatasetVersionFiletreeComponent) => c.fileTreeDisplayOptions.actionMapping!.mouse!.click!;
+
 describe("UserDatasetVersionFiletreeComponent", () => {
   let fixture: ComponentFixture<UserDatasetVersionFiletreeComponent>;
   let component: UserDatasetVersionFiletreeComponent;
@@ -133,6 +135,25 @@ describe("UserDatasetVersionFiletreeComponent", () => {
 
     expect(toggleCalls).toBe(1);
     expect(emitted).toEqual([]);
+  });
+
+  it("also emits selectedTreeNode for a clicked folder when selectableDirectories is set", () => {
+    component.selectableDirectories = true;
+    const emitted: DatasetFileNode[] = [];
+    component.selectedTreeNode.subscribe((n: DatasetFileNode) => emitted.push(n));
+    let toggleCalls = 0;
+    const folderData = { name: "dir", type: "directory", parentDir: "/owner/dataset/v1" };
+    const folderNode = {
+      hasChildren: true,
+      toggleExpanded: () => {
+        toggleCalls++;
+      },
+      data: folderData,
+    } as never;
+    onClickOf(component)(undefined as never, folderNode, undefined as never);
+    // Still toggles, so the tree stays browsable while picking.
+    expect(toggleCalls).toBe(1);
+    expect(emitted).toEqual([folderData]);
   });
 
   it("emits selectedTreeNode when a leaf node is clicked", () => {

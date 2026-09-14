@@ -28,7 +28,7 @@ import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
 import { NzSpaceCompactItemDirective } from "ng-zorro-antd/space";
 import { NzSelectComponent, NzOptionComponent } from "ng-zorro-antd/select";
 import { FormsModule } from "@angular/forms";
-import { NgFor } from "@angular/common";
+import { NgFor, NgIf } from "@angular/common";
 import { UserDatasetVersionFiletreeComponent } from "../../../dashboard/component/user/user-dataset/user-dataset-explorer/user-dataset-version-filetree/user-dataset-version-filetree.component";
 import { NzButtonComponent } from "ng-zorro-antd/button";
 import { NzWaveDirective } from "ng-zorro-antd/core/wave";
@@ -46,6 +46,7 @@ import { filterDatasetOption } from "./dataset-search.util";
     NzColDirective,
     FormsModule,
     NgFor,
+    NgIf,
     NzOptionComponent,
     UserDatasetVersionFiletreeComponent,
     NzButtonComponent,
@@ -56,6 +57,8 @@ import { filterDatasetOption } from "./dataset-search.util";
 export class DatasetSelectionModalComponent implements OnInit {
   private readonly data = inject(NZ_MODAL_DATA) as {
     fileMode: boolean;
+    // Pick a directory inside a version, or the version itself when nothing below it is picked.
+    folderMode?: boolean;
     selectedPath?: string | null;
   };
 
@@ -74,6 +77,10 @@ export class DatasetSelectionModalComponent implements OnInit {
   // Search filter for the dataset dropdown: matches the typed text against both the
   // dataset name and its numeric id (shown as `#<id>`). See filterDatasetOption.
   datasetFilterOption = filterDatasetOption;
+
+  get folderMode(): boolean {
+    return this.data.folderMode === true;
+  }
 
   ngOnInit() {
     this.datasetService
@@ -100,7 +107,8 @@ export class DatasetSelectionModalComponent implements OnInit {
         .pipe(untilDestroyed(this))
         .subscribe(versions => {
           this.datasetVersions = versions;
-          if (this.data.fileMode) {
+          // File and folder mode both need the tree, so a version is picked up front.
+          if (this.data.fileMode || this.folderMode) {
             this.selectedVersion = versions.find(version => version.name === versionName) ?? versions[0];
             this.onVersionChange();
           }
@@ -118,12 +126,23 @@ export class DatasetSelectionModalComponent implements OnInit {
           this.fileTree = data.fileNodes;
         });
       if (!this.data.fileMode) {
-        this.selectedPath = `/${this.selectedDataset.ownerEmail}/${this.selectedDataset.dataset.name}/${this.selectedVersion.name}`;
+        const versionPath = `/${this.selectedDataset.ownerEmail}/${this.selectedDataset.dataset.name}/${this.selectedVersion.name}`;
+        // Folder mode pre-selects the version root, but a folder chosen earlier under this same
+        // version is kept: reopening the dialog and confirming must not quietly widen the
+        // selection from one sample's folder to the whole version.
+        const remembered = this.data.selectedPath ?? "";
+        this.selectedPath = this.folderMode && remembered.startsWith(`${versionPath}/`) ? remembered : versionPath;
       }
     }
   }
 
   onFileSelected(node: DatasetFileNode) {
+    if (this.folderMode) {
+      // A folder is the pick; a file stands for the folder it sits in, so clicking into a
+      // sample's directory selects that sample either way.
+      this.selectedPath = node.type === "directory" ? getFullPathFromDatasetFileNode(node) : node.parentDir;
+      return;
+    }
     if (this.data.fileMode) {
       this.selectedPath = getFullPathFromDatasetFileNode(node);
     }

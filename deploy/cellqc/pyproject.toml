@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cellqc-texera"
+version = "0.1.0"
+description = "Run cellqc's Snakemake stages from Texera Python UDF operators."
+requires-python = ">=3.9"
+dependencies = ["cellqc"]
+
+[tool.setuptools.packages.find]
+include = ["cellqc_texera*"]
+
+# shim.R is data the Python side hands to Rscript, not an importable module.
+[tool.setuptools.package-data]
+cellqc_texera = ["shim.R"]

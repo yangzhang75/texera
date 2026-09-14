@@ -11,7 +11,9 @@ class ParamRoundTripSpec extends AnyFlatSpec {
       """{"operatorType":"FileParameter","filePairs":[{"fileKey":"file_path","fileName":"/texera/ddx41/v1/x.h5ad"}],"pairs":[{"key":"n_hvg","value":"1500"}]}"""
     val sb = new StringBuilder
     try {
-      val desc = objectMapper.readValue(props, classOf[org.apache.texera.amber.operator.LogicalOp]).asInstanceOf[ParameterSourceOpDesc]
+      val desc = objectMapper
+        .readValue(props, classOf[org.apache.texera.amber.operator.LogicalOp])
+        .asInstanceOf[ParameterSourceOpDesc]
       sb.append("read OK  filePairs=" + desc.filePairs.size + " pairs=" + desc.pairs.size + "\n")
       val out = objectMapper.writeValueAsString(desc)
       sb.append("reserialized: " + out + "\n")

@@ -475,7 +475,7 @@ export class ResultTableFrameComponent implements OnInit, OnChanges {
       this.workflowActionService.getJointGraphWrapper().highlightOperators(this.operatorId);
     }
     const realRowNumber = (this.currentPageIndex - 1) * this.pageSize + rowIndex;
-    const defaultFileName = `${columnName}_${realRowNumber}`;
+    const defaultFileName = this.defaultDownloadName(columnName, rowIndex, realRowNumber);
     const modal = this.modalService.create({
       nzTitle: "Export Data and Save to a Dataset",
       nzContent: ResultExportationComponent,
@@ -488,6 +488,36 @@ export class ResultTableFrameComponent implements OnInit, OnChanges {
       },
       nzFooter: null,
     });
+  }
+
+  /**
+   * The name the export dialog pre-fills for one cell. The export writes the cell out as a file
+   * under this name verbatim, so it has to carry an extension or the reader gets a file the OS
+   * cannot open.
+   *
+   * Only the producer of a binary cell knows its real extension. By convention it says so in a
+   * string column named `filename` on the same row, which is used as the default; path
+   * separators are stripped so a stray path cannot turn into a folder in the export. Every other
+   * cell is written as UTF-8 text and named as such. Without a schema for the column (no result
+   * service for this operator) the plain `<column>_<row>` is kept.
+   */
+  private defaultDownloadName(columnName: string, rowIndex: number, realRowNumber: number): string {
+    const fallback = `${columnName}_${realRowNumber}`;
+    const attributeType = this.operatorId
+      ? this.workflowResultService
+          .getPaginatedResultService(this.operatorId)
+          ?.getSchema()
+          .find(attribute => attribute.attributeName === columnName)?.attributeType
+      : undefined;
+    if (attributeType === undefined) {
+      return fallback;
+    }
+    if (attributeType !== "binary") {
+      return `${fallback}.txt`;
+    }
+    const hinted = this.currentResult[rowIndex]?.["filename"];
+    const baseName = typeof hinted === "string" ? hinted.trim().replace(/^.*[\\/]/, "") : "";
+    return baseName || fallback;
   }
 
   onColumnShiftLeft(): void {

@@ -567,6 +567,62 @@ describe("ResultTableFrameComponent", () => {
       expect(highlight).not.toHaveBeenCalled();
       expect(createSpy).toHaveBeenCalled();
     });
+
+    // The export writes the cell out under the pre-filled name verbatim, so the default has to
+    // carry an extension. The cases below pin down where that extension comes from.
+    describe("default file name", () => {
+      const defaultFileNameFor = (columnName: string, rowIndex: number): string => {
+        const createSpy = vi.spyOn(modalService, "create").mockReturnValue({} as any);
+        component.downloadData(undefined, rowIndex, 0, columnName);
+        return (createSpy.mock.calls[0][0] as any).nzData.defaultFileName;
+      };
+      const withSchema = (attributes: { attributeName: string; attributeType: "string" | "binary" }[]) => {
+        component.operatorId = "op1";
+        makePaginatedResultService({ getSchema: vi.fn().mockReturnValue(attributes) });
+      };
+
+      it("takes a binary cell's name from the row's filename column, stripping any path", () => {
+        withSchema([
+          { attributeName: "content", attributeType: "binary" },
+          { attributeName: "filename", attributeType: "string" },
+        ]);
+        component.currentResult = [{ content: "<binary ...>", filename: " results\\sub/cellqc-tar.h5ad " }];
+
+        expect(defaultFileNameFor("content", 0)).toBe("cellqc-tar.h5ad");
+      });
+
+      it("falls back to <column>_<row> for a binary cell whose row carries no filename column", () => {
+        withSchema([{ attributeName: "content", attributeType: "binary" }]);
+        component.currentResult = [{ content: "<binary ...>" }];
+
+        expect(defaultFileNameFor("content", 0)).toBe("content_0");
+      });
+
+      it("falls back to <column>_<row> when the filename column is blank", () => {
+        withSchema([
+          { attributeName: "content", attributeType: "binary" },
+          { attributeName: "filename", attributeType: "string" },
+        ]);
+        component.currentResult = [{ content: "<binary ...>", filename: "   " }];
+
+        expect(defaultFileNameFor("content", 0)).toBe("content_0");
+      });
+
+      it("names a non-binary cell as text, since that is what the export writes", () => {
+        withSchema([{ attributeName: "name", attributeType: "string" }]);
+        component.currentResult = [{ name: "alice" }];
+
+        expect(defaultFileNameFor("name", 0)).toBe("name_0.txt");
+      });
+
+      it("keeps the plain <column>_<row> when the operator has no result schema", () => {
+        component.operatorId = "op1";
+        vi.spyOn(workflowResultService, "getPaginatedResultService").mockReturnValue(undefined);
+        component.currentResult = [{ name: "alice" }];
+
+        expect(defaultFileNameFor("name", 0)).toBe("name_0");
+      });
+    });
   });
 
   describe("column navigation and search", () => {

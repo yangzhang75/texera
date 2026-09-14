@@ -42,6 +42,10 @@ describe("customFormlyFieldType", () => {
     expect(customFormlyFieldType({ key: "fileName", operatorType: "CSVFileScan" })).toBe("inputautocomplete");
   });
 
+  it("maps a folderPath property to the folder selector", () => {
+    expect(customFormlyFieldType({ key: "folderPath", operatorType: "FileParameter" })).toBe("datasetfolderselector");
+  });
+
   it("maps huggingFaceModel to the model picker regardless of operator", () => {
     expect(customFormlyFieldType({ key: "huggingFaceModel", operatorType: "Anything" })).toBe("huggingface");
   });

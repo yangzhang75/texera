@@ -64,7 +64,7 @@ const fileNode: DatasetFileNode = { name: "a.csv", type: "file", parentDir: `/${
 describe("DatasetSelectionModalComponent", () => {
   let component: DatasetSelectionModalComponent;
   let fixture: ComponentFixture<DatasetSelectionModalComponent>;
-  let modalData: { fileMode: boolean; selectedPath?: string | null };
+  let modalData: { fileMode: boolean; folderMode?: boolean; selectedPath?: string | null };
   let modalRef: { close: ReturnType<typeof vi.fn> };
   let datasetService: {
     retrieveAccessibleDatasets: ReturnType<typeof vi.fn>;
@@ -164,6 +164,86 @@ describe("DatasetSelectionModalComponent", () => {
     component.onFileSelected(fileNode);
 
     expect(component.selectedPath).toBe(`/${OWNER}/myds/v1/a.csv`);
+  });
+
+  describe("folder mode", () => {
+    const directoryNode: DatasetFileNode = {
+      name: "sample_a",
+      type: "directory",
+      parentDir: `/${OWNER}/myds/v1`,
+      children: [],
+    };
+
+    it("auto-selects a version and pre-selects its root", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      build();
+      component.selectedDataset = dataset;
+      component.onDatasetChange();
+      expect(component.selectedVersion).toBe(version);
+      expect(component.fileTree).toEqual([fileNode]);
+      expect(component.selectedPath).toBe(`/dataset/${OWNER}/myds/v1`);
+    });
+
+    it("picks a clicked directory by its full path", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      build();
+      component.onFileSelected(directoryNode);
+      expect(component.selectedPath).toBe(`/${OWNER}/myds/v1/sample_a`);
+    });
+
+    it("picks the folder a clicked file sits in", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      build();
+      component.onFileSelected(fileNode);
+      expect(component.selectedPath).toBe(`/${OWNER}/myds/v1`);
+    });
+
+    it("keeps a previously chosen folder when reopened on the same version", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      modalData.selectedPath = `/dataset/${OWNER}/myds/v1/sample_a`;
+      build();
+      expect(component.selectedVersion).toBe(version);
+      expect(component.selectedPath).toBe(`/dataset/${OWNER}/myds/v1/sample_a`);
+    });
+
+    it("spells out the current pick, since the tree keeps no highlight", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      build();
+      component.onFileSelected(directoryNode);
+      fixture.detectChanges();
+      const readback: HTMLElement = fixture.nativeElement.querySelector(".selected-folder");
+      expect(readback.textContent).toContain(`/${OWNER}/myds/v1/sample_a`);
+    });
+
+    it("lets the tree hand back folders only in folder mode", () => {
+      modalData.fileMode = false;
+      modalData.folderMode = true;
+      build();
+      const tree = fixture.debugElement.query(By.directive(UserDatasetVersionFiletreeComponent))
+        .componentInstance as UserDatasetVersionFiletreeComponent;
+      expect(tree.selectableDirectories).toBe(true);
+    });
+
+    it("keeps folders unselectable in the tree in file mode", () => {
+      modalData.fileMode = true;
+      build();
+      const tree = fixture.debugElement.query(By.directive(UserDatasetVersionFiletreeComponent))
+        .componentInstance as UserDatasetVersionFiletreeComponent;
+      expect(tree.selectableDirectories).toBe(false);
+    });
+
+    it("shows no folder readback in file mode", () => {
+      modalData.fileMode = true;
+      build();
+      component.onFileSelected(fileNode);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector(".selected-folder")).toBeNull();
+    });
   });
 
   it("onConfirmSelection closes the modal with the selected path", () => {

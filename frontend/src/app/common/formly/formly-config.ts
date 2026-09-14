@@ -84,6 +84,8 @@ export const TEXERA_FORMLY_CONFIG = {
     { name: "multischema", component: MultiSchemaTypeComponent },
     { name: "codearea", component: CodeareaCustomTemplateComponent },
     { name: "inputautocomplete", component: DatasetFileSelectorComponent, wrappers: ["form-field"] },
+    // Same component as the file picker; it reads its own type name to switch the dialog to folders.
+    { name: "datasetfolderselector", component: DatasetFileSelectorComponent, wrappers: ["form-field"] },
     { name: "datasetversionselector", component: DatasetVersionSelectorComponent, wrappers: ["form-field"] },
     { name: "huggingface", component: HuggingFaceComponent, wrappers: ["form-field"] },
     { name: "huggingface-audio-upload", component: HuggingFaceAudioUploadComponent, wrappers: ["form-field"] },

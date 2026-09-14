@@ -27,5 +27,5 @@
   nz-button
   nzSize="small"
   (click)="isFileSelectionEnabled && onClickOpenFileSelectionModal()">
-  Select File
+  {{ folderMode ? "Select Folder" : "Select File" }}
 </button>

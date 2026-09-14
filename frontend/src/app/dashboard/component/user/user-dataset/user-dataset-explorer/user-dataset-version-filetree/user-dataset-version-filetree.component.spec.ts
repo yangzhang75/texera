@@ -22,6 +22,8 @@ import { UserDatasetVersionFiletreeComponent } from "./user-dataset-version-file
 import { DatasetFileNode } from "../../../../../../common/type/datasetVersionFileTree";
 import { FILE_COUNT, makeFlatFileNodes } from "./user-dataset-version-filetree.test-utils";
 
+const onClickOf = (c: UserDatasetVersionFiletreeComponent) => c.fileTreeDisplayOptions.actionMapping!.mouse!.click!;
+
 describe("UserDatasetVersionFiletreeComponent", () => {
   let fixture: ComponentFixture<UserDatasetVersionFiletreeComponent>;
   let component: UserDatasetVersionFiletreeComponent;
@@ -122,10 +124,14 @@ describe("UserDatasetVersionFiletreeComponent", () => {
     // node.toggleExpanded().
     let toggleCalls = 0;
     const onClick = component.fileTreeDisplayOptions.actionMapping!.mouse!.click!;
+    let activated = 0;
     const folderNode = {
       hasChildren: true,
       toggleExpanded: () => {
         toggleCalls++;
+      },
+      setIsActive: () => {
+        activated++;
       },
       data: { name: "dir", type: "directory", parentDir: "/owner/dataset/v1" },
     } as never;
@@ -133,6 +139,31 @@ describe("UserDatasetVersionFiletreeComponent", () => {
 
     expect(toggleCalls).toBe(1);
     expect(emitted).toEqual([]);
+    // Not a pick, so no highlight either.
+    expect(activated).toBe(0);
+  });
+
+  it("picks a clicked folder without folding it when selectableDirectories is set", () => {
+    component.selectableDirectories = true;
+    const emitted: DatasetFileNode[] = [];
+    component.selectedTreeNode.subscribe((n: DatasetFileNode) => emitted.push(n));
+    let toggleCalls = 0;
+    const folderData = { name: "dir", type: "directory", parentDir: "/owner/dataset/v1" };
+    const activations: boolean[] = [];
+    const folderNode = {
+      hasChildren: true,
+      toggleExpanded: () => {
+        toggleCalls++;
+      },
+      setIsActive: (value: boolean) => activations.push(value),
+      data: folderData,
+    } as never;
+    onClickOf(component)(undefined as never, folderNode, undefined as never);
+    // The pick is reported and highlighted; expanding stays on the arrow (expanderClick), so
+    // choosing a folder does not fold the tree the reader is looking at.
+    expect(toggleCalls).toBe(0);
+    expect(emitted).toEqual([folderData]);
+    expect(activations).toEqual([true]);
   });
 
   it("emits selectedTreeNode when a leaf node is clicked", () => {
@@ -142,10 +173,18 @@ describe("UserDatasetVersionFiletreeComponent", () => {
 
     // The handler only reads hasChildren and data; tree and $event are unused.
     const onClick = component.fileTreeDisplayOptions.actionMapping!.mouse!.click!;
-    const leafNode = { hasChildren: false, data: component.fileTreeNodes[0] } as never;
+    const activations: boolean[] = [];
+    const leafNode = {
+      hasChildren: false,
+      setIsActive: (value: boolean) => activations.push(value),
+      data: component.fileTreeNodes[0],
+    } as never;
     onClick(undefined as never, leafNode, undefined as never);
 
     expect(emitted).toEqual([component.fileTreeNodes[0]]);
+    // The library paints its active node; the custom click handler used to skip activation,
+    // so a picked file never looked picked.
+    expect(activations).toEqual([true]);
   });
 
   it("emits deletedTreeNode when a node deletion is requested", () => {

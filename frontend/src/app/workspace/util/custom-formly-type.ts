@@ -56,6 +56,10 @@ export function customFormlyFieldType(input: {
   if (key === "fileName") {
     return "inputautocomplete";
   }
+  // A folder inside a dataset version, picked in the same dialog as a file (FileParameter).
+  if (key === "folderPath") {
+    return "datasetfolderselector";
+  }
   if (key === "huggingFaceModel") {
     return "huggingface";
   }

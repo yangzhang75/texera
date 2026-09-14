@@ -58,8 +58,17 @@
 <texera-user-dataset-version-filetree
   [isExpandAllAfterViewInit]="true"
   [fileTreeNodes]="fileTree"
+  [selectableDirectories]="folderMode"
   (selectedTreeNode)="onFileSelected($event)">
 </texera-user-dataset-version-filetree>
+<!-- The tree keeps no highlight, so in folder mode the pick is spelled out; the version root
+     is what confirming with nothing clicked returns. -->
+<p
+  *ngIf="folderMode && selectedPath"
+  class="selected-folder"
+  role="status">
+  Selected folder: {{ selectedPath }}
+</p>
 <br />
 <button
   nz-button

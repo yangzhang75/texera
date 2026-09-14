@@ -92,8 +92,10 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit, OnDes
   public isExpandAllAfterViewInit = false;
 
   // A folder click normally only expands or collapses it. A picker that wants folders as
-  // answers (the Parameter operator's folder pairs) turns this on, and the click then also
-  // reports the folder through selectedTreeNode, still toggling it so the tree stays browsable.
+  // answers (the Parameter operator's folder pairs) turns this on, and a click on a folder then
+  // picks it instead: it is reported through selectedTreeNode and highlighted, and left open or
+  // closed as it was. Expanding and collapsing stay on the arrow at the left (the library's
+  // expanderClick), so picking a folder does not fold the tree the reader is looking at.
   @Input()
   public selectableDirectories = false;
 
@@ -126,10 +128,11 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit, OnDes
         // and single-active mode moves the highlight off the previous pick.
         click: (tree: any, node: any, $event: any) => {
           if (node.hasChildren) {
-            TREE_ACTIONS.TOGGLE_EXPANDED(tree, node, $event);
             if (this.selectableDirectories) {
               TREE_ACTIONS.ACTIVATE(tree, node, $event);
               this.selectedTreeNode.emit(node.data);
+            } else {
+              TREE_ACTIONS.TOGGLE_EXPANDED(tree, node, $event);
             }
           } else {
             TREE_ACTIONS.ACTIVATE(tree, node, $event);

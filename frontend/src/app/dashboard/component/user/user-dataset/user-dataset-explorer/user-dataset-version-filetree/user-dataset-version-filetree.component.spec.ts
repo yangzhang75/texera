@@ -143,7 +143,7 @@ describe("UserDatasetVersionFiletreeComponent", () => {
     expect(activated).toBe(0);
   });
 
-  it("also emits selectedTreeNode for a clicked folder when selectableDirectories is set", () => {
+  it("picks a clicked folder without folding it when selectableDirectories is set", () => {
     component.selectableDirectories = true;
     const emitted: DatasetFileNode[] = [];
     component.selectedTreeNode.subscribe((n: DatasetFileNode) => emitted.push(n));
@@ -159,8 +159,9 @@ describe("UserDatasetVersionFiletreeComponent", () => {
       data: folderData,
     } as never;
     onClickOf(component)(undefined as never, folderNode, undefined as never);
-    // Still toggles, so the tree stays browsable while picking, and the pick is highlighted.
-    expect(toggleCalls).toBe(1);
+    // The pick is reported and highlighted; expanding stays on the arrow (expanderClick), so
+    // choosing a folder does not fold the tree the reader is looking at.
+    expect(toggleCalls).toBe(0);
     expect(emitted).toEqual([folderData]);
     expect(activations).toEqual([true]);
   });

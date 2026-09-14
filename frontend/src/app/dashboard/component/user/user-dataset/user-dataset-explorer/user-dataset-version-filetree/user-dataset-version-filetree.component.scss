@@ -61,3 +61,15 @@
   display: flex;
   align-items: center;
 }
+
+/* The picked node stays highlighted (see the click mapping in the component). The library's
+   default active colour (#beebff) is a saturated blue that reads louder than anything else in
+   these panels; the hover colour readers were used to seeing is the faint #f7fbff. Keep the
+   highlight in that family, one step deeper than hover so the pick and the pointer stay
+   distinguishable, with the same thin inset outline. */
+:host ::ng-deep .file-tree-container .node-content-wrapper-active,
+:host ::ng-deep .file-tree-container .node-content-wrapper.node-content-wrapper-active:hover,
+:host ::ng-deep .file-tree-container .node-content-wrapper-active.node-content-wrapper-focused {
+  background: #e7f4f9;
+  box-shadow: inset 0 0 1px #999;
+}

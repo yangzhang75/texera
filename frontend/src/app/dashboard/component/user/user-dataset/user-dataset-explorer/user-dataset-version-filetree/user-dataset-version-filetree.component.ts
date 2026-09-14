@@ -120,13 +120,19 @@ export class UserDatasetVersionFiletreeComponent implements AfterViewInit, OnDes
     nodeHeight: this.TREE_NODE_HEIGHT_PX,
     actionMapping: {
       mouse: {
+        // The library's own click is TOGGLE_ACTIVE, which is also what paints the highlight.
+        // Replacing it with expand-or-report dropped that, so a picked file never looked picked.
+        // ACTIVATE (not toggle) keeps a second click on the same file from un-highlighting it,
+        // and single-active mode moves the highlight off the previous pick.
         click: (tree: any, node: any, $event: any) => {
           if (node.hasChildren) {
             TREE_ACTIONS.TOGGLE_EXPANDED(tree, node, $event);
             if (this.selectableDirectories) {
+              TREE_ACTIONS.ACTIVATE(tree, node, $event);
               this.selectedTreeNode.emit(node.data);
             }
           } else {
+            TREE_ACTIONS.ACTIVATE(tree, node, $event);
             this.selectedTreeNode.emit(node.data);
           }
         },

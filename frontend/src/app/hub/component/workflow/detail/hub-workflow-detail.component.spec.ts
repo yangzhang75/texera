@@ -41,6 +41,8 @@ import { MarkdownDescriptionComponent } from "../../../../dashboard/component/us
 import { WorkflowEditorComponent } from "../../../../workspace/component/workflow-editor/workflow-editor.component";
 import { MiniMapComponent } from "../../../../workspace/component/workflow-editor/mini-map/mini-map.component";
 import { commonTestProviders } from "../../../../common/testing/test-utils";
+import { GuiConfigService } from "../../../../common/service/gui-config.service";
+import { DefaultView } from "../../../../dashboard/type/workflow-metadata.interface";
 import { DragDropModule } from "@angular/cdk/drag-drop";
 import { MarkdownService } from "ngx-markdown";
 import {
@@ -388,6 +390,36 @@ describe("HubWorkflowDetailComponent", () => {
       await Promise.resolve();
       await Promise.resolve();
       expect(notificationServiceMock.success).toHaveBeenCalledWith("Clone Successful");
+    });
+
+    // The clone keeps the source's landing view (the backend copies default_view), so a reader who
+    // came to the hub for a form gets the copy's form rather than its canvas.
+    it("opens the copy in the Form View when the source lands there", () => {
+      hubServiceMock.cloneWorkflow.mockReturnValue(of(123));
+      workflowPersistServiceMock.retrieveWorkflow.mockReturnValue(
+        of({ defaultView: DefaultView.FORM } as unknown as Workflow)
+      );
+      build({ modalData: { wid: 1 }, detectChanges: false });
+      (TestBed.inject(GuiConfigService) as unknown as { setConfig: (c: object) => void }).setConfig({
+        formViewEnabled: true,
+      });
+      fixture.detectChanges();
+
+      component.cloneWorkflow();
+
+      expect(routerMock.navigate).toHaveBeenCalledWith([USER_WORKSPACE, "123", "form"]);
+    });
+
+    it("opens the copy on the canvas when the Form View is switched off", () => {
+      hubServiceMock.cloneWorkflow.mockReturnValue(of(123));
+      workflowPersistServiceMock.retrieveWorkflow.mockReturnValue(
+        of({ defaultView: DefaultView.FORM } as unknown as Workflow)
+      );
+      build({ modalData: { wid: 1 } }); // the shared config mock keeps the flag off
+
+      component.cloneWorkflow();
+
+      expect(routerMock.navigate).toHaveBeenCalledWith([`${USER_WORKSPACE}/123`]);
     });
   });
 

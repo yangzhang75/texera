@@ -62,17 +62,18 @@
     [ngClass]="{'shadow':  !width}">
     <!-- Choosing which settings the form offers happens by ticking them in this very
          panel, so the switch that turns those tick boxes on belongs here rather than in
-         a row of file and delete icons across the toolbar. Only offered on a workflow
-         whose author turned the parameterized canvas on. -->
+         a row of file and delete icons across the toolbar. Offered wherever the Form View
+         feature is enabled. -->
     <button
       nz-button
       [nzType]="choosing ? 'primary' : 'text'"
-      class="choose-parameters"
-      (click)="toggleChoosingParameters()"
-      *ngIf="width && offersParameterizedCanvas"
+      class="choose-fields"
+      (click)="toggleChoosing()"
+      *ngIf="width && formViewFeatureEnabled"
       nz-tooltip
       nzTooltipPlacement="bottomRight"
-      [nzTooltipTitle]="choosing ? 'Done choosing' : 'Choose what the form offers'">
+      [attr.aria-label]="choosing ? 'Done choosing fields' : 'Choose Form View fields'"
+      [nzTooltipTitle]="choosing ? 'Done choosing fields' : 'Choose Form View fields'">
       <span
         nz-icon
         nzType="check-square"></span>

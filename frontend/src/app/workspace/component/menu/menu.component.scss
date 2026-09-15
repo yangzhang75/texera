@@ -189,10 +189,36 @@ texera-coeditor-user-icon {
 
 ::ng-deep .layers-dropdown {
   user-select: none;
+
+  // Present the performance views as a sub-group nested under the "Performance" toggle:
+  // indented, stacked vertically, with a tree-style left rule.
+  .heatmap-view-options {
+    cursor: default;
+
+    .ant-radio-group {
+      display: flex;
+      flex-direction: column;
+      row-gap: 2px;
+      margin-left: 24px;
+      padding-left: 10px;
+      border-left: 2px solid #f0f0f0;
+    }
+
+    .ant-radio-wrapper {
+      margin-left: 0;
+      color: rgba(0, 0, 0, 0.85);
+    }
+  }
+}
+
+.jupyter-notebook-icon {
+  height: 1.1em;
+  width: auto;
+  vertical-align: -0.2em;
 }
 
 /* One workflow, two ways of working on it. Rendered identically in the operator canvas
-   and the parameterized form, in the same slot of the same title row, so the control
+   and the Form View, in the same slot of the same title row, so the control
    never moves when the view does -- that stillness is what makes the two read as two
    views of one thing rather than two pages.
 
@@ -250,12 +276,4 @@ texera-coeditor-user-icon {
       background: #1890ff;
     }
   }
-}
-
-/* The tick-box toggle sits beside the flask and fills in while it is on, so it is
-   obvious the property panel is in a different mode. */
-.parameterized-choose.on {
-  color: #fff;
-  background: #1890ff;
-  border-color: #1890ff;
 }

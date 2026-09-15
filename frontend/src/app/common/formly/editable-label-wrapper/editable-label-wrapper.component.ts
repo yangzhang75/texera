@@ -24,16 +24,10 @@ import { FieldWrapper, FormlyFieldConfig } from "@ngx-formly/core";
 import { merge } from "lodash-es";
 
 /**
- * Lets an author rename or hide one field of a parameterized form, in place.
- *
- * The label a reader sees comes from the operator's schema, which is written to describe
- * the operator rather than to ask a person for something: "File Key", "Alias". The author
- * knows what to call it for their readers, so the label itself becomes the input --
- * whatever they type is exactly what the reader will see, in the position it will appear.
- * That is the whole reason this is a wrapper and not a list somewhere else on the page.
- *
- * Renders as a plain label for everyone who is not authoring, so the reader's form is
- * unchanged.
+ * Lets an author rename or hide one field of the form in place: the label itself becomes
+ * the input, so what they type is exactly what the reader sees, where they see it (the
+ * schema's own labels -- "File Key", "Alias" -- describe the operator, not the reader's
+ * task). Renders as a plain label for anyone not authoring.
  */
 @Component({
   selector: "texera-editable-label-wrapper",
@@ -42,16 +36,16 @@ import { merge } from "lodash-es";
   imports: [NgIf, NzIconDirective],
 })
 export class EditableLabelWrapperComponent extends FieldWrapper {
-  /**
-   * Prepend this wrapper to a field, carrying its current naming and the callbacks.
-   * `fallback` is the schema's own label, shown as the placeholder so an author can see
-   * what leaving it blank would give them.
-   */
+  /** Add this wrapper to a field with its naming + callbacks; `fallback` (the schema label)
+   *  is the placeholder, so the author sees what leaving it blank yields. `rename` may be omitted
+   *  for a reader mount (`authoring: false`), which renders a static label and no name input;
+   *  `setHidden` may be omitted only with `canHide: false`, where the hide control is never
+   *  rendered. */
   public static decorate(
     config: FormlyFieldConfig,
-    state: { authoring: boolean; name: string; hidden: boolean; fallback: string; canHide?: boolean },
-    rename: (name: string) => void,
-    setHidden: (hidden: boolean) => void
+    state: { authoring: boolean; name: string; hidden: boolean; fallback: string; canHide?: boolean; group?: boolean },
+    rename?: (name: string) => void,
+    setHidden?: (hidden: boolean) => void
   ): void {
     merge(config, {
       wrappers: [...(config.wrappers ?? []), "editable-label-wrapper"],
@@ -64,6 +58,9 @@ export class EditableLabelWrapperComponent extends FieldWrapper {
         authorName: state.name,
         authorHidden: state.hidden,
         canHide: state.canHide !== false,
+        // A repeated field has no labelable control carrying its id (the array widget renders rows
+        // and buttons), so a `label for` would point at nothing; it is named as a group instead.
+        labelsGroup: state.group === true,
         schemaLabel: state.fallback,
         renameField: rename,
         setFieldHidden: setHidden,
@@ -72,10 +69,22 @@ export class EditableLabelWrapperComponent extends FieldWrapper {
   }
 
   public onRename(event: Event): void {
-    this.props["renameField"]((event.target as HTMLInputElement).value);
+    // The wrapper reflects the edit itself (the hidden label follows authorName), so the page does
+    // not rebuild the form for a rename and the author keeps the focus where it is.
+    const value = (event.target as HTMLInputElement).value;
+    this.props["authorName"] = value;
+    // Optional-chained for the same reason as setFieldHidden below: a reader mount omits rename and
+    // never renders the input this handles, but the handler should not depend on that.
+    this.props["renameField"]?.(value);
   }
 
   public onToggleHidden(): void {
-    this.props["setFieldHidden"](!this.props["authorHidden"]);
+    // Same as onRename: the eye, the pressed state and the faded field follow authorHidden here, so
+    // no rebuild is needed and the focus stays on the eye.
+    const hidden = !this.props["authorHidden"];
+    this.props["authorHidden"] = hidden;
+    // Optional-chained: decorate may omit setHidden when canHide is false, and although this handler
+    // is unreachable then (the hide control is not rendered), a plain call would couple that to luck.
+    this.props["setFieldHidden"]?.(hidden);
   }
 }

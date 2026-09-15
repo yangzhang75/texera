@@ -24,6 +24,8 @@ import { UserService } from "../../../../common/service/user/user.service";
 import { WorkflowActionService } from "../../../../workspace/service/workflow-graph/model/workflow-action.service";
 import { throttleTime } from "rxjs/operators";
 import { Workflow } from "../../../../common/type/workflow";
+import { DefaultView } from "../../../../dashboard/type/workflow-metadata.interface";
+import { GuiConfigService } from "../../../../common/service/gui-config.service";
 import { isDefined } from "../../../../common/util/predicate";
 import { ActionType, EntityType, HubService, LikedStatus } from "../../../service/hub.service";
 import { Role, User } from "src/app/common/type/user";
@@ -75,9 +77,9 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
   displayPreciseViewCount = false;
   viewCount: number = 0;
   wid: number | undefined;
-  // Whether the workflow on show has a Parameterized Canvas. A clone keeps this, so we use it to
-  // decide whether the copy opens straight into its form instead of the plain canvas.
-  private isParameterizedWorkflow = false;
+  /** Whether the workflow on show opens in the Form View. A clone keeps the landing view, so the
+   *  copy is opened in the same one: a reader who came for the form should not land on the canvas. */
+  private sourceOpensInForm = false;
   protected readonly currentUser?: User;
 
   constructor(
@@ -88,6 +90,7 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
     private notificationService: NotificationService,
     private hubService: HubService,
     private workflowPersistService: WorkflowPersistService,
+    private config: GuiConfigService,
     @Optional() @Inject(NZ_MODAL_DATA) public input: { wid: number } | undefined
   ) {
     this.wid = input?.wid; //Accessing from the pop up. getting wid from the @Input
@@ -181,8 +184,7 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
         .subscribe({
           next: (workflow: Workflow) => {
             // load the fetched workflow
-            this.isParameterizedWorkflow =
-              workflow.isParameterized === true || isDefined(workflow.content?.parameterization);
+            this.sourceOpensInForm = this.opensInForm(workflow);
             this.workflowActionService.reloadWorkflow(workflow);
             this.workflowActionService.getTexeraGraph().triggerCenterEvent();
           },
@@ -197,8 +199,7 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
         .subscribe({
           next: (workflow: Workflow) => {
             // load the fetched workflow
-            this.isParameterizedWorkflow =
-              workflow.isParameterized === true || isDefined(workflow.content?.parameterization);
+            this.sourceOpensInForm = this.opensInForm(workflow);
             this.workflowActionService.reloadWorkflow(workflow);
             this.workflowActionService.getTexeraGraph().triggerCenterEvent();
           },
@@ -207,6 +208,11 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
           },
         });
     }
+  }
+
+  /** A workflow opens in the Form View when its landing view says so and the feature is on. */
+  private opensInForm(workflow: Workflow): boolean {
+    return this.config.env.formViewEnabled === true && workflow.defaultView === DefaultView.FORM;
   }
 
   goBack(): void {
@@ -223,12 +229,12 @@ export class HubWorkflowDetailComponent implements AfterViewInit, OnDestroy, OnI
       .cloneWorkflow(this.wid)
       .pipe(untilDestroyed(this))
       .subscribe(newWid => {
-        // A cloned Parameterized Canvas keeps its form, so open the copy straight into it; a plain
-        // workflow's copy opens the canvas as before. If the copy turns out not to be
-        // parameterized the form page itself falls back to the canvas.
-        const target = this.isParameterizedWorkflow
-          ? [USER_WORKSPACE, String(newWid), "parameters"]
-          : [USER_WORKSPACE, String(newWid)];
+        // The clone keeps the source's landing view, so open the copy in the same one. A form-default
+        // copy opened on the canvas would send a reader looking for the form they came from; the form
+        // page itself falls back to the canvas if the copy turns out not to have one.
+        const target = this.sourceOpensInForm
+          ? [USER_WORKSPACE, String(newWid), "form"]
+          : [`${USER_WORKSPACE}/${newWid}`];
         this.router.navigate(target).then(() => {
           this.notificationService.success("Clone Successful");
         });

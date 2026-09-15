@@ -17,80 +17,80 @@
  * under the License.
  */
 
-import { describe, it, expect } from "vitest";
-import { customFormlyFieldType, CANVAS_ONLY_FORMLY_TYPES, NON_FORM_FIELD_TYPES } from "./custom-formly-type";
+import { customFormlyFieldType, NON_FORM_FIELD_TYPES, CANVAS_ONLY_FORMLY_TYPES } from "./custom-formly-type";
+
+describe("NON_FORM_FIELD_TYPES", () => {
+  it("blocks only the code editor from being a form field, not the drag-reorder list", () => {
+    expect(NON_FORM_FIELD_TYPES.has("codearea")).toBe(true);
+    // a drag-reorder property is still a valid form field (it just renders without the drag)
+    expect(NON_FORM_FIELD_TYPES.has("repeat-section-dnd")).toBe(false);
+  });
+});
+
+describe("CANVAS_ONLY_FORMLY_TYPES", () => {
+  it("holds the widgets the form falls back from: the code editor and the drag-reorder list", () => {
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("codearea")).toBe(true);
+    // the drag has nowhere to attach on a form, so an exposed one degrades to the default control
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("repeat-section-dnd")).toBe(true);
+    // an ordinary custom widget (a picker/uploader) is rendered as itself, not fallen back from
+    expect(CANVAS_ONLY_FORMLY_TYPES.has("datasetversionselector")).toBe(false);
+  });
+});
 
 describe("customFormlyFieldType", () => {
-  it("maps a file property to the autocomplete picker", () => {
-    expect(customFormlyFieldType({ key: "fileName", operatorType: undefined })).toBe("inputautocomplete");
+  it("maps a fileName property to the autocomplete input", () => {
+    expect(customFormlyFieldType({ key: "fileName", operatorType: "CSVFileScan" })).toBe("inputautocomplete");
   });
 
-  it("maps a dataset-version property to the dataset selector", () => {
-    expect(customFormlyFieldType({ key: "datasetVersionPath", operatorType: "Any" })).toBe("datasetversionselector");
+  it("maps a folderPath property to the folder selector", () => {
+    expect(customFormlyFieldType({ key: "folderPath", operatorType: "FileParameter" })).toBe("datasetfolderselector");
   });
 
-  it("maps a folder property to the folder selector", () => {
-    expect(customFormlyFieldType({ key: "folderPath", operatorType: "Any" })).toBe("datasetfolderselector");
+  it("maps huggingFaceModel to the model picker regardless of operator", () => {
+    expect(customFormlyFieldType({ key: "huggingFaceModel", operatorType: "Anything" })).toBe("huggingface");
   });
 
-  it("maps the model-name property to the HuggingFace picker regardless of operator", () => {
-    expect(customFormlyFieldType({ key: "huggingFaceModel", operatorType: "SomethingElse" })).toBe("huggingface");
-  });
-
-  it("maps modelId to the HuggingFace picker only on a HuggingFace operator", () => {
+  it("maps modelId to the model picker only on a HuggingFace operator", () => {
     expect(customFormlyFieldType({ key: "modelId", operatorType: "HuggingFace" })).toBe("huggingface");
-    expect(customFormlyFieldType({ key: "modelId", operatorType: "OtherOp" })).toBeUndefined();
+    expect(customFormlyFieldType({ key: "modelId", operatorType: "PythonUDF" })).toBeUndefined();
   });
 
-  it("maps the image/audio inputs to their uploaders only on a HuggingFace operator", () => {
+  it("maps HuggingFace image/audio inputs to their uploaders", () => {
     expect(customFormlyFieldType({ key: "imageInput", operatorType: "HuggingFace" })).toBe("huggingface-image-upload");
     expect(customFormlyFieldType({ key: "audioInput", operatorType: "HuggingFace" })).toBe("huggingface-audio-upload");
-    expect(customFormlyFieldType({ key: "imageInput", operatorType: "OtherOp" })).toBeUndefined();
-    expect(customFormlyFieldType({ key: "audioInput", operatorType: "OtherOp" })).toBeUndefined();
+    // Off a HuggingFace operator they are plain fields.
+    expect(customFormlyFieldType({ key: "imageInput", operatorType: "PythonUDF" })).toBeUndefined();
+    expect(customFormlyFieldType({ key: "audioInput", operatorType: "PythonUDF" })).toBeUndefined();
   });
 
-  it("maps a Python-UDF code property to the code editor, but only once it has an editable control", () => {
+  it("maps uiParameters and datasetVersionPath to their custom controls", () => {
+    expect(customFormlyFieldType({ key: "uiParameters", operatorType: "PythonUDF" })).toBe("ui-udf-parameters");
+    expect(customFormlyFieldType({ key: "datasetVersionPath", operatorType: "CSVFileScan" })).toBe(
+      "datasetversionselector"
+    );
+  });
+
+  it("maps the code-editor property to the code box only when it already has an editable control", () => {
     expect(
       customFormlyFieldType({
         key: "code",
-        operatorType: "PythonUDFV2",
+        operatorType: "PythonUDF",
         description: "Input your code here",
         currentType: "textarea",
       })
     ).toBe("codearea");
-    // No resolved control yet -> leave it to formly's default.
+    // The description matches but the schema left no editable control -> keep the default.
     expect(
-      customFormlyFieldType({
-        key: "code",
-        operatorType: "PythonUDFV2",
-        description: "Input your code here",
-        currentType: undefined,
-      })
+      customFormlyFieldType({ key: "code", operatorType: "PythonUDF", description: "input your code here" })
     ).toBeUndefined();
   });
 
-  it("maps Projection attributes to the drag-and-drop repeat section", () => {
+  it("maps Projection's attributes to the drag-reorder list, only on Projection", () => {
     expect(customFormlyFieldType({ key: "attributes", operatorType: "Projection" })).toBe("repeat-section-dnd");
     expect(customFormlyFieldType({ key: "attributes", operatorType: "Filter" })).toBeUndefined();
   });
 
-  it("leaves an ordinary property to formly's default control", () => {
+  it("returns undefined for an ordinary property, keeping formly's default control", () => {
     expect(customFormlyFieldType({ key: "limit", operatorType: "Limit" })).toBeUndefined();
-  });
-
-  it("treats canvas-wired widgets as needing formly's default control in the form", () => {
-    expect(CANVAS_ONLY_FORMLY_TYPES.has("codearea")).toBe(true);
-    expect(CANVAS_ONLY_FORMLY_TYPES.has("repeat-section-dnd")).toBe(true);
-    // A value picker/uploader works as-is in the form.
-    expect(CANVAS_ONLY_FORMLY_TYPES.has("datasetversionselector")).toBe(false);
-    expect(CANVAS_ONLY_FORMLY_TYPES.has("huggingface")).toBe(false);
-  });
-
-  it("blocks only the code editor from being exposed; a drag-reorder property is still exposable", () => {
-    expect(NON_FORM_FIELD_TYPES.has("codearea")).toBe(true);
-    // Projection's columns can be exposed -- they just render without the drag.
-    expect(NON_FORM_FIELD_TYPES.has("repeat-section-dnd")).toBe(false);
-    expect(NON_FORM_FIELD_TYPES.has("huggingface")).toBe(false);
-    expect(NON_FORM_FIELD_TYPES.has("datasetversionselector")).toBe(false);
   });
 });

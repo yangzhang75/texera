@@ -16,7 +16,7 @@
 // under the License.
 
 ThisBuild / organization := "org.apache.texera"
-ThisBuild / version      := "1.3.0-incubating-SNAPSHOT"
+ThisBuild / version      := "1.4.0-incubating-SNAPSHOT"
 ThisBuild / scalaVersion := "2.13.18"
 
 // Pull JDK 17+ JVM flags from .jvmopts so every JVM the build launches sees the same list.
@@ -167,7 +167,12 @@ lazy val ComputingUnitManagingService = (project in file("computing-unit-managin
   .configs(Test)
   .dependsOn(DAO % "test->test") // reuse MockTexeraDB embedded Postgres in tests
   .settings(commonModuleSettings)
+  .configs(Test)
+  .dependsOn(DAO % "test->test", Auth % "test->test") // reuse MockTexeraDB embedded Postgres in tests
   .settings(
+    // MockTexeraDB swaps a JVM-wide singleton (SqlServer's embedded Postgres),
+    // so run suites serially to avoid cross-suite races.
+    Test / parallelExecution := false,
     dependencyOverrides ++= Seq(
       // override it as io.dropwizard 4 require 2.16.1 or higher
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,

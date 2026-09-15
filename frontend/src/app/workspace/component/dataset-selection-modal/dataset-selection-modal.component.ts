@@ -22,6 +22,7 @@ import { NZ_MODAL_DATA, NzModalRef } from "ng-zorro-antd/modal";
 import { UntilDestroy, untilDestroyed } from "@ngneat/until-destroy";
 import { DatasetFileNode, getFullPathFromDatasetFileNode } from "../../../common/type/datasetVersionFileTree";
 import { DatasetVersion } from "../../../common/type/dataset";
+import { ResourceType } from "../../../common/type/resource-type";
 import { DashboardDataset } from "../../../dashboard/type/dashboard-dataset.interface";
 import { DatasetService } from "../../../dashboard/service/user/dataset/dataset.service";
 import { NzRowDirective, NzColDirective } from "ng-zorro-antd/grid";
@@ -90,7 +91,12 @@ export class DatasetSelectionModalComponent implements OnInit {
         this.datasets = datasets;
         const selectedPath = this.data.selectedPath;
         if (selectedPath) {
-          const [ownerEmail, datasetName, versionName] = selectedPath.split("/").filter(part => part.length > 0);
+          const segments = selectedPath.split("/").filter(part => part.length > 0);
+          // TODO(dataset-prefix): require the prefix once all ml model support PRs are done.
+          if ((Object.values(ResourceType) as string[]).includes(segments[0])) {
+            segments.shift();
+          }
+          const [ownerEmail, datasetName, versionName] = segments;
           this.selectedDataset = this.datasets.find(
             dataset => dataset.ownerEmail === ownerEmail && dataset.dataset.name === datasetName
           );
@@ -126,7 +132,7 @@ export class DatasetSelectionModalComponent implements OnInit {
           this.fileTree = data.fileNodes;
         });
       if (!this.data.fileMode) {
-        const versionPath = `/${this.selectedDataset.ownerEmail}/${this.selectedDataset.dataset.name}/${this.selectedVersion.name}`;
+        const versionPath = `/${ResourceType.Dataset}/${this.selectedDataset.ownerEmail}/${this.selectedDataset.dataset.name}/${this.selectedVersion.name}`;
         // Folder mode pre-selects the version root, but a folder chosen earlier under this same
         // version is kept: reopening the dialog and confirming must not quietly widen the
         // selection from one sample's folder to the whole version.

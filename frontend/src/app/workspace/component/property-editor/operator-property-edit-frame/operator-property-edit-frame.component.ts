@@ -19,7 +19,7 @@
 
 import { ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges } from "@angular/core";
 import { ExposePropertyWrapperComponent } from "../../../../common/formly/expose-property-wrapper/expose-property-wrapper.component";
-import { ParameterizationService } from "../../../service/parameterization/parameterization.service";
+import { FormBindingService } from "../../../service/form-binding/form-binding.service";
 import { ExecuteWorkflowService } from "../../../service/execute-workflow/execute-workflow.service";
 import { WorkflowStatusService } from "../../../service/workflow-status/workflow-status.service";
 import { Subject } from "rxjs";
@@ -77,18 +77,60 @@ import { WorkflowPveService } from "../../../service/virtual-environment/virtual
 import { ComputingUnitStatusService } from "../../../../common/service/computing-unit/computing-unit-status/computing-unit-status.service";
 import { of } from "rxjs";
 import { map, switchMap, take } from "rxjs/operators";
+import { UiUdfParametersSyncService } from "../../../service/code-editor/ui-udf-parameters-sync.service";
 
 Quill.register("modules/cursors", QuillCursors);
 
-// The Aggregate "count" function. With an empty attribute it means COUNT(*) (all rows);
-// with a column it counts that column's non-null values. It is the only function whose
-// attribute is optional.
-export const AGGREGATE_COUNT = "count";
+/** A field the schema requires only while a sibling holds a particular value. */
+export interface ConditionalRequiredRule {
+  sibling: string;
+  value: unknown;
+  requiredOnMatch: boolean;
+}
 
-// The Aggregate attribute is required for every function except `count` (an empty
-// attribute on count means COUNT(*), which needs no column).
-export function isAggregateAttributeRequired(aggFunction: unknown): boolean {
-  return aggFunction !== AGGREGATE_COUNT;
+/**
+ * The conditional `required` rules a schema declares, keyed by the field each
+ * governs. A schema states one as
+ *
+ *   allOf: [{ if: { properties: { sibling: { const: v } } }, then: { required: [field] } }]
+ *
+ * with `else` for the inverted form. Validation already honours these, but a
+ * field's own config never learns of them, so the required marker would not
+ * appear. Reading them out lets the marker follow the condition the validator
+ * applies, and lets an operator declare it in one place rather than here.
+ *
+ * The walk covers nested schemas because a rule may govern a field inside an
+ * array item, where it sits under `definitions`. Keying by field name is enough:
+ * the marker resolves the sibling against the field's own parent model, which is
+ * the row for an array item and the operator for a top-level field.
+ */
+export function conditionalRequiredRules(schema: unknown): Map<string, ConditionalRequiredRule> {
+  const rules = new Map<string, ConditionalRequiredRule>();
+  const visit = (node: any): void => {
+    if (node === null || typeof node !== "object") {
+      return;
+    }
+    for (const branch of Array.isArray(node.allOf) ? node.allOf : []) {
+      // `if.properties` distinguishes a real condition from the `attributeTypeRules`
+      // blocks, which name the sibling directly and require nothing.
+      const condition = branch?.if?.properties;
+      const sibling = condition === undefined ? undefined : Object.keys(condition)[0];
+      if (sibling === undefined || !("const" in (condition[sibling] ?? {}))) {
+        continue;
+      }
+      for (const [outcome, requiredOnMatch] of [
+        ["then", true],
+        ["else", false],
+      ] as const) {
+        for (const field of branch?.[outcome]?.required ?? []) {
+          rules.set(field, { sibling, value: condition[sibling].const, requiredOnMatch });
+        }
+      }
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(schema);
+  return rules;
 }
 
 /**
@@ -133,12 +175,20 @@ export function isAggregateAttributeRequired(aggFunction: unknown): boolean {
 })
 export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, OnDestroy {
   @Input() currentOperatorId?: string;
-  /**
-   * True while an author is choosing which of this operator's properties appear on the
-   * workflow's parameterized form. Adds a tick box beside each property; off, the
-   * property editor looks and behaves exactly as it always has.
-   */
+  /** True while an author is choosing which properties appear on the Form View; adds a tick
+   *  box beside each. Off, the property editor is unchanged. */
   @Input() exposeChoosing = false;
+  /** Whether opening a step here behaves as an editor or as a pure viewer. As an editor the frame
+   *  may write to the shared workflow, and every write it can produce is gated on this: the
+   *  "currently editing" co-editor broadcast, the operator-version sync, the operator properties
+   *  (both the form-change sink and the UDF ui-parameter sync), the runtime-reconfiguration unlock,
+   *  and interactivity itself, which setInteractivity clamps. A viewer writes nothing, so a reader
+   *  inspecting a step is neither shown as a co-editor nor able to change the workflow -- not even
+   *  by opening it, which is what makes this more than a presence flag: ajv fills in new schema
+   *  defaults on open and emits a form change like any edit. True on the operator canvas; the Form
+   *  View sets it false. The property writes are gated at their single sink rather than per caller,
+   *  so a new write path cannot quietly escape it. */
+  @Input() actsAsEditor = true;
 
   currentOperatorSchema?: OperatorSchema;
 
@@ -458,7 +508,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
   }
 
   constructor(
-    private parameterizationService: ParameterizationService,
+    private formBindingService: FormBindingService,
     private formlyJsonschema: FormlyJsonschema,
     private workflowActionService: WorkflowActionService,
     public executeWorkflowService: ExecuteWorkflowService,
@@ -470,7 +520,8 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     private workflowStatusSerivce: WorkflowStatusService,
     private config: GuiConfigService,
     private workflowPveService: WorkflowPveService,
-    private computingUnitStatusService: ComputingUnitStatusService
+    private computingUnitStatusService: ComputingUnitStatusService,
+    private uiUdfParametersSyncService: UiUdfParametersSyncService
   ) {}
 
   private patchPythonUdfEnvironmentSchema(schema: CustomJSONSchema7, environments: string[]): CustomJSONSchema7 {
@@ -516,8 +567,6 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
     this.registerDisableEditorInteractivityHandler();
 
-    this.registerExposeChoiceRefreshHandler();
-
     this.registerOperatorDisplayNameChangeHandler();
 
     this.workflowStatusSerivce
@@ -527,6 +576,29 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         if (this.currentOperatorId) {
           this.currentOperatorStatus = update[this.currentOperatorId];
         }
+      });
+
+    this.uiUdfParametersSyncService.uiParametersChanged$
+      .pipe(untilDestroyed(this))
+      .subscribe(({ operatorId, parameters }) => {
+        if (operatorId !== this.currentOperatorId) return;
+
+        const currentOperator = this.workflowActionService.getTexeraGraph().getOperator(operatorId);
+
+        const newModel = {
+          ...cloneDeep(currentOperator.operatorProperties),
+          uiParameters: cloneDeep(parameters),
+        };
+
+        this.listeningToChange = false;
+        // Show the new ui parameters either way; only the write to the shared workflow is gated,
+        // so a read-only inspect still renders what the UDF script now declares.
+        this.formData = cloneDeep(newModel);
+        if (this.actsAsEditor) {
+          this.workflowActionService.setOperatorProperty(operatorId, newModel);
+        }
+        this.listeningToChange = true;
+        this.changeDetectorRef.detectChanges();
       });
   }
 
@@ -556,7 +628,11 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
    * @param event
    */
   onFormChanges(event: Record<string, unknown>): void {
-    this.sourceFormChangeEventStream.next(event);
+    const requiredFields = this.currentOperatorSchema?.jsonSchema?.required ?? [];
+    const cleanedEvent = Object.fromEntries(
+      Object.entries(event).filter(([key, value]) => value != null || requiredFields.includes(key))
+    );
+    this.sourceFormChangeEventStream.next(cleanedEvent);
   }
 
   /**
@@ -570,10 +646,19 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     this.currentOperatorSchema = this.dynamicSchemaService.getDynamicSchema(this.currentOperatorId);
     this.currentOperatorStatus = this.workflowStatusSerivce.getCurrentStatus()[this.currentOperatorId];
 
-    this.workflowActionService.getTexeraGraph().updateSharedModelAwareness("currentlyEditing", this.currentOperatorId);
+    if (this.actsAsEditor) {
+      this.workflowActionService
+        .getTexeraGraph()
+        .updateSharedModelAwareness("currentlyEditing", this.currentOperatorId);
+    }
     const operator = this.workflowActionService.getTexeraGraph().getOperator(this.currentOperatorId);
-    // set the operator data needed
-    this.workflowActionService.setOperatorVersion(operator.operatorID, this.currentOperatorSchema.operatorVersion);
+    // Syncing the operator to the current schema version writes the new version into the Yjs shared
+    // model (changeOperatorVersion), which broadcasts and persists. That is right on the canvas, but
+    // a read-only inspect (actsAsEditor=false) must not mutate the workflow just by opening a
+    // step, so skip the sync there and show the version as stored.
+    if (this.actsAsEditor) {
+      this.workflowActionService.setOperatorVersion(operator.operatorID, this.currentOperatorSchema.operatorVersion);
+    }
     this.operatorVersion = operator.operatorVersion.slice(0, 9);
     this.setFormlyFormBinding(this.currentOperatorSchema.jsonSchema);
     this.formTitle = operator.customDisplayName ?? this.currentOperatorSchema.additionalMetadata.userFriendlyName;
@@ -635,7 +720,10 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
     // 3. formly doesn't emit change event when it fills in default value, causing an inconsistency between component and service
     this.ajv.validate(this.currentOperatorSchema.jsonSchema, this.formData);
 
-    // manually trigger a form change event because default value might be filled in
+    // manually trigger a form change event because default value might be filled in.
+    // The ajv call above fills schema defaults into formData, so this fires on every open, not only
+    // on a user edit; the write it leads to is gated in registerOnFormChangeHandler, which is what
+    // keeps opening a step read-only from persisting those defaults.
     this.onFormChanges(this.formData);
     this.isTypeCasting = this.workflowActionService
       .getTexeraGraph()
@@ -650,7 +738,10 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
   }
 
   setInteractivity(interactive: boolean) {
-    this.interactive = interactive;
+    // A viewer mount never becomes interactive, whatever asks for it: the modification-enabled
+    // stream flips to true whenever a run finishes, and the runtime unlock button calls this with
+    // true directly. Clamping here keeps the form disabled through both.
+    this.interactive = interactive && this.actsAsEditor;
     if (this.formlyFormGroup !== undefined) {
       if (this.interactive) {
         this.formlyFormGroup.enable();
@@ -693,21 +784,6 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
   }
 
   /**
-   * While the author is choosing what to expose, which properties are exposed can change
-   * from outside this panel -- most visibly when they remove an input on the parameterized
-   * form. Re-render so each tick box reflects the current exposed state; otherwise a removed
-   * property's box stays ticked and has to be unticked and re-ticked to bring it back.
-   */
-  registerExposeChoiceRefreshHandler(): void {
-    this.workflowActionService.parameterizationChanged$
-      .pipe(
-        filter(() => this.exposeChoosing && this.currentOperatorId !== undefined),
-        untilDestroyed(this)
-      )
-      .subscribe(() => this.rerenderEditorForm());
-  }
-
-  /**
    * This method captures the change in operator's property via program instead of user updating the
    *  json schema form in the user interface.
    *
@@ -736,8 +812,11 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
    */
   registerOnFormChangeHandler(): void {
     this.operatorPropertyChangeStream.pipe(untilDestroyed(this)).subscribe(formData => {
-      // set the operator property to be the new form data
-      if (this.currentOperatorId) {
+      // set the operator property to be the new form data.
+      // This is the only place the frame writes properties, so it is where a viewer mount is
+      // enforced: the stream also carries the schema defaults ajv fills in when a step is merely
+      // opened, and those must not reach the shared workflow.
+      if (this.currentOperatorId && this.actsAsEditor) {
         this.listeningToChange = false;
         this.typeInferenceOnLambdaFunction(formData);
         this.workflowActionService.setOperatorProperty(this.currentOperatorId, cloneDeep(formData));
@@ -788,17 +867,11 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         document.getElementsByClassName("operator-version")[0].setAttribute("style", boundary.toString());
       }
     }
+    // Read once: the rules describe the whole schema, not one field.
+    const conditionalRules = conditionalRequiredRules(this.currentOperatorSchema?.jsonSchema);
     // intercept JsonSchema -> FormlySchema process, adding custom options
     // this requires a one-to-one mapping.
     // for relational custom options, have to do it after FormlySchema is generated.
-    // The names of the operator's own top-level properties. Comparing schema objects by
-    // identity does not work: formly resolves $ref/allOf and hands the callback a merged
-    // copy, so nothing ever matched and every tick box vanished. A name check is enough --
-    // the fields nested inside a property (fileKey, alias, ...) are not property names of
-    // the operator itself.
-    const schemaForFormly = cloneDeep(schema);
-    const rootPropertyNames = new Set(Object.keys(schemaForFormly.properties ?? {}));
-
     const jsonSchemaMapIntercept = (
       mappedField: FormlyFieldConfig,
       mapSource: CustomJSONSchema7
@@ -866,10 +939,10 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         };
       }
 
-      // The custom widget this property renders as (file picker, model picker, uploaders,
-      // dataset selector, code box, ...). Shared with the parameterized canvas via
-      // customFormlyFieldType so both views stay in sync and nothing silently degrades to a
-      // plain text box. Each field's extra behaviour (task-driven hide/validators below) stays here.
+      // The custom widget this property renders as (file picker, model picker, uploaders, dataset
+      // selector, code box, drag-reorder list). Extracted to customFormlyFieldType so a later view
+      // (the Form View) renders the same control; each field's extra behaviour -- the task-driven
+      // hide rules below, the Projection reorder callback -- stays here.
       const customType = customFormlyFieldType({
         key: mappedField.key,
         operatorType: this.currentOperatorSchema?.operatorType,
@@ -927,6 +1000,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
           return undefined;
         };
         if (hfKey === "imageInput") {
+          // type ("huggingface-image-upload") is set by customFormlyFieldType above
           mappedField.expressions = {
             ...mappedField.expressions,
             hide: (field: FormlyFieldConfig) => {
@@ -958,6 +1032,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
           };
         }
         if (hfKey === "audioInput") {
+          // type ("huggingface-audio-upload") is set by customFormlyFieldType above
           mappedField.expressions = {
             ...mappedField.expressions,
             hide: (field: FormlyFieldConfig) => {
@@ -1068,14 +1143,16 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         }
       }
 
-      // Aggregate: the attribute is optional for `count` (an empty attribute means COUNT(*),
-      // counting all rows) and required for every other function. Show the required marker
-      // (red *) accordingly, based on the sibling aggFunction within the same row.
-      if (this.currentOperatorSchema?.operatorType === "Aggregate" && mappedField.key === "attribute") {
+      // Show the required marker for a field the schema requires conditionally,
+      // e.g. Sklearn's Text Attribute once Count Vectorizer is on, or Aggregate's
+      // attribute for every function but `count`.
+      const conditionalRequired = conditionalRules.get(mappedField.key as string);
+      if (conditionalRequired !== undefined) {
         mappedField.expressions = {
           ...mappedField.expressions,
           "props.required": (field: FormlyFieldConfig) =>
-            isAggregateAttributeRequired(field.parent?.model?.aggFunction),
+            (field.parent?.model?.[conditionalRequired.sibling] === conditionalRequired.value) ===
+            conditionalRequired.requiredOnMatch,
         };
       }
 
@@ -1125,8 +1202,8 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
       // }
 
       if (this.currentOperatorSchema?.operatorType === "Projection" && mappedField.key === "attributes") {
-        // Type ("repeat-section-dnd") comes from customFormlyFieldType above; the reorder
-        // callback is the canvas's own and stays here.
+        // type ("repeat-section-dnd") is set by customFormlyFieldType above; the reorder callback
+        // is the canvas's own and stays here.
         mappedField.props = {
           ...mappedField.props,
           reorder: () => this.onFormChanges(cloneDeep(this.formData)),
@@ -1143,7 +1220,7 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
       if (isDefined(mapSource.enum)) {
         mappedField.validators.inEnum = {
-          expression: (c: AbstractControl) => mapSource.enum?.includes(c.value ?? ""),
+          expression: (c: AbstractControl) => c.value == null || mapSource.enum?.includes(c.value),
           message: (error: any, field: FormlyFieldConfig) =>
             `"${field.formControl?.value}" is no longer a valid option`,
         };
@@ -1292,42 +1369,13 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
         };
       }
 
-      // An author choosing what to expose gets a tick box beside each top-level
-      // property, and only there. The map callback runs for every field at every
-      // depth, so without this an array-of-objects property sprouted a tick box on
-      // the array, on each item, and on each field inside the item -- four ways to
-      // tick one setting. The form offers whole properties; identity against the
-      // operator schema's own `properties` is what tells a top-level field from a
-      // same-named field nested inside one.
-      // A code-editor property cannot be a form field (a reader does not write code), so it is
-      // not offered for exposure. A drag-reorder property IS exposable -- it just renders without
-      // the drag in the form (handled by the parameterized canvas's own map).
-      const isTopLevel = typeof mappedField.key === "string" && rootPropertyNames.has(mappedField.key);
-      const exposable = !NON_FORM_FIELD_TYPES.has(mappedField.type as string);
-      if (
-        this.exposeChoosing &&
-        isTopLevel &&
-        exposable &&
-        typeof mappedField.key === "string" &&
-        this.currentOperatorId
-      ) {
-        const operatorId = this.currentOperatorId;
-        const propertyKey = mappedField.key;
-        ExposePropertyWrapperComponent.decorate(
-          mappedField,
-          true,
-          this.parameterizationService.isExposed(operatorId, propertyKey),
-          (checked: boolean) => this.parameterizationService.setExposed(operatorId, propertyKey, checked)
-        );
-      }
-
       return mappedField;
     };
 
     this.formlyFormGroup = new FormGroup({});
     this.formlyOptions = {};
     // convert the json schema to formly config, pass a copy because formly mutates the schema object
-    const field = this.formlyJsonschema.toFieldConfig(schemaForFormly, {
+    const field = this.formlyJsonschema.toFieldConfig(cloneDeep(schema), {
       map: jsonSchemaMapIntercept,
     });
     field.hooks = {
@@ -1340,6 +1388,29 @@ export class OperatorPropertyEditFrameComponent implements OnInit, OnChanges, On
 
     const schemaProperties = schema.properties;
     const fields = field.fieldGroup;
+
+    // A tick box beside each TOP-LEVEL property only, added over the root field group rather
+    // than inside the per-field map (which runs at every depth and so could not tell a nested
+    // field from a same-named top-level one -- an array-of-objects property would otherwise
+    // sprout boxes on the array, each item and each nested field).
+    if (this.exposeChoosing && this.currentOperatorId && fields) {
+      const operatorId = this.currentOperatorId;
+      for (const topLevelField of fields) {
+        // A property whose control cannot be a form field (the code editor) is not offered for
+        // exposure -- its type was already resolved by customFormlyFieldType when the field was
+        // built, so the shared NON_FORM_FIELD_TYPES set decides it here.
+        const fieldType = topLevelField.type;
+        const isNonFormField = typeof fieldType === "string" && NON_FORM_FIELD_TYPES.has(fieldType);
+        if (typeof topLevelField.key === "string" && !isNonFormField) {
+          const propertyKey = topLevelField.key;
+          ExposePropertyWrapperComponent.decorate(
+            topLevelField,
+            this.formBindingService.isExposed(operatorId, propertyKey),
+            (checked: boolean) => this.formBindingService.setExposed(operatorId, propertyKey, checked)
+          );
+        }
+      }
+    }
 
     // adding custom options, relational N-to-M mapping.
     if (schemaProperties && fields) {

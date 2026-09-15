@@ -18,39 +18,25 @@
  */
 
 import { Component } from "@angular/core";
-import { NgIf } from "@angular/common";
 import { FieldWrapper, FormlyFieldConfig } from "@ngx-formly/core";
 import { merge } from "lodash-es";
 
 /**
- * Puts a tick box beside an operator property so an author can decide, right where the
- * property already lives, whether it should appear on the workflow's parameterized
- * form. The property editor is the place people already go to change a setting, so it
- * is also the natural place to say "let others change this one".
- *
- * The box only renders while an author is choosing; everyone else sees the property
- * editor exactly as it has always looked.
+ * A tick box beside an operator property, in the property editor, for an author to choose
+ * whether it appears on the Form View. Rendered only while choosing.
  */
 @Component({
   selector: "texera-expose-property-wrapper",
   templateUrl: "./expose-property-wrapper.component.html",
   styleUrls: ["./expose-property-wrapper.component.scss"],
-  imports: [NgIf],
 })
 export class ExposePropertyWrapperComponent extends FieldWrapper {
-  /**
-   * Prepend this wrapper to a field, carrying the state and the callback in `props`.
-   * Keeps `form-field` outermost so the label and error rendering are untouched.
-   */
-  public static decorate(
-    config: FormlyFieldConfig,
-    choosing: boolean,
-    exposed: boolean,
-    toggle: (checked: boolean) => void
-  ): void {
+  /** Add this wrapper to a field, carrying state + callback in `props`; `form-field` stays
+   *  outermost so label/error rendering is untouched. */
+  public static decorate(config: FormlyFieldConfig, exposed: boolean, toggle: (checked: boolean) => void): void {
     merge(config, {
       wrappers: [...(config.wrappers ?? ["form-field"]), "expose-property-wrapper"],
-      props: { ...config.props, choosing, exposed, toggleExposed: toggle },
+      props: { ...config.props, exposed, toggleExposed: toggle },
     });
   }
 

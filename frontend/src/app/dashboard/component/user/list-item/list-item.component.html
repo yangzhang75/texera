@@ -46,7 +46,7 @@
       nz-col
       nzFlex="0"
       class="type-icon"
-      [class.parameterized]="parameterized">
+      [class.defaults-to-form]="defaultsToForm">
       <i
         nz-icon
         [nzType]="iconType"></i>
@@ -120,7 +120,7 @@
       nzFlex="50px"
       class="resource-info">
       <texera-user-avatar
-        [googleAvatar]="entry.ownerGoogleAvatar"
+        [avatar]="entry.ownerAvatar"
         userColor="#1E90FF"
         [userName]="entry.ownerName || 'User'"
         [isOwner]="entry.ownerId === this.currentUid">
@@ -195,13 +195,22 @@
         nz-icon
         nzType="eye"></i>
     </button>
+    <!-- Setting the default view is a write on the workflow row (the endpoint requires WRITE), so a
+         read-only collaborator is not offered a control that could only fail (the handler checks
+         the same rule, canToggleDefaultView). -->
+    <!-- A toggle button: the name stays constant and aria-pressed carries the state (a name that
+         changed with the state would announce the opposite of what the state says); the title spells
+         out what a click does. -->
     <button
-      *ngIf="entry.type==='workflow'"
+      *ngIf="canToggleDefaultView"
       nz-button
       nzType="text"
-      [title]="parameterized ? 'Turn off the Form View' : 'Turn on the Form View'"
-      [class.parameterized-on]="parameterized"
-      (click)="onToggleParameterized()">
+      class="default-view-toggle"
+      aria-label="Open in the Form View by default"
+      [attr.aria-pressed]="defaultsToForm"
+      [title]="defaultsToForm ? 'Open on the canvas by default' : 'Open in the Form View by default'"
+      [class.defaults-to-form-on]="defaultsToForm"
+      (click)="onToggleDefaultView()">
       <i
         nz-icon
         nzType="solution"></i>
@@ -210,6 +219,7 @@
       nz-button
       nzType="text"
       title="Share"
+      *ngIf="canShare"
       (click)="onClickOpenShareAccess()">
       <i
         nz-icon
@@ -228,7 +238,7 @@
     <button
       nz-button
       nzType="text"
-      *ngIf="entry.type === 'workflow' || entry.type === 'dataset'"
+      *ngIf="canDownload"
       title="Download"
       (click)="onClickDownload()">
       <i

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { WorkflowMetadata } from "../../dashboard/type/workflow-metadata.interface";
+import { DefaultView, WorkflowMetadata } from "../../dashboard/type/workflow-metadata.interface";
 import { CommentBox, OperatorLink, OperatorPredicate, Point } from "../../workspace/types/workflow-common.interface";
 
 export enum ExecutionMode {
@@ -31,38 +31,23 @@ export interface WorkflowSettings {
 }
 
 /**
- * One input exposed on the Parameterized Canvas.
- *
- * A binding points at a single property of a single operator. The operator's own
- * property is always the live value -- filling the form is exactly the same edit as
- * changing that property on the regular canvas -- while the fields here only decide
- * how the input is presented.
- *
- * `id` is a stable identity that survives renaming the input or repointing it at a
- * different property, so reordering and removal never depend on the raw key.
+ * One input exposed on the Form View: a binding to a single operator property. That property
+ * is always the live value (filling the form is the same edit as changing it on the canvas);
+ * the rest is presentation. `id` is a stable identity so reorder/remove never use the raw key.
  */
-export interface ParameterBinding {
+export interface FormFieldBinding {
   id: string;
   operatorID: string;
-  /** The operator property this input writes to. Editable, and validated against the operator's schema. */
+  /** The operator property this input writes to. */
   propertyKey: string;
   displayName: string;
   helpText?: string;
-  /**
-   * Per-field overrides inside this input, keyed by the field's path within the
-   * property (`fileKey`, `alias`, `predicates.0.value` -- the array index is dropped,
-   * so `predicates.value` covers every row).
-   *
-   * A property is rarely a single box: an array of objects puts several fields in front
-   * of the reader, each labelled by whatever the operator's schema happens to call it.
-   * The author decides what a reader sees and what it is called; the schema's own label
-   * is only the default. An entry is present only where the author changed something,
-   * so an untouched form carries nothing.
-   */
-  fields?: { [path: string]: ParameterFieldOverride };
+  /** Per-sub-field overrides within the property, keyed by field path (`alias`, `predicates.value`
+   *  -- array indices dropped, so one entry covers every row). Only where the author changed it. */
+  overrides?: { [path: string]: FormFieldOverride };
 }
 
-export interface ParameterFieldOverride {
+export interface FormFieldOverride {
   /** Kept out of the reader's form. The value the author set still applies. */
   hidden?: boolean;
   /** Replaces the schema's label. Empty or absent keeps the schema's own. */
@@ -70,31 +55,28 @@ export interface ParameterFieldOverride {
 }
 
 /**
- * How a workflow presents itself on the Parameterized Canvas.
- *
- * Deliberately excludes an on/off flag: whether the canvas is offered at all lives in
- * `workflow.is_parameterized`, so there is exactly one source of truth for it and the
- * two can never disagree. Turning it off leaves this definition intact.
- *
- * Nothing in here may affect execution. A run reads operator properties and the graph
- * only, so a workflow whose parameterization is missing or stale still runs normally
- * on the regular canvas.
+ * How a workflow presents itself on the Form View. Which view a workflow opens in by default
+ * lives in `workflow.default_view` (canvas or form), and nothing here affects execution.
  */
-export interface ParameterizationConfig {
+export interface FormBindingConfig {
   instruction?: {
-    /** Optional -- an empty title hides the heading rather than showing a placeholder. */
+    /** Empty title hides the heading rather than showing a placeholder. */
     title?: string;
     /** Markdown. */
     body: string;
   };
   /** Array order is display order; the author reorders by dragging. */
-  parameters: ParameterBinding[];
-  /** Operators whose results are shown under the workflow after a run. */
-  resultOperatorIds: string[];
+  fields: FormFieldBinding[];
+  /** Which steps' results show under the workflow after a run, for everyone. Absent until the author
+   *  chooses: then every final (terminal) step shows, as on the canvas. Once set it is exhaustive:
+   *  exactly these steps show, and [] means none. One list, so nothing can contradict it; the cost is
+   *  that a step which becomes final after the author has chosen does not appear by itself. When
+   *  displayed it is kept to steps that still have a result on the canvas. */
+  shownResultIds?: string[];
 }
 
-export function getDefaultParameterization(): ParameterizationConfig {
-  return { parameters: [], resultOperatorIds: [] };
+export function getDefaultFormBinding(): FormBindingConfig {
+  return { fields: [] };
 }
 
 /**
@@ -116,12 +98,23 @@ export interface WorkflowContent
     links: OperatorLink[];
     commentBoxes: CommentBox[];
     settings: WorkflowSettings;
-    /**
-     * Present once an author has set up the Parameterized Canvas. Like `settings`,
-     * this rides in the content rather than the shared graph, so it is saved, cloned,
-     * versioned and published with the workflow at no extra cost.
-     */
-    parameterization?: ParameterizationConfig;
+    /** Present once an author set up the Form View. Rides in the content (like `settings`),
+     *  so it is saved/cloned/versioned/published with the workflow for free. */
+    formBinding?: FormBindingConfig;
   }> {}
 
 export type Workflow = { content: WorkflowContent } & WorkflowMetadata;
+
+/**
+ * The JSON a workflow is exported as, from the dashboard download and the canvas menu alike: the
+ * content plus, when the workflow has one, the landing view as one extra top-level key next to the
+ * content's own (operators/links/...). The importer (upload) destructures it back out onto the
+ * workflow row, so a download-then-upload keeps a form-default workflow opening as a form; an
+ * older importer that reads the whole object as content simply ignores the unknown key, and an
+ * older export without it imports unchanged.
+ */
+export type ExportedWorkflow = WorkflowContent & { defaultView?: DefaultView };
+
+export function exportedWorkflow(content: WorkflowContent, defaultView: DefaultView | undefined): ExportedWorkflow {
+  return defaultView === undefined ? content : { ...content, defaultView };
+}

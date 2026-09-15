@@ -56,9 +56,9 @@ export class WorkflowState {
   private operatorPositions: Map<string, Point> = new Map();
   private commentBoxes: CommentBox[] = [];
   private settings: WorkflowSettings = { ...DEFAULT_WORKFLOW_SETTINGS };
-  // Opaque parameterized-canvas definition carried through unchanged (the agent never
-  // touches it); see WorkflowContent.parameterization.
-  private parameterization: unknown = undefined;
+  // Opaque Form View definition carried through unchanged (the agent never touches it);
+  // see WorkflowContent.formBinding.
+  private formBinding: unknown = undefined;
   private operatorsToViewResult: Set<string> = new Set();
 
   private operatorIdCounter: number = 0;
@@ -192,6 +192,15 @@ export class WorkflowState {
       inputPorts: newInputPorts,
     };
     this.operators.set(operatorId, updatedOperator);
+
+    const validInputPorts = new Set(newInputPorts.map(port => port.portID));
+
+    for (const link of this.getAllLinks()) {
+      if (link.target.operatorID === operatorId && !validInputPorts.has(link.target.portID)) {
+        this.deleteLink(link.linkID);
+      }
+    }
+
     this.operatorPropertyChangeSubject.next({ operator: updatedOperator });
     return true;
   }
@@ -393,8 +402,8 @@ export class WorkflowState {
       commentBoxes: [...this.commentBoxes],
       settings: { ...this.settings },
       // Only re-emit the key when the loaded workflow carried one, so plain workflows
-      // stay byte-identical (JSON.stringify would otherwise add "parameterization":null).
-      ...(this.parameterization !== undefined ? { parameterization: this.parameterization } : {}),
+      // stay byte-identical (JSON.stringify would otherwise add "formBinding":null).
+      ...(this.formBinding !== undefined ? { formBinding: this.formBinding } : {}),
     };
   }
 
@@ -420,10 +429,10 @@ export class WorkflowState {
 
     this.settings = content.settings ? { ...content.settings } : { ...DEFAULT_WORKFLOW_SETTINGS };
 
-    this.parameterization = content.parameterization;
+    this.formBinding = content.formBinding;
   }
 
-  toLogicalPlan(targetOperatorId?: string): LogicalPlan {
+  toLogicalPlan(): LogicalPlan {
     const enabledOperators = this.getAllEnabledOperators();
 
     const operators: LogicalOperator[] = enabledOperators.map(op => ({
@@ -471,7 +480,7 @@ export class WorkflowState {
     this.operatorPositions.clear();
     this.commentBoxes = [];
     this.settings = { ...DEFAULT_WORKFLOW_SETTINGS };
-    this.parameterization = undefined;
+    this.formBinding = undefined;
     this.operatorsToViewResult.clear();
     this.validationErrors = {};
     this.workflowEmpty = true;
